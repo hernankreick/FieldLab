@@ -1,0 +1,33 @@
+{
+  "theme_name": "FieldLab Elite Dark",
+  "colors": {
+    "background": "#0f172a",
+    "card_surface": "#1e293b",
+    "text_primary": "#f8fafc",
+    "text_secondary": "#94a3b8",
+    "accent_cyan": "#38bdf8",
+    "status_safe": "#22c55e",
+    "status_warning": "#f59e0b",
+    "status_danger": "#ef4444"
+  },
+  "typography": {
+    "font_main": "Inter, sans-serif",
+    "font_data": "JetBrains Mono, monospace",
+    "sizes": {
+      "titles": "1.5rem",
+      "body": "0.875rem",
+      "metrics_focus": "2rem"
+    }
+  },
+  "layout_rules": {
+    "card_radius": "1rem",
+    "card_padding": "1.5rem",
+    "gap_between_elements": "1rem",
+    "border_style": "1px solid rgba(255, 255, 255, 0.05)"
+  },
+  "visual_effects": {
+    "status_opacity": "20%",
+    "icon_stroke_width": 1.5,
+    "shadow_elevation": "0 10px 15px -3px rgba(0, 0, 0, 0.4)"
+  }
+}

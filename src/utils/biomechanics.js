@@ -19,7 +19,9 @@ export function calcACWR(acute, chronic) {
 export function acwrStatus(acwr) {
   if (acwr >= 0.8 && acwr <= 1.3) return 'safe';
   if (acwr > 1.3 && acwr <= 1.5) return 'warning';
-  return 'danger';
+  if (acwr > 1.5) return 'danger';
+  // < 0.8: subentrenamiento, requiere monitoreo pero no es riesgo de lesión
+  return 'warning';
 }
 
 // Bosco Battery

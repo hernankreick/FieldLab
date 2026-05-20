@@ -1,4 +1,4 @@
-import { AlertTriangle, TrendingUp, Users, Zap } from 'lucide-react';
+import { AlertTriangle, Users } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';

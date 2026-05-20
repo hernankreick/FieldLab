@@ -38,12 +38,14 @@ export default function Bosco() {
   const iue      = calcIUE(hCMJ, hSJ);
   const lsi      = calcLSI(Math.max(hLeft, hRight), Math.min(hLeft, hRight));
 
+  // Normalizado a % del valor de referencia élite para comparar en la misma escala
+  const REF = { SJ: 40, CMJ: 45, DJ: 38, RSI: 2.5, IUE: 15 };
   const radarData = [
-    { metric: 'SJ',  value: Math.round(hSJ)  },
-    { metric: 'CMJ', value: Math.round(hCMJ) },
-    { metric: 'DJ',  value: Math.round(hDJ)  },
-    { metric: 'RSI', value: parseFloat((rsi * 10).toFixed(1)) },
-    { metric: 'IUE', value: parseFloat(iue.toFixed(1)) },
+    { metric: 'SJ',  value: parseFloat(((hSJ  / REF.SJ)  * 100).toFixed(1)) },
+    { metric: 'CMJ', value: parseFloat(((hCMJ / REF.CMJ) * 100).toFixed(1)) },
+    { metric: 'DJ',  value: parseFloat(((hDJ  / REF.DJ)  * 100).toFixed(1)) },
+    { metric: 'RSI', value: parseFloat(((rsi  / REF.RSI) * 100).toFixed(1)) },
+    { metric: 'IUE', value: parseFloat(((iue  / REF.IUE) * 100).toFixed(1)) },
   ];
 
   const fields = [
@@ -100,6 +102,7 @@ export default function Bosco() {
             <Tooltip
               contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '0.75rem' }}
               labelStyle={{ color: '#f8fafc' }}
+              formatter={v => [`${v}% ref élite`]}
             />
             <Radar dataKey="value" stroke="#38bdf8" fill="#38bdf8" fillOpacity={0.15} strokeWidth={2} />
           </RadarChart>

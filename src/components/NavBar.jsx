@@ -19,7 +19,7 @@ export default function NavBar({ active, onChange }) {
           key={id}
           onClick={() => onChange(id)}
           className={cn(
-            'flex flex-col items-center gap-1 px-3 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wider transition-colors',
+            'flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wider transition-colors',
             active === id
               ? 'text-accent'
               : 'text-slate-500 hover:text-slate-300'

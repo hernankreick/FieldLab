@@ -21,7 +21,9 @@ function TabAgilidad() {
   const cod = parseFloat(tCod) || 0;
   const ref = parseFloat(tRef) || 0;
 
-  const codDeficit = cod && ref ? calcCodDeficit(cod, ref) : null;
+  const rawDeficit = cod && ref ? calcCodDeficit(cod, ref) : null;
+  const invalidOrder = rawDeficit !== null && rawDeficit < 0;
+  const codDeficit = invalidOrder ? null : rawDeficit;
   const deficitType = codDeficitType(codDeficit);
   const deficitStatus = codDeficit === null
     ? 'neutral'
@@ -83,6 +85,15 @@ function TabAgilidad() {
           </div>
         </div>
       </Card>
+
+      {/* Input order error */}
+      {invalidOrder && (
+        <div className="px-4 py-3 rounded-xl bg-danger/10 border border-danger/20">
+          <p className="text-xs text-danger font-semibold">
+            El tiempo COD debe ser mayor que el sprint lineal de referencia.
+          </p>
+        </div>
+      )}
 
       {/* COD Deficit result */}
       {codDeficit !== null && (

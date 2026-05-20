@@ -5,8 +5,18 @@ import ACWR from './views/ACWR';
 import Bosco from './views/Bosco';
 import Wellness from './views/Wellness';
 import VBT from './views/VBT';
+import TabVelocidad from './views/Velocidad';
+import TabAgilidad from './views/Agilidad';
 
-const views = { dashboard: Dashboard, acwr: ACWR, bosco: Bosco, wellness: Wellness, vbt: VBT };
+const views = {
+  dashboard: Dashboard,
+  acwr: ACWR,
+  bosco: Bosco,
+  velocidad: TabVelocidad,
+  agilidad: TabAgilidad,
+  wellness: Wellness,
+  vbt: VBT,
+};
 
 export default function App() {
   const [active, setActive] = useState('dashboard');

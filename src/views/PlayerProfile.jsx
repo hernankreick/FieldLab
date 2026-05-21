@@ -196,7 +196,9 @@ function AcwrBar({ value }) {
   const color   = acwrColor(value);
   const W = 200, barY = 30, barH = 12;
   const mx = (clamped / 2.0) * W;
-  // Mantener el label dentro de los límites para valores extremos
+  // Clamp del marcador para que no se recorte en valores extremos
+  const tmx = Math.min(Math.max(mx, 5), W - 5);
+  // Clamp del label (más margen porque el texto es más ancho)
   const lx = Math.min(Math.max(mx, 18), W - 18);
 
   const zones = [
@@ -244,7 +246,7 @@ function AcwrBar({ value }) {
 
       {/* Triángulo marcador apuntando hacia la barra desde arriba */}
       <polygon
-        points={`${mx},${barY} ${mx - 5},${barY - 9} ${mx + 5},${barY - 9}`}
+        points={`${tmx},${barY} ${tmx - 5},${barY - 9} ${tmx + 5},${barY - 9}`}
         fill={color}
       />
 

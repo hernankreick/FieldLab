@@ -48,6 +48,16 @@ function isToday(timestamp) {
   return new Date(timestamp).toDateString() === new Date().toDateString();
 }
 
+// 0 = rojo, 1 = amarillo/gris (warning o sin reporte), 2 = verde
+function dotPriority(a, w) {
+  const risk     = athleteRisk(a, w);
+  const hasToday = w && isToday(w.timestamp);
+  if (risk === 'danger')  return 0;
+  if (risk === 'warning') return 1;
+  if (!hasToday)          return 1;
+  return 2;
+}
+
 export default function Dashboard({ onNavigate }) {
   const [wellnessMap, setWellnessMap] = useState({});
 
@@ -64,6 +74,11 @@ export default function Dashboard({ onNavigate }) {
     ...a,
     w: wellnessMap[String(a.id)] ?? null,
   }));
+
+  const sortedAthletes = [...athletes].sort((a, b) => {
+    const dp = dotPriority(a, a.w) - dotPriority(b, b.w);
+    return dp !== 0 ? dp : b.acwr - a.acwr;
+  });
 
   const todayCount    = athletes.filter(a => a.w && isToday(a.w.timestamp)).length;
   const noReportCount = athletes.length - todayCount;
@@ -129,7 +144,7 @@ export default function Dashboard({ onNavigate }) {
         )}
       >
         <div className="space-y-0">
-          {athletes.map(a => {
+          {sortedAthletes.map(a => {
             const risk     = athleteRisk(a, a.w);
             const hasToday = a.w && isToday(a.w.timestamp);
             const dotColor = risk === 'danger'  ? DOT_COLOR.danger

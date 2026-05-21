@@ -50,11 +50,10 @@ function isToday(timestamp) {
 
 // 0 = rojo, 1 = amarillo/gris (warning o sin reporte), 2 = verde
 function dotPriority(a, w) {
-  const risk     = athleteRisk(a, w);
   const hasToday = w && isToday(w.timestamp);
-  if (risk === 'danger')  return 0;
-  if (risk === 'warning') return 1;
-  if (!hasToday)          return 1;
+  if (a.acwr > 1.5 || (hasToday && w.score > 18)) return 0;
+  if (a.acwr > 1.3)                                return 1;
+  if (!hasToday)                                   return 1;
   return 2;
 }
 
@@ -145,11 +144,10 @@ export default function Dashboard({ onNavigate }) {
       >
         <div className="space-y-0">
           {sortedAthletes.map(a => {
-            const risk     = athleteRisk(a, a.w);
             const hasToday = a.w && isToday(a.w.timestamp);
-            const dotColor = risk === 'danger'  ? DOT_COLOR.danger
-                           : risk === 'warning' ? DOT_COLOR.warning
-                           : hasToday           ? DOT_COLOR.safe
+            const dotColor = a.acwr > 1.5 || (hasToday && a.w.score > 18) ? DOT_COLOR.danger
+                           : a.acwr > 1.3                                  ? DOT_COLOR.warning
+                           : hasToday                                       ? DOT_COLOR.safe
                            : '#475569';
             return (
               <button

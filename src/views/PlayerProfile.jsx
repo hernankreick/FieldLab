@@ -217,7 +217,7 @@ function AcwrGauge({ value }) {
       {/* Arco coloreado según progreso */}
       {pct > 0.01 && (
         <path
-          d={`M ${cx - r} ${cy} A ${r} ${r} 0 ${pct > 0.5 ? 1 : 0} 0 ${fx.toFixed(2)} ${fy.toFixed(2)}`}
+          d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${fx.toFixed(2)} ${fy.toFixed(2)}`}
           fill="none" stroke={color} strokeWidth="7" strokeLinecap="round"
         />
       )}
@@ -513,14 +513,14 @@ export default function PlayerProfile({ initialId, onNavigate }) {
                 <p className="text-xs text-slate-500 mb-1">Carga aguda</p>
                 <p className="text-xl font-bold font-data text-accent">
                   {hasRealLoads ? Math.round(acute) : '—'}
-                  <span className="text-xs font-normal text-slate-500 ml-1">UA · 7d</span>
+                  {hasRealLoads && <span className="text-xs font-normal text-slate-500 ml-1">UA · 7d</span>}
                 </p>
               </div>
               <div className="bg-background rounded-xl p-3 border border-white/5">
                 <p className="text-xs text-slate-500 mb-1">Carga crónica</p>
                 <p className="text-xl font-bold font-data text-slate-300">
                   {hasRealLoads ? Math.round(chronic) : '—'}
-                  <span className="text-xs font-normal text-slate-500 ml-1">UA · 28d</span>
+                  {hasRealLoads && <span className="text-xs font-normal text-slate-500 ml-1">UA · 28d</span>}
                 </p>
               </div>
             </div>

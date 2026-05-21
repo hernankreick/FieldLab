@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Zap } from 'lucide-react';
+import { Zap, Camera } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
@@ -20,7 +20,7 @@ const defaultInputs = {
   tvRight:   0.50,
 };
 
-export default function Bosco() {
+export default function Bosco({ onNavigate }) {
   const [inp, setInp] = useState(defaultInputs);
 
   function set(key, val) {
@@ -60,9 +60,22 @@ export default function Bosco() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold text-slate-100">Batería de Bosco</h2>
-        <p className="text-sm text-slate-400">SJ · CMJ · DJ · CMJ Unilateral</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-slate-100">Batería de Bosco</h2>
+          <p className="text-sm text-slate-400">SJ · CMJ · DJ · CMJ Unilateral</p>
+        </div>
+        {onNavigate && (
+          <button
+            onClick={() => onNavigate('jumpAnalysis')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold
+              border border-accent/35 text-accent bg-accent/[0.08]
+              hover:bg-accent/[0.15] active:scale-95 transition-all"
+          >
+            <Camera size={13} />
+            Analizar con cámara
+          </button>
+        )}
       </div>
 
       {/* Resultados clave */}

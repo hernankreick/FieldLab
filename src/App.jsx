@@ -12,6 +12,7 @@ import HooperQR from './views/HooperQR';
 import RPEForm from './views/RPEForm';
 import CargaSesionView from './views/CargaSesionView';
 import PlayerProfile from './views/PlayerProfile';
+import JumpAnalysis from './views/JumpAnalysis';
 
 // Detectar ruta /hooper/:teamId sin React Router (módulo-level, no cambia en runtime)
 const HOOPER_MATCH = window.location.pathname.match(/^\/hooper\/([^/]+)/);
@@ -28,6 +29,7 @@ const views = {
   vbt:          VBT,
   carga:        CargaSesionView,
   player:       PlayerProfile,
+  jumpAnalysis: JumpAnalysis,
 };
 
 export default function App() {

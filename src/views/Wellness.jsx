@@ -1,58 +1,68 @@
-import { useState } from 'react';
-import { Heart, Map } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Heart, Map, Clock } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
-import { hooperStatus } from '../utils/biomechanics';
+import { getWellnessByPlayer, getLatestWellness, getAllLatestWellness } from '../utils/storage';
 
-const athletes = ['Ramiro S.', 'Leandro M.', 'Tomás R.', 'Facundo B.'];
-
-const defaultWellness = {
-  'Ramiro S.':  { doms: 4, sleep: 4, fatigue: 3, stress: 3 },
-  'Leandro M.': { doms: 8, sleep: 2, fatigue: 7, stress: 5 },
-  'Tomás R.':   { doms: 2, sleep: 5, fatigue: 2, stress: 2 },
-  'Facundo B.': { doms: 5, sleep: 4, fatigue: 4, stress: 3 },
-};
-
-function hooperScore(w) {
-  return w.doms + (5 - w.sleep) + w.fatigue + w.stress;
-}
-
-const SLIDER_CONFIG = [
-  { key: 'doms',    label: 'Dolor (DOMS)',  min: 0, max: 10 },
-  { key: 'sleep',   label: 'Calidad sueño', min: 1, max: 5  },
-  { key: 'fatigue', label: 'Fatiga',        min: 0, max: 10 },
-  { key: 'stress',  label: 'Estrés',        min: 0, max: 10 },
+// IDs deben coincidir con TEAM_PLAYERS en HooperQR
+const ATHLETES = [
+  { id: 1, name: 'Ramiro S.'  },
+  { id: 2, name: 'Leandro M.' },
+  { id: 3, name: 'Tomás R.'   },
+  { id: 4, name: 'Facundo B.' },
 ];
 
-const sliderColor = { safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
-const HEATMAP_LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
-const defaultHeatmap = Object.fromEntries(athletes.map(n => [n, {}]));
+// Etiquetas para valores 1-7 de cada métrica
+const LABELS = {
+  sleep:    ['', 'Pésimo',    'Muy malo', 'Malo',     'Regular',  'Bueno',    'Muy bueno', 'Excelente'],
+  stress:   ['', 'Sin estrés','Muy leve', 'Leve',     'Moderado', 'Alto',     'Muy alto',  'Extremo'  ],
+  fatigue:  ['', 'Sin fatiga','Muy leve', 'Leve',     'Moderada', 'Alta',     'Muy alta',  'Extrema'  ],
+  soreness: ['', 'Sin dolor', 'Muy leve', 'Leve',     'Moderado', 'Alto',     'Muy alto',  'Extremo'  ],
+};
+
+function hooperStatus(score) {
+  if (score > 18) return 'danger';
+  if (score > 12) return 'warning';
+  return 'safe';
+}
+
+function isToday(ts) {
+  return new Date(ts).toDateString() === new Date().toDateString();
+}
+
+function formatDate(ts) {
+  const d = new Date(ts);
+  const today     = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString())     return 'Hoy';
+  if (d.toDateString() === yesterday.toDateString()) return 'Ayer';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
 
 export default function Wellness() {
-  const [wellness, setWellness] = useState(defaultWellness);
-  const [selected, setSelected] = useState(athletes[0]);
-  const [heatmapZones, setHeatmapZones] = useState(defaultHeatmap);
+  const [selectedId, setSelectedId] = useState(ATHLETES[0].id);
+  const [latest,     setLatest]     = useState(null);
+  const [history,    setHistory]    = useState([]);
+  const [rosterMap,  setRosterMap]  = useState({});
 
-  function handleZoneSelect(id) {
-    setHeatmapZones(prev => {
-      const cur = prev[selected][id] || 'normal';
-      const next = HEATMAP_LEVELS[(HEATMAP_LEVELS.indexOf(cur) + 1) % HEATMAP_LEVELS.length];
-      return { ...prev, [selected]: { ...prev[selected], [id]: next } };
-    });
-  }
+  useEffect(() => {
+    function loadAll() {
+      setLatest(getLatestWellness(selectedId));
+      setHistory(getWellnessByPlayer(selectedId).slice(0, 7));
+      setRosterMap(getAllLatestWellness());
+    }
+    loadAll();
+    const iv       = setInterval(loadAll, 30_000);
+    const onStorage = () => loadAll();
+    window.addEventListener('storage', onStorage);
+    return () => { clearInterval(iv); window.removeEventListener('storage', onStorage); };
+  }, [selectedId]);
 
-  const w = wellness[selected];
-  const status = hooperStatus(w.doms, w.sleep);
-  const score = hooperScore(w);
-
-  function update(key, val) {
-    setWellness(prev => ({
-      ...prev,
-      [selected]: { ...prev[selected], [key]: parseInt(val) },
-    }));
-  }
+  const status   = latest ? hooperStatus(latest.score) : 'neutral';
+  const hasZones = latest && Object.keys(latest.activeZones || {}).length > 0;
 
   return (
     <div className="space-y-4">
@@ -63,85 +73,155 @@ export default function Wellness() {
 
       {/* Selector atleta */}
       <div className="flex gap-2 flex-wrap">
-        {athletes.map(name => {
-          const s = hooperStatus(wellness[name].doms, wellness[name].sleep);
+        {ATHLETES.map(({ id, name }) => {
+          const w  = rosterMap[String(id)];
+          const st = w ? hooperStatus(w.score) : null;
           return (
             <button
-              key={name}
-              onClick={() => setSelected(name)}
+              key={id}
+              onClick={() => setSelectedId(id)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                selected === name
+                selectedId === id
                   ? 'bg-accent text-background border-accent'
                   : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
               }`}
             >
               {name}
-              {s !== 'safe' && (
-                <span className={`ml-1.5 w-1.5 h-1.5 rounded-full inline-block ${s === 'danger' ? 'bg-danger' : 'bg-warning'}`} />
+              {st && st !== 'safe' && (
+                <span className={`ml-1.5 w-1.5 h-1.5 rounded-full inline-block align-middle
+                  ${st === 'danger' ? 'bg-danger' : 'bg-warning'}`} />
               )}
             </button>
           );
         })}
       </div>
 
-      {/* Score global */}
-      <Card>
-        <div className="flex items-center justify-between">
-          <div>
-            <MetricDisplay value={score} label="Índice Hooper" status={status} />
-            <p className="text-xs text-slate-500 mt-1">Umbral crítico: DOMS {'>'} 7 o Sueño {'<'} 3</p>
+      {/* Sin datos */}
+      {!latest ? (
+        <Card>
+          <div className="text-center py-4">
+            <p className="text-slate-400 text-sm mb-1">Sin reporte de wellness</p>
+            <p className="text-slate-600 text-xs leading-relaxed">
+              El jugador debe completar el formulario QR para generar datos
+            </p>
           </div>
-          <StatusBadge status={status} label={status === 'danger' ? 'PRECAUCIÓN' : status === 'warning' ? 'Monitorear' : 'Listo'} />
-        </div>
-      </Card>
-
-      {/* Sliders */}
-      <Card title="Parámetros" icon={Heart}>
-        <div className="space-y-5">
-          {SLIDER_CONFIG.map(({ key, label, min, max }) => (
-            <div key={key}>
-              <div className="flex justify-between mb-1.5">
-                <span className="text-xs text-slate-400">{label}</span>
-                <span className={`text-xs font-data font-bold`} style={{ color: sliderColor[status] }}>
-                  {w[key]}{key === 'sleep' ? '/5' : '/10'}
-                </span>
+        </Card>
+      ) : (
+        <>
+          {/* Score card */}
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <MetricDisplay value={latest.score} label="Índice Hooper" status={status} />
+                <p className="text-xs text-slate-500 mt-1">
+                  {isToday(latest.timestamp)
+                    ? 'Reporte de hoy'
+                    : `Último: ${formatDate(latest.timestamp)}`}
+                </p>
               </div>
-              <input
-                type="range"
-                min={min}
-                max={max}
-                value={w[key]}
-                onChange={e => update(key, e.target.value)}
-                className="w-full h-1.5 rounded-full appearance-none bg-white/10 accent-accent cursor-pointer"
+              <StatusBadge
+                status={status}
+                label={
+                  status === 'danger'  ? 'Recuperar'  :
+                  status === 'warning' ? 'Monitorear' : 'Listo'
+                }
               />
             </div>
-          ))}
-        </div>
-      </Card>
+          </Card>
 
-      {/* Mapa de calor */}
-      <Card title="Mapa de dolor muscular" icon={Map}>
-        <p className="text-xs text-slate-500 mb-4">Tocá una zona para ciclar entre niveles de dolor.</p>
-        <BodyHeatmapSimple
-          selectedZones={heatmapZones[selected]}
-          onSelectZone={handleZoneSelect}
-          interactive={true}
-        />
-      </Card>
+          {/* Métricas del último reporte */}
+          <Card title="Último reporte" icon={Heart}>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { key: 'sleep',    label: 'Sueño'  },
+                { key: 'stress',   label: 'Estrés' },
+                { key: 'fatigue',  label: 'Fatiga' },
+                { key: 'soreness', label: 'Dolor'  },
+              ].map(({ key, label }) => {
+                const val = latest[key];
+                return (
+                  <div key={key} className="bg-background rounded-xl p-3 border border-white/5">
+                    <p className="text-xs text-slate-500 mb-1">{label}</p>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-data font-bold text-slate-200">{val}</span>
+                      <span className="text-xs text-slate-600">/7</span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-tight">
+                      {LABELS[key]?.[val] || ''}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Mapa de calor — solo si hay zonas marcadas */}
+          {hasZones && (
+            <Card title="Zonas de dolor" icon={Map}>
+              <BodyHeatmapSimple
+                selectedZones={latest.activeZones}
+                onSelectZone={() => {}}
+                interactive={false}
+              />
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* Historial últimos 7 registros */}
+      {history.length > 0 && (
+        <Card title="Historial" icon={Clock}>
+          <div className="space-y-0">
+            {history.map((r, i) => {
+              const st = hooperStatus(r.score);
+              return (
+                <div key={i}
+                  className="py-2.5 border-b border-white/5 last:border-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-sm text-slate-300 font-medium">
+                      {formatDate(r.timestamp)}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-data font-bold text-slate-300">
+                        {r.score}
+                      </span>
+                      <StatusBadge status={st} />
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Sueño {r.sleep} · Estrés {r.stress} · Fatiga {r.fatigue} · Dolor {r.soreness}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Resumen plantel */}
       <Card title="Estado plantel">
         <div className="space-y-2">
-          {athletes.map(name => {
-            const s = hooperStatus(wellness[name].doms, wellness[name].sleep);
+          {ATHLETES.map(({ id, name }) => {
+            const w  = rosterMap[String(id)];
+            const st = w ? hooperStatus(w.score) : null;
             return (
-              <div key={name} className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
+              <div key={id}
+                className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
                 <span className="text-sm text-slate-200">{name}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-data text-slate-500">
-                    DOMS {wellness[name].doms} · Sueño {wellness[name].sleep}/5
-                  </span>
-                  <StatusBadge status={s} />
+                  {w ? (
+                    <>
+                      <span className="text-xs font-data text-slate-500">
+                        Hooper {w.score} · {formatDate(w.timestamp)}
+                      </span>
+                      <StatusBadge status={st} />
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-slate-600">Sin reporte</span>
+                      <span className="w-2 h-2 rounded-full bg-slate-700 inline-block flex-shrink-0" />
+                    </>
+                  )}
                 </div>
               </div>
             );

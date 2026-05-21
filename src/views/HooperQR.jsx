@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
+import { saveWellness } from '../utils/storage';
 
 const TEAM_PLAYERS = [
   { id: 1, name: 'Ramiro Sánchez',   position: 'Fullback',      sport: 'rugby'  },
@@ -53,7 +54,6 @@ const SORENESS = [
 ];
 
 const HEATMAP_LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
-const MAX_RECORDS = 100;
 
 // Hooper Score = estrés + (8 − sueño) + fatiga + dolor
 function calcScore(sleep, stress, fatigue, soreness) {
@@ -71,18 +71,6 @@ const SCORE_CONFIG = {
   warning: { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  msg: 'Entrenar con precaución ⚠️'      },
   danger:  { color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   msg: 'Recuperación prioritaria'        },
 };
-
-function saveRecord(teamId, record) {
-  try {
-    const key    = `fieldlab_hooper_${teamId}`;
-    const stored = JSON.parse(localStorage.getItem(key) || '[]');
-    stored.push(record);
-    if (stored.length > MAX_RECORDS) stored.splice(0, stored.length - MAX_RECORDS);
-    localStorage.setItem(key, JSON.stringify(stored));
-  } catch {
-    // localStorage no disponible (modo privado o cuota llena) — continuar sin guardar
-  }
-}
 
 // Barra de progreso superior — se llena al avanzar en cada pregunta
 function ProgressBar({ step }) {
@@ -174,7 +162,7 @@ export default function HooperQR({ teamId }) {
   function handleSend() {
     const now   = new Date();
     const score = calcScore(sleep, stress, fatigue, soreness);
-    saveRecord(teamId, {
+    saveWellness({
       playerId: player.id, playerName: player.name,
       timestamp: now.toISOString(),
       sleep, stress, fatigue, soreness, score, activeZones,

@@ -81,7 +81,10 @@ export default function Dashboard({ onNavigate }) {
 
   const todayCount    = athletes.filter(a => a.w && isToday(a.w.timestamp)).length;
   const noReportCount = athletes.length - todayCount;
-  const alerts        = athletes.filter(a => athleteRisk(a, a.w) === 'danger');
+  const alerts = athletes.filter(a => {
+    const w = a.w && isToday(a.w.timestamp) ? a.w : null;
+    return athleteRisk(a, w) === 'danger';
+  });
 
   return (
     <div className="space-y-4">
@@ -122,7 +125,7 @@ export default function Dashboard({ onNavigate }) {
                     <StatusBadge status="danger" label={`ACWR ${a.acwr.toFixed(2)}`} />}
                   {lsiStatus(a.lsi) === 'danger' &&
                     <StatusBadge status="danger" label={`LSI ${a.lsi.toFixed(1)}%`} />}
-                  {a.w?.score > 18 &&
+                  {a.w && isToday(a.w.timestamp) && a.w.score > 18 &&
                     <StatusBadge status="danger" label={`Hooper ${a.w.score}`} />}
                 </div>
               </div>

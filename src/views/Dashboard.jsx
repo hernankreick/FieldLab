@@ -9,10 +9,14 @@ import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
 
 // Atletas base con datos de carga (ACWR/LSI) — wellness viene de localStorage
 const BASE_ATHLETES = [
-  { id: 1, name: 'Ramiro S.',  acwr: 1.42, lsi: 6.2  },
-  { id: 2, name: 'Leandro M.', acwr: 1.61, lsi: 18.4 },
-  { id: 3, name: 'Tomás R.',   acwr: 1.1,  lsi: 4.8  },
-  { id: 4, name: 'Facundo B.', acwr: 0.95, lsi: 11.2 },
+  { id: 1, name: 'Ramiro S.',    acwr: 1.42, lsi: 6.2  },
+  { id: 2, name: 'Leandro M.',   acwr: 1.61, lsi: 18.4 },
+  { id: 3, name: 'Tomás R.',     acwr: 1.1,  lsi: 4.8  },
+  { id: 4, name: 'Facundo B.',   acwr: 0.95, lsi: 11.2 },
+  { id: 5, name: 'Agustín T.',   acwr: 1.05, lsi: 5.0  },
+  { id: 6, name: 'Lucía F.',     acwr: 0.88, lsi: 7.3  },
+  { id: 7, name: 'Valentina L.', acwr: 1.22, lsi: 9.8  },
+  { id: 8, name: 'Martín G.',    acwr: 1.35, lsi: 6.1  },
 ];
 
 function wellnessRisk(w) {

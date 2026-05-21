@@ -8,10 +8,14 @@ import { getWellnessByPlayer, getLatestWellness, getAllLatestWellness } from '..
 
 // IDs deben coincidir con TEAM_PLAYERS en HooperQR
 const ATHLETES = [
-  { id: 1, name: 'Ramiro S.'  },
-  { id: 2, name: 'Leandro M.' },
-  { id: 3, name: 'Tomás R.'   },
-  { id: 4, name: 'Facundo B.' },
+  { id: 1, name: 'Ramiro S.'    },
+  { id: 2, name: 'Leandro M.'   },
+  { id: 3, name: 'Tomás R.'     },
+  { id: 4, name: 'Facundo B.'   },
+  { id: 5, name: 'Agustín T.'   },
+  { id: 6, name: 'Lucía F.'     },
+  { id: 7, name: 'Valentina L.' },
+  { id: 8, name: 'Martín G.'    },
 ];
 
 // Etiquetas para valores 1-7 de cada métrica

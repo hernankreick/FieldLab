@@ -132,9 +132,10 @@ export default function Dashboard({ onNavigate }) {
           {athletes.map(a => {
             const risk     = athleteRisk(a, a.w);
             const hasToday = a.w && isToday(a.w.timestamp);
-            const dotColor = risk === 'danger'               ? DOT_COLOR.danger
-                           : !hasToday || risk === 'warning' ? DOT_COLOR.warning
-                           : DOT_COLOR.safe;
+            const dotColor = risk === 'danger'  ? DOT_COLOR.danger
+                           : risk === 'warning' ? DOT_COLOR.warning
+                           : hasToday           ? DOT_COLOR.safe
+                           : '#475569';
             return (
               <button
                 key={a.id}

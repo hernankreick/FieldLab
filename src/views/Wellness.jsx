@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Heart } from 'lucide-react';
+import { Heart, Map } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
+import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
 import { hooperStatus } from '../utils/biomechanics';
 
 const athletes = ['Ramiro S.', 'Leandro M.', 'Tomás R.', 'Facundo B.'];
@@ -30,6 +31,16 @@ const sliderColor = { safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
 export default function Wellness() {
   const [wellness, setWellness] = useState(defaultWellness);
   const [selected, setSelected] = useState(athletes[0]);
+  const [heatmapZones, setHeatmapZones] = useState({});
+
+  function handleZoneSelect(id) {
+    setHeatmapZones(prev => {
+      const cur = prev[id] || 'normal';
+      const LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
+      const next = LEVELS[(LEVELS.indexOf(cur) + 1) % LEVELS.length];
+      return { ...prev, [id]: next };
+    });
+  }
 
   const w = wellness[selected];
   const status = hooperStatus(w.doms, w.sleep);
@@ -105,6 +116,16 @@ export default function Wellness() {
             </div>
           ))}
         </div>
+      </Card>
+
+      {/* Mapa de calor */}
+      <Card title="Mapa de dolor muscular" icon={Map}>
+        <p className="text-xs text-slate-500 mb-4">Tocá una zona para ciclar entre niveles de dolor.</p>
+        <BodyHeatmapSimple
+          selectedZones={heatmapZones}
+          onSelectZone={handleZoneSelect}
+          interactive={true}
+        />
       </Card>
 
       {/* Resumen plantel */}

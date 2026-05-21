@@ -17,7 +17,7 @@ function athleteRisk(a) {
   return 'safe';
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }) {
   const alerts = athletes.filter(a => athleteRisk(a) === 'danger');
   const warnings = athletes.filter(a => athleteRisk(a) === 'warning');
 
@@ -61,7 +61,17 @@ export default function Dashboard() {
       )}
 
       {/* Roster overview */}
-      <Card title="Estado del plantel" icon={Users}>
+      <Card title="Estado del plantel" icon={Users}
+        className="cursor-default"
+        action={onNavigate && (
+          <button
+            onClick={() => onNavigate('wellness')}
+            className="text-xs text-accent hover:text-accent/80 font-semibold transition-colors"
+          >
+            Ver Wellness →
+          </button>
+        )}
+      >
         <div className="space-y-3">
           {athletes.map(a => {
             const risk = athleteRisk(a);

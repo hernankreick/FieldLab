@@ -27,7 +27,7 @@ export default function App() {
       <div className="flex md:flex-row flex-col min-h-screen">
         <NavBar active={active} onChange={setActive} />
         <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
-          <View />
+          <View onNavigate={setActive} />
         </main>
       </div>
     </div>

@@ -184,7 +184,7 @@ export default function Dashboard({ onNavigate }) {
       </Card>
 
       {/* QR para el formulario de wellness diario */}
-      <QRGenerator teamId="team_001" teamName="Equipo" />
+      <QRGenerator />
     </div>
   );
 }

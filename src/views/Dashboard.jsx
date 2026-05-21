@@ -38,7 +38,10 @@ function athleteRisk(a, w) {
 }
 
 function acwrColor(v) {
-  return v > 1.5 ? '#ef4444' : v > 1.3 ? '#f59e0b' : '#22c55e';
+  if (v > 1.5) return '#ef4444';
+  if (v > 1.3) return '#f59e0b';
+  if (v < 0.8) return '#f59e0b';
+  return '#22c55e';
 }
 
 function isToday(timestamp) {

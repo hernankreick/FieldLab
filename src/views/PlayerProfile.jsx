@@ -497,8 +497,10 @@ export default function PlayerProfile({ initialId, onNavigate }) {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-slate-500 border-b border-white/5">
-                      {['Fecha', 'Sueño', 'Estrés', 'Fatiga', 'Dolor', 'Score', ''].map(h => (
-                        <th key={h} className="pb-2 text-left font-medium pr-3 whitespace-nowrap">{h}</th>
+                      {['Fecha', 'Sueño', 'Estrés', 'Fatiga', 'Dolor', 'Score', 'Estado'].map(h => (
+                        <th key={h} className="pb-2 text-left font-medium pr-3 whitespace-nowrap">
+                          {h === 'Estado' ? '' : h}
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -506,7 +508,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
                     {wellnessHistory.map((r, i) => {
                       const st = hooperSt(r.score);
                       return (
-                        <tr key={i} className="border-b border-white/5 last:border-0">
+                        <tr key={r.timestamp} className="border-b border-white/5 last:border-0">
                           <td className="py-2 pr-3 text-slate-400 whitespace-nowrap">{formatDate(r.timestamp)}</td>
                           <td className="py-2 pr-3 font-data text-slate-300">{r.sleep}</td>
                           <td className="py-2 pr-3 font-data text-slate-300">{r.stress}</td>

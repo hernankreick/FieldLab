@@ -189,52 +189,79 @@ function lsiSt(p)        { return p < 8 ? 'safe' : p <= 15 ? 'warning' : 'danger
 function sprint10St(t)   { return t <= 1.75 ? 'safe' : t <= 1.90 ? 'warning' : 'danger'; }
 function sprint30St(t)   { return t <= 4.10 ? 'safe' : t <= 4.50 ? 'warning' : 'danger'; }
 
-// ── Gauge ACWR (semicírculo SVG) ─────────────────────────────────────────────
+// ── Barra ACWR con zonas y marcador ─────────────────────────────────────────
 
-function AcwrGauge({ value }) {
-  const pct   = Math.min(Math.max(value / 2.0, 0), 0.998);
-  const color = acwrColor(value);
-  const cx = 60, cy = 52, r = 38;
+function AcwrBar({ value }) {
+  const clamped = Math.min(Math.max(value, 0), 2.0);
+  const color   = acwrColor(value);
+  const W = 200, barY = 30, barH = 12;
+  const mx = (clamped / 2.0) * W;
+  // Mantener el label dentro de los límites para valores extremos
+  const lx = Math.min(Math.max(mx, 18), W - 18);
 
-  // Ángulo desde eje-x positivo; arco superior: izquierda (180°) → derecha (0°)
-  const θ  = Math.PI * (1 - pct);
-  const fx = cx + r * Math.cos(θ);
-  const fy = cy - r * Math.sin(θ);
+  const zones = [
+    { from: 0,   to: 0.8, fill: '#334155' }, // gris — subcarga
+    { from: 0.8, to: 1.3, fill: '#22c55e' }, // verde — óptimo
+    { from: 1.3, to: 1.5, fill: '#f59e0b' }, // amarillo — precaución
+    { from: 1.5, to: 2.0, fill: '#ef4444' }, // rojo — peligro
+  ];
 
-  // Ticks de zona en 0.8, 1.3, 1.5
-  const ticks = [0.8, 1.3, 1.5].map(v => {
-    const a = Math.PI * (1 - v / 2.0);
-    return { x: cx + r * Math.cos(a), y: cy - r * Math.sin(a), c: v >= 1.5 ? '#ef4444' : '#f59e0b' };
-  });
+  const zoneLabels = [
+    { label: 'Sub',     cx: (0.4  / 2) * W },
+    { label: 'Óptimo',  cx: (1.05 / 2) * W },
+    { label: 'Prec.',   cx: (1.4  / 2) * W },
+    { label: 'Peligro', cx: (1.75 / 2) * W },
+  ];
 
   return (
-    <svg viewBox="0 0 120 65" className="w-full max-w-[220px] mx-auto block">
-      {/* Track gris */}
-      <path
-        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-        fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="7" strokeLinecap="round"
+    <svg viewBox={`0 0 ${W} 62`} className="w-full">
+      <defs>
+        {/* ClipPath para que los extremos de la barra sean redondeados */}
+        <clipPath id="acwrBarClip">
+          <rect x="0" y={barY} width={W} height={barH} rx={barH / 2} />
+        </clipPath>
+      </defs>
+
+      {/* Segmentos de zona */}
+      <g clipPath="url(#acwrBarClip)">
+        {zones.map(({ from, to, fill }) => (
+          <rect key={from}
+            x={(from / 2.0) * W} y={barY}
+            width={((to - from) / 2.0) * W} height={barH}
+            fill={fill}
+          />
+        ))}
+      </g>
+
+      {/* Separadores entre zonas */}
+      {[0.8, 1.3, 1.5].map(v => {
+        const tx = (v / 2.0) * W;
+        return (
+          <line key={v} x1={tx} y1={barY} x2={tx} y2={barY + barH}
+            stroke="rgba(0,0,0,0.35)" strokeWidth="1.5" />
+        );
+      })}
+
+      {/* Triángulo marcador apuntando hacia la barra desde arriba */}
+      <polygon
+        points={`${mx},${barY} ${mx - 5},${barY - 9} ${mx + 5},${barY - 9}`}
+        fill={color}
       />
-      {/* Arco coloreado según progreso */}
-      {pct > 0.01 && (
-        <path
-          d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${fx.toFixed(2)} ${fy.toFixed(2)}`}
-          fill="none" stroke={color} strokeWidth="7" strokeLinecap="round"
-        />
-      )}
-      {/* Ticks de referencia */}
-      {ticks.map(({ x, y, c }, i) => (
-        <circle key={i} cx={x.toFixed(2)} cy={y.toFixed(2)} r="2.5" fill={c} opacity="0.75" />
-      ))}
-      {/* Valor numérico */}
-      <text x={cx} y={cy - 7} textAnchor="middle" fontSize="17" fontWeight="700"
-        fill={color} fontFamily="ui-monospace,monospace">
+
+      {/* Valor actual sobre el triángulo */}
+      <text x={lx} y={barY - 12} textAnchor="middle"
+        fontSize="12" fontWeight="700" fill={color}
+        fontFamily="ui-monospace,monospace">
         {value.toFixed(2)}
       </text>
-      <text x={cx} y={cy + 6} textAnchor="middle" fontSize="8" fill="#64748b" letterSpacing="1">
-        ACWR
-      </text>
-      <text x="12"  y="63" fontSize="8" fill="#475569">0.0</text>
-      <text x="101" y="63" fontSize="8" fill="#475569">2.0</text>
+
+      {/* Etiquetas de zona */}
+      {zoneLabels.map(({ label, cx }) => (
+        <text key={label} x={cx} y={barY + barH + 14}
+          textAnchor="middle" fontSize="8" fill="#64748b">
+          {label}
+        </text>
+      ))}
     </svg>
   );
 }
@@ -503,7 +530,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
         <>
           {/* Gauge ACWR + métricas */}
           <Card title="ACWR" icon={Zap}>
-            <AcwrGauge value={displayAcwr} />
+            <AcwrBar value={displayAcwr} />
             <div className="flex justify-center mt-1 mb-4">
               <StatusBadge status={acwrSt(displayAcwr)} label={acwrZone(displayAcwr)} />
             </div>

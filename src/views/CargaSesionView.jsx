@@ -52,6 +52,7 @@ export default function CargaSesionView() {
   const [minutes,     setMinutes]     = useState(90);
   const [rpeMap,      setRpeMap]      = useState({});
   const [saved,       setSaved]       = useState(false);
+  const [copied,      setCopied]      = useState(false);
 
   // Refresca el mapa de RPEs desde localStorage
   function refresh() {
@@ -116,14 +117,39 @@ export default function CargaSesionView() {
 
   const rpeFormUrl = `${window.location.origin}/rpe/team_001`;
 
-  function handleCopyUrl() {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(rpeFormUrl).catch(() => {
-        window.prompt('Copiá esta URL:', rpeFormUrl);
-      });
+  function markCopied() {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function fallbackCopy() {
+    // Intento 2: execCommand con input temporal (funciona en iOS Safari < 13.4)
+    const el = document.createElement('input');
+    el.value = rpeFormUrl;
+    el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    el.setSelectionRange(0, el.value.length); // necesario en iOS
+    const ok = document.execCommand('copy');
+    document.body.removeChild(el);
+    if (ok) {
+      markCopied();
     } else {
-      window.prompt('Copiá esta URL:', rpeFormUrl);
+      // Intento 3: alert como último recurso
+      alert(`Copiá este link:\n\n${rpeFormUrl}`);
     }
+  }
+
+  function handleCopyUrl() {
+    // Intento 1: API moderna (requiere HTTPS y permiso en iOS 13.4+)
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(rpeFormUrl)
+        .then(markCopied)
+        .catch(fallbackCopy);
+      return;
+    }
+    fallbackCopy();
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -251,9 +277,10 @@ export default function CargaSesionView() {
           <span className="font-data text-xs text-slate-400 break-all">{rpeFormUrl}</span>
           <button
             onClick={handleCopyUrl}
-            className="shrink-0 text-xs text-accent hover:text-accent/80 transition-colors font-medium"
+            className="shrink-0 text-xs font-medium transition-colors"
+            style={{ color: copied ? '#22c55e' : '#38bdf8' }}
           >
-            Copiar
+            {copied ? '¡Copiado!' : 'Copiar'}
           </button>
         </div>
       </div>

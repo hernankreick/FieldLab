@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Users } from 'lucide-react';
 import Card from '../components/Card';
-import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
 import QRGenerator from '../components/QRGenerator';
 import { acwrStatus, lsiStatus } from '../utils/biomechanics';
@@ -18,7 +17,8 @@ const BASE_ATHLETES = [
   { id: 8, name: 'Martín G.',    acwr: 1.35, lsi: 6.1  },
 ];
 
-const DOT_COLOR = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
+const DOT_COLOR  = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
+const KPI_COLOR  = { neutral: '#38bdf8', safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
 
 function wellnessRisk(w) {
   if (!w) return null;
@@ -76,24 +76,25 @@ export default function Dashboard({ onNavigate }) {
         <p className="text-sm text-slate-400">Alto rendimiento deportivo</p>
       </div>
 
-      {/* KPI strip — 2×2 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card>
-          <MetricDisplay value={athletes.length} label="Atletas" status="neutral" />
-        </Card>
-        <Card>
-          <MetricDisplay value={alerts.length} label="En riesgo"
-            status={alerts.length > 0 ? 'danger' : 'safe'} />
-        </Card>
-        <Card>
-          <MetricDisplay value={todayCount} label="Reportaron hoy"
-            status={todayCount === athletes.length ? 'safe' : todayCount > 0 ? 'warning' : 'neutral'} />
-        </Card>
-        <Card>
-          <MetricDisplay value={noReportCount} label="Sin reporte"
-            status={noReportCount > 0 ? 'warning' : 'safe'} />
-        </Card>
-      </div>
+      {/* KPI strip — 4 columnas compactas */}
+      {(() => {
+        const kpis = [
+          { value: athletes.length, label: 'Atletas',    color: KPI_COLOR.neutral },
+          { value: alerts.length,   label: 'En riesgo',  color: alerts.length > 0 ? KPI_COLOR.danger  : KPI_COLOR.safe    },
+          { value: todayCount,      label: 'Hoy',        color: todayCount === athletes.length ? KPI_COLOR.safe : todayCount > 0 ? KPI_COLOR.warning : KPI_COLOR.neutral },
+          { value: noReportCount,   label: 'Sin rep.',   color: noReportCount > 0 ? KPI_COLOR.warning : KPI_COLOR.safe    },
+        ];
+        return (
+          <div className="grid grid-cols-4 gap-2">
+            {kpis.map(({ value, label, color }) => (
+              <Card key={label} className="p-3">
+                <span className="font-data text-2xl font-bold block" style={{ color }}>{value}</span>
+                <span className="text-[10px] text-slate-500 leading-tight block">{label}</span>
+              </Card>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Alertas críticas */}
       {alerts.length > 0 && (
@@ -131,6 +132,9 @@ export default function Dashboard({ onNavigate }) {
           {athletes.map(a => {
             const risk     = athleteRisk(a, a.w);
             const hasToday = a.w && isToday(a.w.timestamp);
+            const dotColor = risk === 'danger'               ? DOT_COLOR.danger
+                           : !hasToday || risk === 'warning' ? DOT_COLOR.warning
+                           : DOT_COLOR.safe;
             return (
               <button
                 key={a.id}
@@ -154,7 +158,7 @@ export default function Dashboard({ onNavigate }) {
                 </div>
                 <span
                   className="w-3 h-3 rounded-full flex-shrink-0 ml-3"
-                  style={{ background: hasToday ? DOT_COLOR[risk] : '#475569' }}
+                  style={{ background: dotColor }}
                 />
               </button>
             );

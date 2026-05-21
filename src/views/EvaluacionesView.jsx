@@ -167,8 +167,8 @@ export default function EvaluacionesView() {
   const t20v = parseFloat(t20) || 0;
   const t30v = parseFloat(t30) || 0;
   const v0_10  = calcVelocity(10, t10v);
-  const v10_20 = t20v > t10v ? calcVelocity(10, t20v - t10v) : 0;
-  const v20_30 = t30v > t20v ? calcVelocity(10, t30v - t20v) : 0;
+  const v10_20 = t10v > 0 && t20v > t10v ? calcVelocity(10, t20v - t10v) : 0;
+  const v20_30 = t20v > 0 && t30v > t20v ? calcVelocity(10, t30v - t20v) : 0;
   const asim   = calcCurvoAsim(parseFloat(curDer) || 0, parseFloat(curIzq) || 0);
 
   // Agilidad calcs

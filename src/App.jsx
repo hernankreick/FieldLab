@@ -9,9 +9,12 @@ import TabVelocidad from './views/Velocidad';
 import TabAgilidad from './views/Agilidad';
 import EvaluacionesView from './views/EvaluacionesView';
 import HooperQR from './views/HooperQR';
+import RPEForm from './views/RPEForm';
+import CargaSesionView from './views/CargaSesionView';
 
 // Detectar ruta /hooper/:teamId sin React Router (módulo-level, no cambia en runtime)
 const HOOPER_MATCH = window.location.pathname.match(/^\/hooper\/([^/]+)/);
+const RPE_MATCH    = window.location.pathname.match(/^\/rpe\/([^/]+)/);
 
 const views = {
   dashboard:    Dashboard,
@@ -22,6 +25,7 @@ const views = {
   evaluaciones: EvaluacionesView,
   wellness:     Wellness,
   vbt:          VBT,
+  carga:        CargaSesionView,
 };
 
 export default function App() {
@@ -39,6 +43,7 @@ export default function App() {
   if (HOOPER_MATCH) {
     return <HooperQR teamId={HOOPER_MATCH[1]} />;
   }
+  if (RPE_MATCH) return <RPEForm teamId={RPE_MATCH[1]} />;
 
   return (
     <div className="min-h-screen bg-background text-slate-100" style={{ fontFamily: 'Inter, sans-serif' }}>

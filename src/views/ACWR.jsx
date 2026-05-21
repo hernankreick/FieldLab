@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BarChart2, Plus } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer } from 'recharts';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
 import { calcACWR, acwrStatus } from '../utils/biomechanics';
+import { getRecentSessions } from '../utils/storage';
 
 const mockHistory = [
   { day: 'L', load: 420 }, { day: 'M', load: 380 }, { day: 'X', load: 510 },
@@ -15,11 +16,32 @@ const mockHistory = [
 const mockChronic = 420;
 
 export default function ACWR() {
-  const [loads, setLoads] = useState(mockHistory);
+  const [loads,   setLoads]   = useState(mockHistory);
+  const [chronic, setChronic] = useState(mockChronic);
   const [input, setInput] = useState('');
 
+  // Carga sesiones reales desde localStorage; actualiza cada 30 s o ante cambios
+  useEffect(() => {
+    function loadSessions() {
+      const sessions = getRecentSessions(28);
+      if (!sessions.some(s => s.load > 0)) return; // sin datos reales, usar mock
+      const last7      = sessions.slice(-7);
+      const chronicAvg = sessions.reduce((s, d) => s + d.load, 0) / 28;
+      const DAYS       = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+      setChronic(chronicAvg || mockChronic);
+      setLoads(last7.map(s => ({
+        day:  DAYS[new Date(s.date + 'T12:00:00').getDay()],
+        load: Math.round(s.load),
+      })));
+    }
+    loadSessions();
+    const iv = setInterval(loadSessions, 30_000);
+    window.addEventListener('storage', loadSessions);
+    return () => { clearInterval(iv); window.removeEventListener('storage', loadSessions); };
+  }, []);
+
   const acute = loads.reduce((s, d) => s + d.load, 0) / 7;
-  const acwr = calcACWR(acute, mockChronic);
+  const acwr = calcACWR(acute, chronic);
   const status = acwrStatus(acwr);
 
   function addLoad() {
@@ -50,7 +72,7 @@ export default function ACWR() {
         </Card>
         <Card>
           <MetricDisplay value={Math.round(acute)} unit="UA" label="Carga aguda (7d)" status="neutral" />
-          <MetricDisplay value={mockChronic} unit="UA" label="Crónica (28d)" status="neutral" className="mt-2" />
+          <MetricDisplay value={Math.round(chronic)} unit="UA" label="Crónica (28d)" status="neutral" className="mt-2" />
         </Card>
       </div>
 
@@ -71,8 +93,8 @@ export default function ACWR() {
               labelStyle={{ color: '#f8fafc' }}
               itemStyle={{ color: '#38bdf8' }}
             />
-            <ReferenceLine y={mockChronic * 1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '1.3x', fill: '#f59e0b', fontSize: 10 }} />
-            <ReferenceLine y={mockChronic * 1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: '1.5x', fill: '#ef4444', fontSize: 10 }} />
+            <ReferenceLine y={chronic * 1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '1.3x', fill: '#f59e0b', fontSize: 10 }} />
+            <ReferenceLine y={chronic * 1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: '1.5x', fill: '#ef4444', fontSize: 10 }} />
             <Area type="monotone" dataKey="load" stroke="#38bdf8" strokeWidth={2} fill="url(#loadGrad)" />
           </AreaChart>
         </ResponsiveContainer>

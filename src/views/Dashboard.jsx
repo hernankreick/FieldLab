@@ -155,7 +155,7 @@ export default function Dashboard({ onNavigate }) {
             return (
               <button
                 key={a.id}
-                onClick={() => onNavigate?.('wellness', a.id)}
+                onClick={() => onNavigate?.('player', a.id)}
                 className="w-full flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg
                   border-b border-white/5 last:border-0 hover:bg-white/[0.04]
                   active:bg-white/[0.07] transition-colors text-left"

@@ -11,6 +11,7 @@ import EvaluacionesView from './views/EvaluacionesView';
 import HooperQR from './views/HooperQR';
 import RPEForm from './views/RPEForm';
 import CargaSesionView from './views/CargaSesionView';
+import PlayerProfile from './views/PlayerProfile';
 
 // Detectar ruta /hooper/:teamId sin React Router (módulo-level, no cambia en runtime)
 const HOOPER_MATCH = window.location.pathname.match(/^\/hooper\/([^/]+)/);
@@ -26,6 +27,7 @@ const views = {
   wellness:     Wellness,
   vbt:          VBT,
   carga:        CargaSesionView,
+  player:       PlayerProfile,
 };
 
 export default function App() {
@@ -51,7 +53,7 @@ export default function App() {
         <NavBar active={active} onChange={navigate} />
         <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
           <View
-            key={active === 'wellness' ? `wellness-${navParam}` : active}
+            key={active === 'wellness' || active === 'player' ? `${active}-${navParam}` : active}
             onNavigate={navigate}
             initialId={navParam}
           />

@@ -133,6 +133,23 @@ export function getSession(date = todayDate()) {
   } catch { return null; }
 }
 
+// Retorna las cargas de un jugador específico en los últimos `days` días (oldest → newest)
+export function getPlayerRecentLoads(playerId, days = 28) {
+  const result = [];
+  try {
+    const base = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(base);
+      d.setDate(d.getDate() - i);
+      const date    = d.toISOString().split('T')[0];
+      const session = getSession(date);
+      const player  = session?.players?.find(p => String(p.playerId) === String(playerId));
+      result.push({ date, load: player?.load ?? 0 });
+    }
+  } catch { /* ignore */ }
+  return result;
+}
+
 // Retorna las sesiones de los últimos `days` días, ordenadas de más antigua a más reciente
 export function getRecentSessions(days = 28) {
   const result = [];

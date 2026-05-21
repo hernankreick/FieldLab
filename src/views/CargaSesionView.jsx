@@ -37,12 +37,18 @@ function todayLabel() {
   });
 }
 
-// Devuelve el color semafórico según el valor de RPE
-function rpeColor(rpe) {
-  if (rpe <= 3) return '#22c55e';
-  if (rpe <= 6) return '#f59e0b';
-  if (rpe <= 8) return '#f97316';
-  return '#ef4444';
+// Color para el RPE visual 1-5 (el interno se guarda como v×2)
+const RPE_VISUAL_COLORS = {
+  1: '#22c55e',
+  2: '#84cc16',
+  3: '#f59e0b',
+  4: '#f97316',
+  5: '#ef4444',
+};
+
+function rpeColor(internalRpe) {
+  // internalRpe proviene de localStorage: 2, 4, 6, 8 o 10
+  return RPE_VISUAL_COLORS[internalRpe / 2] ?? '#94a3b8';
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -91,8 +97,9 @@ export default function CargaSesionView() {
     ? Math.round(withRPE.reduce((s, p) => s + p.load, 0) / withRPE.length)
     : 0;
 
+  // avgRPE se muestra en escala visual 1-5 (interno ÷ 2)
   const avgRPE = withRPE.length > 0
-    ? (withRPE.reduce((s, p) => s + p.rpe, 0) / withRPE.length).toFixed(1)
+    ? (withRPE.reduce((s, p) => s + p.rpe, 0) / withRPE.length / 2).toFixed(1)
     : '—';
 
   // ─── Guardar sesión ──────────────────────────────────────────────────────────
@@ -227,7 +234,7 @@ export default function CargaSesionView() {
                         color:      rpeColor(p.rpe),
                       }}
                     >
-                      {p.rpe}
+                      {p.rpe / 2}
                     </span>
                   </>
                 ) : (

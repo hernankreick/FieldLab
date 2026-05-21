@@ -27,18 +27,19 @@ const SLIDER_CONFIG = [
 ];
 
 const sliderColor = { safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
+const HEATMAP_LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
+const defaultHeatmap = Object.fromEntries(athletes.map(n => [n, {}]));
 
 export default function Wellness() {
   const [wellness, setWellness] = useState(defaultWellness);
   const [selected, setSelected] = useState(athletes[0]);
-  const [heatmapZones, setHeatmapZones] = useState({});
+  const [heatmapZones, setHeatmapZones] = useState(defaultHeatmap);
 
   function handleZoneSelect(id) {
     setHeatmapZones(prev => {
-      const cur = prev[id] || 'normal';
-      const LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
-      const next = LEVELS[(LEVELS.indexOf(cur) + 1) % LEVELS.length];
-      return { ...prev, [id]: next };
+      const cur = prev[selected][id] || 'normal';
+      const next = HEATMAP_LEVELS[(HEATMAP_LEVELS.indexOf(cur) + 1) % HEATMAP_LEVELS.length];
+      return { ...prev, [selected]: { ...prev[selected], [id]: next } };
     });
   }
 
@@ -122,7 +123,7 @@ export default function Wellness() {
       <Card title="Mapa de dolor muscular" icon={Map}>
         <p className="text-xs text-slate-500 mb-4">Tocá una zona para ciclar entre niveles de dolor.</p>
         <BodyHeatmapSimple
-          selectedZones={heatmapZones}
+          selectedZones={heatmapZones[selected]}
           onSelectZone={handleZoneSelect}
           interactive={true}
         />

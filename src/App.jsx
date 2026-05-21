@@ -7,15 +7,17 @@ import Wellness from './views/Wellness';
 import VBT from './views/VBT';
 import TabVelocidad from './views/Velocidad';
 import TabAgilidad from './views/Agilidad';
+import EvaluacionesView from './views/EvaluacionesView';
 
 const views = {
-  dashboard: Dashboard,
-  acwr: ACWR,
-  bosco: Bosco,
-  velocidad: TabVelocidad,
-  agilidad: TabAgilidad,
-  wellness: Wellness,
-  vbt: VBT,
+  dashboard:    Dashboard,
+  acwr:         ACWR,
+  bosco:        Bosco,
+  velocidad:    TabVelocidad,
+  agilidad:     TabAgilidad,
+  evaluaciones: EvaluacionesView,
+  wellness:     Wellness,
+  vbt:          VBT,
 };
 
 export default function App() {

@@ -1,14 +1,15 @@
-import { Activity, BarChart2, Zap, Heart, Eye, Timer, Shuffle } from 'lucide-react';
+import { Activity, BarChart2, Zap, Heart, Eye, Timer, Shuffle, ClipboardList } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const tabs = [
-  { id: 'dashboard',  label: 'Dashboard', Icon: Activity  },
-  { id: 'acwr',       label: 'Carga',     Icon: BarChart2  },
-  { id: 'bosco',      label: 'Bosco',     Icon: Zap        },
-  { id: 'velocidad',  label: 'Sprint',    Icon: Timer      },
-  { id: 'agilidad',   label: 'COD',       Icon: Shuffle    },
-  { id: 'wellness',   label: 'Wellness',  Icon: Heart      },
-  { id: 'vbt',        label: 'VBT',       Icon: Eye        },
+  { id: 'dashboard',    label: 'Dashboard', Icon: Activity      },
+  { id: 'acwr',         label: 'Carga',     Icon: BarChart2     },
+  { id: 'bosco',        label: 'Bosco',     Icon: Zap           },
+  { id: 'velocidad',    label: 'Sprint',    Icon: Timer         },
+  { id: 'agilidad',     label: 'COD',       Icon: Shuffle       },
+  { id: 'evaluaciones', label: 'Eval.',     Icon: ClipboardList },
+  { id: 'wellness',     label: 'Wellness',  Icon: Heart         },
+  { id: 'vbt',          label: 'VBT',       Icon: Eye           },
 ];
 
 export default function NavBar({ active, onChange }) {

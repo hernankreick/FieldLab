@@ -2,6 +2,7 @@ import { AlertTriangle, Users } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
+import QRGenerator from '../components/QRGenerator';
 import { acwrStatus, lsiStatus } from '../utils/biomechanics';
 
 const athletes = [
@@ -87,6 +88,8 @@ export default function Dashboard({ onNavigate }) {
           })}
         </div>
       </Card>
+      {/* QR para el formulario de wellness diario */}
+      <QRGenerator teamId="team_001" teamName="Equipo" />
     </div>
   );
 }

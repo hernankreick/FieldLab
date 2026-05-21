@@ -8,6 +8,10 @@ import VBT from './views/VBT';
 import TabVelocidad from './views/Velocidad';
 import TabAgilidad from './views/Agilidad';
 import EvaluacionesView from './views/EvaluacionesView';
+import HooperQR from './views/HooperQR';
+
+// Detectar ruta /hooper/:teamId sin React Router (módulo-level, no cambia en runtime)
+const HOOPER_MATCH = window.location.pathname.match(/^\/hooper\/([^/]+)/);
 
 const views = {
   dashboard:    Dashboard,
@@ -23,6 +27,11 @@ const views = {
 export default function App() {
   const [active, setActive] = useState('dashboard');
   const View = views[active];
+
+  // Ruta standalone para el formulario QR del jugador (sin navbar)
+  if (HOOPER_MATCH) {
+    return <HooperQR teamId={HOOPER_MATCH[1]} />;
+  }
 
   return (
     <div className="min-h-screen bg-background text-slate-100" style={{ fontFamily: 'Inter, sans-serif' }}>

@@ -25,7 +25,14 @@ const views = {
 };
 
 export default function App() {
-  const [active, setActive] = useState('dashboard');
+  const [active,   setActive]   = useState('dashboard');
+  const [navParam, setNavParam] = useState(null);
+
+  function navigate(view, param = null) {
+    setActive(view);
+    setNavParam(param);
+  }
+
   const View = views[active];
 
   // Ruta standalone para el formulario QR del jugador (sin navbar)
@@ -36,9 +43,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-slate-100" style={{ fontFamily: 'Inter, sans-serif' }}>
       <div className="flex md:flex-row flex-col min-h-screen">
-        <NavBar active={active} onChange={setActive} />
+        <NavBar active={active} onChange={navigate} />
         <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
-          <View onNavigate={setActive} />
+          <View
+            key={active === 'wellness' ? `wellness-${navParam}` : active}
+            onNavigate={navigate}
+            initialId={navParam}
+          />
         </main>
       </div>
     </div>

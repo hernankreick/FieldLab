@@ -7,7 +7,6 @@ import QRGenerator from '../components/QRGenerator';
 import { acwrStatus, lsiStatus } from '../utils/biomechanics';
 import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
 
-// Atletas base con datos de carga (ACWR/LSI) — wellness viene de localStorage
 const BASE_ATHLETES = [
   { id: 1, name: 'Ramiro S.',    acwr: 1.42, lsi: 6.2  },
   { id: 2, name: 'Leandro M.',   acwr: 1.61, lsi: 18.4 },
@@ -18,6 +17,8 @@ const BASE_ATHLETES = [
   { id: 7, name: 'Valentina L.', acwr: 1.22, lsi: 9.8  },
   { id: 8, name: 'Martín G.',    acwr: 1.35, lsi: 6.1  },
 ];
+
+const DOT_COLOR = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
 
 function wellnessRisk(w) {
   if (!w) return null;
@@ -34,6 +35,10 @@ function athleteRisk(a, w) {
   if (loadRisk === 'danger' || wr === 'danger')   return 'danger';
   if (loadRisk === 'warning' || wr === 'warning') return 'warning';
   return 'safe';
+}
+
+function acwrColor(v) {
+  return v > 1.5 ? '#ef4444' : v > 1.3 ? '#f59e0b' : '#22c55e';
 }
 
 function isToday(timestamp) {
@@ -57,8 +62,9 @@ export default function Dashboard({ onNavigate }) {
     w: wellnessMap[String(a.id)] ?? null,
   }));
 
-  const todayCount = athletes.filter(a => a.w && isToday(a.w.timestamp)).length;
-  const alerts     = athletes.filter(a => athleteRisk(a, a.w) === 'danger');
+  const todayCount    = athletes.filter(a => a.w && isToday(a.w.timestamp)).length;
+  const noReportCount = athletes.length - todayCount;
+  const alerts        = athletes.filter(a => athleteRisk(a, a.w) === 'danger');
 
   return (
     <div className="space-y-4">
@@ -67,8 +73,8 @@ export default function Dashboard({ onNavigate }) {
         <p className="text-sm text-slate-400">Alto rendimiento deportivo</p>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* KPI strip — 2×2 */}
+      <div className="grid grid-cols-2 gap-3">
         <Card>
           <MetricDisplay value={athletes.length} label="Atletas" status="neutral" />
         </Card>
@@ -77,15 +83,12 @@ export default function Dashboard({ onNavigate }) {
             status={alerts.length > 0 ? 'danger' : 'safe'} />
         </Card>
         <Card>
-          <MetricDisplay
-            value={`${todayCount}/${athletes.length}`}
-            label="Reportes hoy"
-            status={
-              todayCount === athletes.length ? 'safe'
-              : todayCount > 0              ? 'warning'
-              : 'neutral'
-            }
-          />
+          <MetricDisplay value={todayCount} label="Reportaron hoy"
+            status={todayCount === athletes.length ? 'safe' : todayCount > 0 ? 'warning' : 'neutral'} />
+        </Card>
+        <Card>
+          <MetricDisplay value={noReportCount} label="Sin reporte"
+            status={noReportCount > 0 ? 'warning' : 'safe'} />
         </Card>
       </div>
 
@@ -94,7 +97,7 @@ export default function Dashboard({ onNavigate }) {
         <Card title="Alertas críticas" icon={AlertTriangle} className="border-danger/20">
           <div className="space-y-3">
             {alerts.map(a => (
-              <div key={a.name} className="flex items-center justify-between">
+              <div key={a.id} className="flex items-center justify-between">
                 <span className="text-sm text-slate-200 font-medium">{a.name}</span>
                 <div className="flex gap-2 flex-wrap justify-end">
                   {acwrStatus(a.acwr) === 'danger' &&
@@ -121,25 +124,36 @@ export default function Dashboard({ onNavigate }) {
           </button>
         )}
       >
-        <div className="space-y-3">
+        <div className="space-y-0">
           {athletes.map(a => {
             const risk     = athleteRisk(a, a.w);
             const hasToday = a.w && isToday(a.w.timestamp);
             return (
-              <div key={a.name}
-                className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
-                <div>
+              <button
+                key={a.id}
+                onClick={() => onNavigate?.('wellness', a.id)}
+                className="w-full flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg
+                  border-b border-white/5 last:border-0 hover:bg-white/[0.04]
+                  active:bg-white/[0.07] transition-colors text-left"
+              >
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-200">{a.name}</p>
-                  <p className="text-xs text-slate-500 font-data">
-                    ACWR {a.acwr.toFixed(2)}
-                    {hasToday ? ` · Hooper ${a.w.score}` : ' · Sin reporte hoy'}
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-xs font-data" style={{ color: acwrColor(a.acwr) }}>
+                      ACWR {a.acwr.toFixed(2)}
+                    </span>
+                    <span className="text-slate-600 text-xs">·</span>
+                    {hasToday
+                      ? <span className="text-xs text-slate-400 font-data">Hooper {a.w.score}</span>
+                      : <span className="text-xs text-slate-600">Sin reporte</span>
+                    }
+                  </div>
                 </div>
-                {hasToday
-                  ? <StatusBadge status={risk} />
-                  : <span className="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0" />
-                }
-              </div>
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0 ml-3"
+                  style={{ background: hasToday ? DOT_COLOR[risk] : '#475569' }}
+                />
+              </button>
             );
           })}
         </div>

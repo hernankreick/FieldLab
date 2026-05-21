@@ -46,8 +46,8 @@ function formatDate(ts) {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
 
-export default function Wellness() {
-  const [selectedId, setSelectedId] = useState(ATHLETES[0].id);
+export default function Wellness({ initialId }) {
+  const [selectedId, setSelectedId] = useState(initialId ?? ATHLETES[0].id);
   const [latest,     setLatest]     = useState(null);
   const [history,    setHistory]    = useState([]);
   const [rosterMap,  setRosterMap]  = useState({});

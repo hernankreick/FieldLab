@@ -126,7 +126,7 @@ function QRCard({ id, title, subtitle, url }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center gap-3 min-w-0">
+    <div className="flex-1 flex flex-col items-center gap-3 min-w-0 w-full">
       {/* Título */}
       <div className="text-center">
         <p className="text-sm font-semibold text-slate-200">{title}</p>
@@ -137,7 +137,7 @@ function QRCard({ id, title, subtitle, url }) {
       <div id={`qr-svg-${id}`} className="rounded-2xl p-3 bg-white shadow-lg">
         <QRCodeSVG
           value={url}
-          size={148}
+          size={240}
           bgColor="#ffffff"
           fgColor="#0f172a"
           level="M"
@@ -193,8 +193,8 @@ export default function QRGenerator() {
         </button>
       </div>
 
-      {/* Dos QRs lado a lado */}
-      <div className="flex gap-4">
+      {/* Dos QRs: columna en mobile, lado a lado en desktop */}
+      <div className="flex flex-col md:flex-row gap-6">
         {FORMS.map(f => (
           <QRCard key={f.id} {...f} />
         ))}

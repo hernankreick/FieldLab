@@ -73,11 +73,15 @@ const SCORE_CONFIG = {
 };
 
 function saveRecord(teamId, record) {
-  const key = `fieldlab_hooper_${teamId}`;
-  const stored = JSON.parse(localStorage.getItem(key) || '[]');
-  stored.push(record);
-  if (stored.length > MAX_RECORDS) stored.splice(0, stored.length - MAX_RECORDS);
-  localStorage.setItem(key, JSON.stringify(stored));
+  try {
+    const key    = `fieldlab_hooper_${teamId}`;
+    const stored = JSON.parse(localStorage.getItem(key) || '[]');
+    stored.push(record);
+    if (stored.length > MAX_RECORDS) stored.splice(0, stored.length - MAX_RECORDS);
+    localStorage.setItem(key, JSON.stringify(stored));
+  } catch {
+    // localStorage no disponible (modo privado o cuota llena) — continuar sin guardar
+  }
 }
 
 // Barra de progreso superior — se llena al avanzar en cada pregunta
@@ -161,7 +165,10 @@ export default function HooperQR({ teamId }) {
   function selectFatigue(v)  { setFatigue(v);  setStep(4); }
   function selectSoreness(v) {
     setSoreness(v);
-    if (v < 4) setStep(5); // sin dolor significativo: avanzar automáticamente
+    if (v < 4) {
+      setZones({}); // limpiar zonas marcadas si el dolor no es significativo
+      setStep(5);
+    }
   }
 
   function handleSend() {

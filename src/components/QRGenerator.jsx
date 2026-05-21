@@ -6,10 +6,15 @@ export default function QRGenerator({ teamId, teamName }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        // Fallback para entornos sin clipboard API (HTTP)
+        window.prompt('Copiá el link manualmente:', url);
+      });
   }
 
   return (

@@ -262,30 +262,59 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     video.muted       = true;
     video.playsInline = true;
 
-    await new Promise((res, rej) => {
-      video.onloadedmetadata = res;
-      video.onerror          = rej;
-    });
+    try {
+      await new Promise((res, rej) => {
+        video.onloadedmetadata = res;
+        video.onerror          = () => rej(new Error('No se pudo cargar el video'));
+      });
+    } catch (err) {
+      setError(err.message);
+      URL.revokeObjectURL(url);
+      return;
+    }
 
     const duration = video.duration;
     const step     = 1 / 30;
     let   time     = 0;
 
+    runningRef.current = true;
     setIsRunning(true);
 
-    while (time <= duration) {
-      video.currentTime = time;
-      await new Promise(res => { video.onseeked = res; });
-      try {
-        await poseRef.current.send({ image: video });
-      } catch { /* ignorar frame con error */ }
-      setProgress(Math.round((time / duration) * 100));
-      time += step;
-    }
+    try {
+      while (time <= duration) {
+        // Cancelar si el componente se desmontó o se llamó stopCamera
+        if (!runningRef.current) break;
 
-    setProgress(100);
-    setIsRunning(false);
-    URL.revokeObjectURL(url);
+        video.currentTime = time;
+        await new Promise(res => { video.onseeked = res; });
+
+        if (!runningRef.current) break;
+
+        try {
+          await poseRef.current?.send({ image: video });
+        } catch { /* ignorar frame con error */ }
+        setProgress(Math.round((time / duration) * 100));
+        time += step;
+      }
+
+      if (runningRef.current) setProgress(100);
+    } finally {
+      runningRef.current = false;
+      setIsRunning(false);
+      URL.revokeObjectURL(url);
+    }
+  }, []);
+
+  // Detener cámara y stream al desmontar el componente que usa el hook
+  useEffect(() => {
+    return () => {
+      runningRef.current = false;
+      cancelAnimationFrame(rafRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+    };
   }, []);
 
   return {

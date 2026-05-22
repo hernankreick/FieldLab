@@ -211,7 +211,12 @@ export default function JumpAnalysis({ onNavigate }) {
     if (!file) return;
     setJumpResult(null);
     setSaved(false);
-    await analyzeVideo(file);
+    try {
+      await analyzeVideo(file);
+    } catch (err) {
+      // analyzeVideo ya setea error internamente; este catch es por seguridad
+      console.error('Error al analizar video:', err);
+    }
   }
 
   function handleSave() {
@@ -462,8 +467,8 @@ export default function JumpAnalysis({ onNavigate }) {
         </div>
       )}
 
-      {/* Botón START en el layout normal (fuera del video) */}
-      {!jumpResult && !mpError && mode === 'realtime' && (
+      {/* Botón START en el layout normal — oculto cuando la cámara está en fullscreen */}
+      {!jumpResult && !mpError && !isRunning && mode === 'realtime' && (
         <button
           onClick={handleToggle}
           disabled={mpLoading || isRunning}

@@ -21,13 +21,14 @@ function heightColor(cm) {
   return '#ef4444';
 }
 
-// Verde: cabeza + tobillos con visibilidad ≥ 0.7. Amarillo: alguno < 0.7. Rojo: crítico ausente.
+// Verde: tobillos + caderas visibles ≥ 0.7. Amarillo: alguno parcial. Rojo: crítico ausente.
+// Nota: NO incluye nariz/cabeza porque al filmar de perfil la cara puede no verse bien.
 function calcFrameStatus(lm) {
   if (!lm || lm.length < 33) return null;
-  const critical   = [0, 27, 28];              // nariz + tobillos
-  const secondary  = [11, 12, 23, 24, 25, 26]; // hombros, caderas, rodillas
+  const critical   = [27, 28];                 // tobillos (clave para detección)
+  const secondary  = [23, 24, 25, 26];         // caderas y rodillas
   if (critical.some(i => (lm[i]?.visibility ?? 0) < 0.5)) return 'red';
-  if ([...critical, ...secondary].some(i => (lm[i]?.visibility ?? 0) < 0.7)) return 'yellow';
+  if ([...critical, ...secondary].some(i => (lm[i]?.visibility ?? 0) < 0.6)) return 'yellow';
   return 'green';
 }
 
@@ -506,14 +507,14 @@ export default function JumpAnalysis({ onNavigate }) {
             muted
             playsInline
             className="w-full h-full object-cover"
-            style={{ transform: mode === 'realtime' ? 'scaleX(-1)' : 'none' }}
+            style={{ transform: (mode === 'realtime' && facing === 'user') ? 'scaleX(-1)' : 'none' }}
           />
           <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full pointer-events-none"
             width={640}
             height={480}
-            style={{ transform: mode === 'realtime' ? 'scaleX(-1)' : 'none' }}
+            style={{ transform: (mode === 'realtime' && facing === 'user') ? 'scaleX(-1)' : 'none' }}
           />
 
           {/* Borde pulsante verde durante la ventana de detección */}

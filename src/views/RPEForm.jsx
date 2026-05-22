@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { saveRPE } from '../utils/storage';
 
 const TEAM_PLAYERS = [
@@ -31,8 +31,12 @@ export default function RPEForm({ teamId }) {
   const [search,   setSearch]   = useState('');
   const [pressing, setPressing] = useState(null);
   const [sentItem, setSentItem] = useState(null); // { v, label, color }
+  // Ref sincrónico para bloquear taps dobles dentro del intervalo de animación (140ms)
+  const submittingRef = useRef(false);
 
   function selectRPE(item) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setPressing(item.v);
     navigator.vibrate?.(60);
     setTimeout(() => {
@@ -49,6 +53,7 @@ export default function RPEForm({ teamId }) {
   }
 
   function reset() {
+    submittingRef.current = false;
     setStep(0);
     setPlayer(null);
     setSearch('');

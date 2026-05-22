@@ -28,8 +28,9 @@ function wellnessRisk(w) {
 }
 
 function athleteRisk(a, w) {
-  const loadRisk = a.acwr > 1.5 || a.lsi > 15 ? 'danger'
-                 : a.acwr > 1.3 || a.lsi > 8   ? 'warning'
+  const loadRisk = a.acwr > 1.5 || a.lsi > 15             ? 'danger'
+                 : a.acwr > 1.3 || a.lsi > 8               ? 'warning'
+                 : a.acwr < 0.8                             ? 'warning'  // sub-entrenamiento
                  : 'safe';
   const wr = wellnessRisk(w);
   if (loadRisk === 'danger' || wr === 'danger')   return 'danger';

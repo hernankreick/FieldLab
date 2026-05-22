@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Camera, Video, Play, Square, Save,
-  AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera, Info,
+  AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera, Info, RotateCcw,
 } from 'lucide-react';
 import Card from '../components/Card';
 import { jumpHeightFromFlightTime, sayersPower } from '../utils/biomechanics';
@@ -60,6 +60,23 @@ function saveJumpResult(result) {
     existing.unshift({ ...result, timestamp: Date.now() });
     localStorage.setItem(key, JSON.stringify(existing.slice(0, 50)));
   } catch { /* ignorar errores de storage */ }
+}
+
+// Beep via AudioContext — silencioso si el browser no lo soporta
+function playBeep(freq = 880, duration = 100) {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration / 1000);
+  } catch { /* AudioContext no disponible */ }
 }
 
 // ── Indicador de ángulo ────────────────────────────────────────────────────────
@@ -168,6 +185,16 @@ export default function JumpAnalysis({ onNavigate }) {
   const [facing,     setFacing]     = useState('environment'); // 'environment' | 'user'
   const [isSwitching, setIsSwitching] = useState(false);
 
+  // Countdown timer state
+  // null | 'countdown' | 'go' | 'detecting' | 'timeout'
+  const [timerState,    setTimerState]    = useState(null);
+  const [countdownNum,  setCountdownNum]  = useState(3);
+
+  // Timer refs — cleared whenever the flow is interrupted
+  const countdownTimerRef   = useRef(null);
+  const detectionTimerRef   = useRef(null);
+  const countdownStartedRef = useRef(false); // prevents double-trigger per session
+
   const {
     videoRef, canvasRef,
     isRunning, landmarks, poseData, poseReady, error,
@@ -184,17 +211,84 @@ export default function JumpAnalysis({ onNavigate }) {
     return () => { document.body.style.overflow = ''; };
   }, [isRunning, isSwitching]);
 
-  // Handle jump detected by the hook
+  // Limpiar timers del countdown al desmontar el componente
+  useEffect(() => {
+    return () => {
+      clearTimeout(countdownTimerRef.current);
+      clearTimeout(detectionTimerRef.current);
+    };
+  }, []);
+
+  // ── Countdown logic ──────────────────────────────────────────────────────────
+  const startCountdown = useCallback(() => {
+    // Clear any previous timers before starting a fresh countdown
+    clearTimeout(countdownTimerRef.current);
+    clearTimeout(detectionTimerRef.current);
+    setTimerState('countdown');
+    setCountdownNum(3);
+    playBeep(880, 100);
+
+    let count = 3;
+    const tick = () => {
+      count -= 1;
+      if (count > 0) {
+        setCountdownNum(count);
+        playBeep(880, 100);
+        countdownTimerRef.current = setTimeout(tick, 1000);
+      } else {
+        // count === 0 → flash "¡SALTÁ!" then open detection window
+        setTimerState('go');
+        playBeep(1760, 200);
+        countdownTimerRef.current = setTimeout(() => {
+          setTimerState('detecting');
+          // 3-second detection window — auto-timeout if no valid jump
+          detectionTimerRef.current = setTimeout(() => {
+            setTimerState('timeout');
+            stopCamera();
+          }, 3000);
+        }, 500);
+      }
+    };
+    countdownTimerRef.current = setTimeout(tick, 1000);
+  }, [stopCamera]);
+
+  // Fire countdown the first time calibration completes (detectionPhase flips to 'ready')
+  useEffect(() => {
+    if (detectionPhase === 'ready' && isRunning && !countdownStartedRef.current) {
+      countdownStartedRef.current = true;
+      startCountdown();
+    }
+  }, [detectionPhase, isRunning, startCountdown]);
+
+  // Handle jump detected by the hook — only during the active detection window
   useEffect(() => {
     if (!jumpDetection) return;
+    if (timerState !== 'detecting') {
+      // Jump fired outside the window (e.g. during countdown) — discard
+      resetDetection();
+      return;
+    }
+    clearTimeout(countdownTimerRef.current);
+    clearTimeout(detectionTimerRef.current);
     const { flightMs, maxKneeAngle } = jumpDetection;
     const heightCm = jumpHeightFromFlightTime(flightMs / 1000) * 100;
     setJumpResult({ heightCm, flightMs, type: jumpType, maxKneeAngle });
+    setTimerState(null);
+    countdownStartedRef.current = false; // allow countdown to re-run on next session
     stopCamera();
     resetDetection();
-  }, [jumpDetection, jumpType, stopCamera, resetDetection]);
+  }, [jumpDetection, timerState, jumpType, stopCamera, resetDetection]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────────
+  function clearTimers() {
+    clearTimeout(countdownTimerRef.current);
+    clearTimeout(detectionTimerRef.current);
+  }
 
   function handleStop() {
+    clearTimers();
+    setTimerState(null);
+    countdownStartedRef.current = false;
     stopCamera();
   }
 
@@ -204,6 +298,8 @@ export default function JumpAnalysis({ onNavigate }) {
     } else {
       setJumpResult(null);
       setSaved(false);
+      setTimerState(null);
+      countdownStartedRef.current = false;
       startCamera(facing);
     }
   }
@@ -213,6 +309,9 @@ export default function JumpAnalysis({ onNavigate }) {
     const newFacing = facing === 'environment' ? 'user' : 'environment';
     setFacing(newFacing);
     setIsSwitching(true);
+    clearTimers();
+    setTimerState(null);
+    countdownStartedRef.current = false;
     stopCamera();
     await startCamera(newFacing);
     setIsSwitching(false);
@@ -245,11 +344,24 @@ export default function JumpAnalysis({ onNavigate }) {
   }
 
   function handleModeChange(m) {
+    clearTimers();
     if (isRunning) handleStop();
     setMode(m);
     setJumpResult(null);
     setSaved(false);
     setIsSwitching(false);
+    setTimerState(null);
+    countdownStartedRef.current = false;
+  }
+
+  async function handleRetry() {
+    clearTimers();
+    setTimerState(null);
+    countdownStartedRef.current = false;
+    stopCamera();
+    setJumpResult(null);
+    setSaved(false);
+    await startCamera(facing);
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -354,8 +466,8 @@ export default function JumpAnalysis({ onNavigate }) {
         </div>
       )}
 
-      {/* Instrucciones de configuración — solo modo realtime cuando no hay cámara activa */}
-      {!jumpResult && !isRunning && mode === 'realtime' && (
+      {/* Instrucciones de configuración — solo modo realtime cuando no hay cámara activa ni timeout */}
+      {!jumpResult && !isRunning && mode === 'realtime' && timerState !== 'timeout' && (
         <div className="flex items-start gap-3 p-3 rounded-xl border border-white/[0.06]"
           style={{ background: 'rgba(56,189,248,0.05)' }}>
           <Info size={14} className="text-accent mt-0.5 flex-shrink-0" />
@@ -404,8 +516,54 @@ export default function JumpAnalysis({ onNavigate }) {
             style={{ transform: mode === 'realtime' ? 'scaleX(-1)' : 'none' }}
           />
 
+          {/* Borde pulsante verde durante la ventana de detección */}
+          {isRunning && timerState === 'detecting' && (
+            <div
+              className="absolute inset-0 z-10 pointer-events-none animate-pulse"
+              style={{ boxShadow: 'inset 0 0 0 4px #22c55e' }}
+            />
+          )}
+
+          {/* ── Overlay countdown ─────────────────────────────────────────── */}
+          {isRunning && timerState === 'countdown' && (
+            <div
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center"
+              style={{ background: 'rgba(0,0,0,0.72)' }}
+            >
+              <div
+                className="text-white font-black mb-3 select-none"
+                style={{ fontSize: '7rem', lineHeight: 1 }}
+              >
+                {countdownNum}
+              </div>
+              <p className="text-slate-300 text-xl font-semibold tracking-wide">Preparate…</p>
+              <button
+                onClick={handleStop}
+                className="mt-10 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+
+          {/* ── Overlay ¡SALTÁ! ───────────────────────────────────────────── */}
+          {isRunning && timerState === 'go' && (
+            <div
+              className="absolute inset-0 z-20 flex items-center justify-center"
+              style={{ background: 'rgba(0,0,0,0.5)' }}
+            >
+              <span
+                className="font-black select-none"
+                style={{ fontSize: '4rem', color: '#22c55e', textShadow: '0 0 30px rgba(34,197,94,0.6)' }}
+              >
+                ¡SALTÁ!
+              </span>
+            </div>
+          )}
+
           {/* ── Barra superior ────────────────────────────────────────────── */}
-          <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-3 gap-2">
+          <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-3 gap-2"
+            style={{ zIndex: 15 }}>
 
             {/* Izquierda: indicador cámara activa + botón switch (solo en realtime fullscreen) */}
             {isRunning && mode === 'realtime' && (
@@ -433,7 +591,7 @@ export default function JumpAnalysis({ onNavigate }) {
             )}
 
             {/* Botón Maximize2 — solo cuando no corre */}
-            {!isRunning && !isSwitching && !mpLoading && !mpError && mode === 'realtime' && (
+            {!isRunning && !isSwitching && !mpLoading && !mpError && mode === 'realtime' && timerState !== 'timeout' && (
               <button
                 onClick={handleToggle}
                 title="Iniciar en pantalla completa"
@@ -449,20 +607,40 @@ export default function JumpAnalysis({ onNavigate }) {
           {/* ── Overlay cuando no está corriendo ───────────────────────── */}
           {!isRunning && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
-              {isSwitching
-                ? <>
-                    <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                    <p className="text-slate-400 text-xs">Cambiando cámara…</p>
-                  </>
-                : mpLoading
-                  ? <>
-                      <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                      <p className="text-slate-400 text-xs">Cargando modelo…</p>
-                    </>
-                  : <p className="text-slate-400 text-sm px-6 text-center">
-                      {mode === 'realtime' ? 'Presioná START para iniciar' : 'Subí un video para analizar'}
-                    </p>
-              }
+              {isSwitching ? (
+                <>
+                  <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  <p className="text-slate-400 text-xs">Cambiando cámara…</p>
+                </>
+              ) : timerState === 'timeout' ? (
+                /* Timeout — sin salto detectado */
+                <div className="flex flex-col items-center gap-3 px-6 text-center">
+                  <AlertTriangle size={32} className="text-amber-400" />
+                  <p className="text-slate-200 text-sm font-semibold">No se detectó salto</p>
+                  <p className="text-slate-400 text-xs">¿Intentás de nuevo?</p>
+                  <button
+                    onClick={handleRetry}
+                    className="mt-1 flex items-center gap-2 px-5 py-2.5 rounded-xl
+                      text-sm font-bold active:scale-95 transition-transform"
+                    style={{
+                      background: 'rgba(56,189,248,0.15)',
+                      color:      '#38bdf8',
+                      border:     '1px solid rgba(56,189,248,0.35)',
+                    }}
+                  >
+                    <RotateCcw size={14} /> Reintentar
+                  </button>
+                </div>
+              ) : mpLoading ? (
+                <>
+                  <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  <p className="text-slate-400 text-xs">Cargando modelo…</p>
+                </>
+              ) : (
+                <p className="text-slate-400 text-sm px-6 text-center">
+                  {mode === 'realtime' ? 'Presioná START para iniciar' : 'Subí un video para analizar'}
+                </p>
+              )}
             </div>
           )}
 
@@ -471,6 +649,7 @@ export default function JumpAnalysis({ onNavigate }) {
             <div
               className="absolute bottom-0 left-0 right-0 px-4 pt-10 pb-6"
               style={{
+                zIndex:     15,
                 background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)',
               }}
             >
@@ -480,25 +659,37 @@ export default function JumpAnalysis({ onNavigate }) {
                 </div>
               )}
 
-              {/* Detection phase indicator */}
-              {mode === 'realtime' && detectionPhase && (
+              {/* Detection / timer phase indicator */}
+              {mode === 'realtime' && (
                 <div className="flex items-center justify-center mb-3">
-                  <span
-                    className="text-sm font-bold tracking-wide"
-                    style={{
-                      color: detectionPhase === 'calibrating' ? '#94a3b8'
-                           : detectionPhase === 'ready'       ? '#22c55e'
-                           : '#f59e0b',
-                    }}
-                  >
-                    {detectionPhase === 'calibrating' && 'Calibrando…'}
-                    {detectionPhase === 'ready'       && 'Listo para saltar'}
-                    {detectionPhase === 'jumping'     && '¡Saltando!'}
-                  </span>
+                  {timerState === 'detecting' && detectionPhase === 'ready' && (
+                    <span
+                      className="text-sm font-bold tracking-wide animate-pulse"
+                      style={{ color: '#22c55e' }}
+                    >
+                      ¡Saltá ahora!
+                    </span>
+                  )}
+                  {timerState === 'detecting' && detectionPhase === 'jumping' && (
+                    <span
+                      className="text-sm font-bold tracking-wide"
+                      style={{ color: '#f59e0b' }}
+                    >
+                      ¡Saltando!
+                    </span>
+                  )}
+                  {(!timerState || timerState === 'countdown' || timerState === 'go') && detectionPhase === 'calibrating' && (
+                    <span
+                      className="text-sm font-bold tracking-wide"
+                      style={{ color: '#94a3b8' }}
+                    >
+                      Calibrando…
+                    </span>
+                  )}
                 </div>
               )}
 
-              {/* Setup instructions — only during calibration while body not yet visible */}
+              {/* Setup instructions — only during calibration while body not yet fully visible */}
               {mode === 'realtime' && detectionPhase === 'calibrating' && frameStatus !== 'green' && (
                 <p className="text-center text-xs text-slate-400 mb-3 leading-relaxed">
                   {facing === 'environment'
@@ -533,8 +724,8 @@ export default function JumpAnalysis({ onNavigate }) {
         </div>
       )}
 
-      {/* Botón START en el layout normal — oculto cuando la cámara está en fullscreen */}
-      {!jumpResult && !mpError && !isRunning && mode === 'realtime' && (
+      {/* Botón START en el layout normal — oculto cuando la cámara está en fullscreen o en timeout */}
+      {!jumpResult && !mpError && !isRunning && mode === 'realtime' && timerState !== 'timeout' && (
         <button
           onClick={handleToggle}
           disabled={mpLoading}

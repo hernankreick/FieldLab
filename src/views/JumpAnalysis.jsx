@@ -129,7 +129,8 @@ function JumpResult({ result, massKg, onSave, onDiscard }) {
 export default function JumpAnalysis({ onNavigate }) {
   const [mode,       setMode]       = useState('realtime');
   const [jumpType,   setJumpType]   = useState('CMJ');
-  const [massKg,     setMassKg]     = useState(70);
+  const [massInput,  setMassInput]  = useState('70'); // string para edición libre
+  const massKg = parseFloat(massInput) || 70;         // número derivado para cálculos
   const [jumpResult, setJumpResult] = useState(null);
   const [saved,      setSaved]      = useState(false);
 
@@ -295,9 +296,15 @@ export default function JumpAnalysis({ onNavigate }) {
         <div className="w-24">
           <label className="text-xs text-slate-400 mb-1 block">Masa (kg)</label>
           <input
-            type="number"
-            value={massKg}
-            onChange={e => setMassKg(parseFloat(e.target.value) || 70)}
+            type="text"
+            inputMode="numeric"
+            value={massInput}
+            onChange={e => setMassInput(e.target.value)}
+            onFocus={e => e.target.select()}
+            onBlur={e => {
+              const v = parseFloat(e.target.value);
+              setMassInput(v > 0 ? String(v) : '70');
+            }}
             className="w-full bg-background border border-white/10 rounded-lg px-3 py-1.5
               text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
           />

@@ -150,6 +150,7 @@ export default function JumpAnalysis({ onNavigate }) {
     videoRef, canvasRef,
     isRunning, poseData, poseReady, error,
     progress,
+    mpLoading, mpError,
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
 
@@ -319,6 +320,30 @@ export default function JumpAnalysis({ onNavigate }) {
         </div>
       </div>
 
+      {/* Estado de carga de MediaPipe */}
+      {mpLoading && (
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-surface border border-white/8">
+          <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-slate-200">Cargando MediaPipe…</p>
+            <p className="text-xs text-slate-500 mt-0.5">Descargando modelo de detección de pose</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error de inicialización de MediaPipe */}
+      {mpError && (
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/25
+          text-sm text-danger">
+          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-semibold">Error al cargar MediaPipe</p>
+            <p className="text-xs mt-0.5 opacity-80">{mpError}</p>
+            <p className="text-xs mt-1 opacity-70">Usá el ingreso manual de tiempo de vuelo (abajo).</p>
+          </div>
+        </div>
+      )}
+
       {/* Error de permisos / dispositivo */}
       {error && (
         <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/25
@@ -373,10 +398,14 @@ export default function JumpAnalysis({ onNavigate }) {
 
           {/* Overlay cuando no está corriendo */}
           {!isRunning && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-              <p className="text-slate-400 text-sm">
-                {mode === 'realtime' ? 'Presioná START para iniciar' : 'Subí un video para analizar'}
-              </p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
+              {mpLoading
+                ? <><div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                    <p className="text-slate-400 text-xs">Cargando modelo…</p></>
+                : <p className="text-slate-400 text-sm px-6 text-center">
+                    {mode === 'realtime' ? 'Presioná START para iniciar' : 'Subí un video para analizar'}
+                  </p>
+              }
             </div>
           )}
 
@@ -397,36 +426,47 @@ export default function JumpAnalysis({ onNavigate }) {
         <LiveMetrics poseData={poseData} />
       )}
 
-      {/* Controles */}
-      {!jumpResult && mode === 'realtime' && (
+      {/* Controles — deshabilitados mientras MediaPipe carga */}
+      {!jumpResult && !mpError && mode === 'realtime' && (
         <button
           onClick={handleToggle}
+          disabled={mpLoading}
           className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
-            text-sm font-bold active:scale-[0.98] transition-transform"
+            text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-40
+            disabled:cursor-not-allowed disabled:active:scale-100"
           style={{
             background:  isRunning ? 'rgba(239,68,68,0.15)' : 'rgba(56,189,248,0.15)',
             color:       isRunning ? '#ef4444'               : '#38bdf8',
             border:      `1px solid ${isRunning ? 'rgba(239,68,68,0.35)' : 'rgba(56,189,248,0.35)'}`,
           }}
         >
-          {isRunning
-            ? <><Square size={16} fill="currentColor" /> Detener</>
-            : <><Play  size={16} fill="currentColor" /> START — Iniciar cámara</>
+          {mpLoading
+            ? 'Esperando MediaPipe…'
+            : isRunning
+              ? <><Square size={16} fill="currentColor" /> Detener</>
+              : <><Play  size={16} fill="currentColor" /> START — Iniciar cámara</>
           }
         </button>
       )}
 
-      {!jumpResult && mode === 'video' && (
-        <label className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
-          text-sm font-bold cursor-pointer active:scale-[0.98] transition-transform
-          border border-accent/35 text-accent bg-accent/[0.08]">
+      {!jumpResult && !mpError && mode === 'video' && (
+        <label
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
+            text-sm font-bold transition-transform border border-accent/35 text-accent bg-accent/[0.08]"
+          style={{ cursor: mpLoading || isRunning ? 'not-allowed' : 'pointer', opacity: mpLoading ? 0.4 : 1 }}
+        >
           <UploadCloud size={16} />
-          {isRunning ? `Analizando… ${progress}%` : 'Subir video (.mp4 / .mov / .webm)'}
+          {mpLoading
+            ? 'Esperando MediaPipe…'
+            : isRunning
+              ? `Analizando… ${progress}%`
+              : 'Subir video (.mp4 / .mov / .webm)'
+          }
           <input
             type="file"
             accept=".mp4,.mov,.webm,video/*"
             className="hidden"
-            disabled={isRunning}
+            disabled={mpLoading || isRunning}
             onChange={handleVideoUpload}
           />
         </label>

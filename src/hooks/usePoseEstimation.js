@@ -1,6 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Pose } from '@mediapipe/pose';
-import { Camera } from '@mediapipe/camera_utils';
 
 // Índices de landmarks relevantes para salto vertical
 const LM = {
@@ -27,22 +26,26 @@ function calcAngle(a, b, c) {
   return (Math.acos(cos) * 180) / Math.PI;
 }
 
+// Color de articulación según ángulo
+function angleColor(angle) {
+  if (angle > 160) return '#22c55e';
+  if (angle > 120) return '#f59e0b';
+  return '#ef4444';
+}
+
 // Calcular ángulos de articulaciones a partir de los landmarks del frame
 function calcPoseData(lm) {
   if (!lm || lm.length < 33) return null;
 
-  const get = (i) => lm[i];
+  const kneeAngleLeft  = calcAngle(lm[LM.HIP_L],    lm[LM.KNEE_L],  lm[LM.ANKLE_L]);
+  const kneeAngleRight = calcAngle(lm[LM.HIP_R],    lm[LM.KNEE_R],  lm[LM.ANKLE_R]);
+  const hipAngleLeft   = calcAngle(lm[LM.SHOULDER_L], lm[LM.HIP_L], lm[LM.KNEE_L]);
+  const hipAngleRight  = calcAngle(lm[LM.SHOULDER_R], lm[LM.HIP_R], lm[LM.KNEE_R]);
+  const ankleAngleLeft  = calcAngle(lm[LM.KNEE_L], lm[LM.ANKLE_L], lm[LM.FOOT_L]);
+  const ankleAngleRight = calcAngle(lm[LM.KNEE_R], lm[LM.ANKLE_R], lm[LM.FOOT_R]);
 
-  const kneeAngleLeft  = calcAngle(get(LM.HIP_L),    get(LM.KNEE_L),  get(LM.ANKLE_L));
-  const kneeAngleRight = calcAngle(get(LM.HIP_R),    get(LM.KNEE_R),  get(LM.ANKLE_R));
-  const hipAngleLeft   = calcAngle(get(LM.SHOULDER_L), get(LM.HIP_L), get(LM.KNEE_L));
-  const hipAngleRight  = calcAngle(get(LM.SHOULDER_R), get(LM.HIP_R), get(LM.KNEE_R));
-  // Ángulo tobillo: rodilla → tobillo → pie
-  const ankleAngleLeft  = calcAngle(get(LM.KNEE_L), get(LM.ANKLE_L), get(LM.FOOT_L));
-  const ankleAngleRight = calcAngle(get(LM.KNEE_R), get(LM.ANKLE_R), get(LM.FOOT_R));
-
-  const hipHeight      = (get(LM.HIP_L).y + get(LM.HIP_R).y) / 2;
-  const shoulderHeight = (get(LM.SHOULDER_L).y + get(LM.SHOULDER_R).y) / 2;
+  const hipHeight      = (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
+  const shoulderHeight = (lm[LM.SHOULDER_L].y + lm[LM.SHOULDER_R].y) / 2;
 
   // Triple extensión: rodilla > 160°, cadera > 160°, tobillo < 120° (plantar flexión)
   const tripleExtension =
@@ -61,20 +64,25 @@ function calcPoseData(lm) {
 }
 
 export function usePoseEstimation({ mode = 'realtime' } = {}) {
-  const videoRef  = useRef(null);
-  const canvasRef = useRef(null);
-  const poseRef   = useRef(null);
-  const cameraRef = useRef(null);
+  const videoRef   = useRef(null);
+  const canvasRef  = useRef(null);
+  const poseRef    = useRef(null);
+  const streamRef  = useRef(null);  // MediaStream de la cámara
+  const rafRef     = useRef(null);  // requestAnimationFrame id
+  const runningRef = useRef(false); // ref sincrónico para el loop de RAF
 
   const [isRunning,  setIsRunning]  = useState(false);
   const [landmarks,  setLandmarks]  = useState(null);
   const [poseData,   setPoseData]   = useState(null);
   const [poseReady,  setPoseReady]  = useState(false);
   const [error,      setError]      = useState(null);
-  const [progress,   setProgress]   = useState(0); // para modo video (0–100)
+  const [progress,   setProgress]   = useState(0);
+  // Estados de inicialización de MediaPipe
+  const [mpLoading,  setMpLoading]  = useState(true);
+  const [mpError,    setMpError]    = useState(null);
 
   // Dibujar skeleton en el canvas de overlay
-  function drawSkeleton(results) {
+  const drawSkeleton = useCallback((results) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -85,23 +93,16 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
 
     // Conexiones relevantes para vista sagital de salto
     const connections = [
-      [LM.SHOULDER_L, LM.HIP_L],
-      [LM.SHOULDER_R, LM.HIP_R],
+      [LM.SHOULDER_L, LM.HIP_L],    [LM.SHOULDER_R, LM.HIP_R],
       [LM.HIP_L,      LM.HIP_R],
-      [LM.HIP_L,      LM.KNEE_L],
-      [LM.HIP_R,      LM.KNEE_R],
-      [LM.KNEE_L,     LM.ANKLE_L],
-      [LM.KNEE_R,     LM.ANKLE_R],
-      [LM.ANKLE_L,    LM.HEEL_L],
-      [LM.ANKLE_R,    LM.HEEL_R],
-      [LM.ANKLE_L,    LM.FOOT_L],
-      [LM.ANKLE_R,    LM.FOOT_R],
+      [LM.HIP_L,      LM.KNEE_L],   [LM.HIP_R,      LM.KNEE_R],
+      [LM.KNEE_L,     LM.ANKLE_L],  [LM.KNEE_R,     LM.ANKLE_R],
+      [LM.ANKLE_L,    LM.HEEL_L],   [LM.ANKLE_R,    LM.HEEL_R],
+      [LM.ANKLE_L,    LM.FOOT_L],   [LM.ANKLE_R,    LM.FOOT_R],
     ];
 
-    const W = canvas.width;
-    const H = canvas.height;
+    const W = canvas.width, H = canvas.height;
 
-    // Líneas
     ctx.lineWidth = 2;
     connections.forEach(([i, j]) => {
       const a = lm[i], b = lm[j];
@@ -113,38 +114,24 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
       ctx.stroke();
     });
 
-    // Articulaciones clave con color por ángulo
     const pd = calcPoseData(lm);
     const jointColors = pd ? {
-      [LM.KNEE_L]:  angleColor(pd.kneeAngleLeft),
-      [LM.KNEE_R]:  angleColor(pd.kneeAngleRight),
-      [LM.HIP_L]:   angleColor(pd.hipAngleLeft),
-      [LM.HIP_R]:   angleColor(pd.hipAngleRight),
+      [LM.KNEE_L]: angleColor(pd.kneeAngleLeft),
+      [LM.KNEE_R]: angleColor(pd.kneeAngleRight),
+      [LM.HIP_L]:  angleColor(pd.hipAngleLeft),
+      [LM.HIP_R]:  angleColor(pd.hipAngleRight),
     } : {};
 
-    const keyJoints = [
-      LM.SHOULDER_L, LM.SHOULDER_R,
-      LM.HIP_L,  LM.HIP_R,
-      LM.KNEE_L, LM.KNEE_R,
-      LM.ANKLE_L, LM.ANKLE_R,
-    ];
-
-    keyJoints.forEach(i => {
-      const p = lm[i];
-      if (!p) return;
-      ctx.beginPath();
-      ctx.arc(p.x * W, p.y * H, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = jointColors[i] ?? 'rgba(56,189,248,0.9)';
-      ctx.fill();
-    });
-  }
-
-  // Color de articulación según ángulo (para rodilla y cadera)
-  function angleColor(angle) {
-    if (angle > 160) return '#22c55e';
-    if (angle > 120) return '#f59e0b';
-    return '#ef4444';
-  }
+    [LM.SHOULDER_L, LM.SHOULDER_R, LM.HIP_L, LM.HIP_R, LM.KNEE_L, LM.KNEE_R, LM.ANKLE_L, LM.ANKLE_R]
+      .forEach(i => {
+        const p = lm[i];
+        if (!p) return;
+        ctx.beginPath();
+        ctx.arc(p.x * W, p.y * H, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = jointColors[i] ?? 'rgba(56,189,248,0.9)';
+        ctx.fill();
+      });
+  }, []);
 
   // Callback de resultados de MediaPipe
   const onResults = useCallback((results) => {
@@ -153,47 +140,88 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     setLandmarks(lm);
     setPoseData(lm ? calcPoseData(lm) : null);
     if (lm) setPoseReady(true);
-  }, []);
+  }, [drawSkeleton]);
 
-  // Inicializar instancia de Pose (una sola vez)
+  // Inicializar MediaPipe Pose (una sola vez al montar)
   useEffect(() => {
-    const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-    });
-    pose.setOptions({
-      modelComplexity:        IS_MOBILE ? 0 : 1,
-      smoothLandmarks:        true,
-      enableSegmentation:     false,
-      smoothSegmentation:     false,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence:  0.5,
-    });
-    pose.onResults(onResults);
-    poseRef.current = pose;
+    let pose;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        pose = new Pose({
+          // Versión exacta instalada para que locateFile apunte a los archivos correctos
+          locateFile: (file) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`,
+        });
+        pose.setOptions({
+          modelComplexity:        IS_MOBILE ? 0 : 1,
+          smoothLandmarks:        true,
+          enableSegmentation:     false,
+          smoothSegmentation:     false,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence:  0.5,
+        });
+        pose.onResults(onResults);
+        // initialize() descarga y compila el WASM antes del primer uso
+        await pose.initialize();
+        if (!cancelled) {
+          poseRef.current = pose;
+          setMpLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMpError(`No se pudo cargar MediaPipe: ${err.message ?? err}`);
+          setMpLoading(false);
+        }
+      }
+    })();
 
     return () => {
-      pose.close?.();
+      cancelled = true;
+      pose?.close?.();
+      poseRef.current = null;
     };
   }, [onResults]);
 
-  // Iniciar cámara en tiempo real
+  // Iniciar cámara en tiempo real (sin @mediapipe/camera_utils — getUserMedia directo)
   const startCamera = useCallback(async () => {
     if (!videoRef.current || !poseRef.current) return;
     setError(null);
     try {
-      const camera = new Camera(videoRef.current, {
-        onFrame: async () => {
-          if (poseRef.current && videoRef.current) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width:      { ideal: 640 },
+          height:     { ideal: 480 },
+        },
+        audio: false,
+      });
+
+      const video = videoRef.current;
+      video.srcObject = stream;
+      await new Promise((res, rej) => {
+        video.onloadedmetadata = res;
+        video.onerror = rej;
+      });
+      await video.play();
+
+      streamRef.current  = stream;
+      runningRef.current = true;
+      setIsRunning(true);
+
+      // Loop de detección frame a frame
+      const loop = async () => {
+        if (!runningRef.current) return;
+        try {
+          if (poseRef.current && videoRef.current?.readyState >= 2) {
             await poseRef.current.send({ image: videoRef.current });
           }
-        },
-        width: 640,
-        height: 480,
-        facingMode: 'environment',
-      });
-      await camera.start();
-      cameraRef.current = camera;
-      setIsRunning(true);
+        } catch { /* ignorar errores de frame individual */ }
+        rafRef.current = requestAnimationFrame(loop);
+      };
+      rafRef.current = requestAnimationFrame(loop);
+
     } catch (err) {
       if (err.name === 'NotAllowedError') {
         setError('Permiso de cámara denegado. Habilitá el acceso en la configuración del navegador.');
@@ -206,8 +234,13 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
   }, []);
 
   const stopCamera = useCallback(() => {
-    cameraRef.current?.stop();
-    cameraRef.current = null;
+    runningRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
     setIsRunning(false);
     setPoseReady(false);
     setLandmarks(null);
@@ -220,10 +253,10 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     setError(null);
     setProgress(0);
 
-    const url    = URL.createObjectURL(file);
-    const video  = document.createElement('video');
-    video.src    = url;
-    video.muted  = true;
+    const url   = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src         = url;
+    video.muted       = true;
     video.playsInline = true;
 
     await new Promise((res, rej) => {
@@ -232,18 +265,17 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     });
 
     const duration = video.duration;
-    const fps      = 30;
-    const step     = 1 / fps;
+    const step     = 1 / 30; // 30 fps
     let   time     = 0;
 
     setIsRunning(true);
 
     while (time <= duration) {
       video.currentTime = time;
-      await new Promise(res => {
-        video.onseeked = res;
-      });
-      await poseRef.current.send({ image: video });
+      await new Promise(res => { video.onseeked = res; });
+      try {
+        await poseRef.current.send({ image: video });
+      } catch { /* ignorar frame con error */ }
       setProgress(Math.round((time / duration) * 100));
       time += step;
     }
@@ -262,6 +294,8 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     poseReady,
     error,
     progress,
+    mpLoading,
+    mpError,
     startCamera,
     stopCamera,
     analyzeVideo,

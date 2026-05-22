@@ -210,6 +210,7 @@ export default function JumpAnalysis({ onNavigate }) {
   }
 
   async function handleSwitchCamera() {
+    if (isSwitching) return;
     const newFacing = facing === 'environment' ? 'user' : 'environment';
     setFacing(newFacing);
     setIsSwitching(true);
@@ -253,6 +254,7 @@ export default function JumpAnalysis({ onNavigate }) {
     setMode(m);
     setJumpResult(null);
     setSaved(false);
+    setIsSwitching(false);
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -517,7 +519,7 @@ export default function JumpAnalysis({ onNavigate }) {
       {!jumpResult && !mpError && !isRunning && mode === 'realtime' && (
         <button
           onClick={handleToggle}
-          disabled={mpLoading || isRunning}
+          disabled={mpLoading}
           className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
             text-sm font-bold active:scale-[0.98] transition-transform
             disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"

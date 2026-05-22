@@ -31,8 +31,7 @@ function calcFrameStatus(lm) {
   return 'green';
 }
 
-function FrameStatusBadge({ lm, poseReady }) {
-  const status = poseReady ? calcFrameStatus(lm) : null;
+function FrameStatusBadge({ status }) {
   const cfg = status === 'green'
     ? { bg: 'rgba(34,197,94,0.85)',  label: 'Cuerpo completo ✓' }
     : status === 'yellow'
@@ -181,6 +180,8 @@ export default function JumpAnalysis({ onNavigate }) {
     progress, mpLoading, mpError,
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
+
+  const frameStatus = poseReady ? calcFrameStatus(landmarks) : null;
 
   // Bloquear scroll del body cuando la cámara está en fullscreen (incluso mientras cambia)
   useEffect(() => {
@@ -410,7 +411,10 @@ export default function JumpAnalysis({ onNavigate }) {
           style={{ background: 'rgba(56,189,248,0.05)' }}>
           <Info size={14} className="text-accent mt-0.5 flex-shrink-0" />
           <p className="text-xs text-slate-400 leading-relaxed">
-            Apoyá el celu <span className="text-slate-200 font-semibold">verticalmente</span> a unos 2–3 metros de distancia, a la altura del pecho. Asegurate de que tu cuerpo completo (cabeza y pies) sea visible en la pantalla antes de saltar.
+            {facing === 'environment'
+              ? 'Pedile a alguien que te filme de perfil, de cuerpo completo, a 2–3 metros de distancia. La cámara debe estar a la altura del pecho.'
+              : 'Apoyá el celu verticalmente a 2–3 metros de distancia, a la altura del pecho, con la cámara apuntando hacia donde vas a saltar. Asegurate de que tu cuerpo completo sea visible antes de saltar.'
+            }
           </p>
         </div>
       )}
@@ -475,7 +479,7 @@ export default function JumpAnalysis({ onNavigate }) {
             {/* Centro-derecha: indicador de cuerpo en cuadro */}
             {isRunning && (
               <div className="ml-auto">
-                <FrameStatusBadge lm={landmarks} poseReady={poseReady} />
+                <FrameStatusBadge status={frameStatus} />
               </div>
             )}
 
@@ -527,9 +531,12 @@ export default function JumpAnalysis({ onNavigate }) {
                 </div>
               )}
 
-              {!poseReady && (
-                <p className="text-center text-xs text-slate-400 mb-3">
-                  Asegurate que todo tu cuerpo sea visible (cabeza y pies)
+              {frameStatus !== 'green' && (
+                <p className="text-center text-xs text-slate-400 mb-3 leading-relaxed">
+                  {facing === 'environment'
+                    ? 'Pedile a alguien que te filme de perfil, de cuerpo completo, a 2–3 metros de distancia. La cámara debe estar a la altura del pecho.'
+                    : 'Apoyá el celu verticalmente a 2–3 metros de distancia, a la altura del pecho, con la cámara apuntando hacia donde vas a saltar. Asegurate de que tu cuerpo completo sea visible antes de saltar.'
+                  }
                 </p>
               )}
 

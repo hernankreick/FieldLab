@@ -1,35 +1,31 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Video, Play, Square, Save, AlertTriangle, CheckCircle, UploadCloud } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import {
+  Camera, Video, Play, Square, Save,
+  AlertTriangle, CheckCircle, UploadCloud, Maximize2,
+} from 'lucide-react';
 import Card from '../components/Card';
 import { jumpHeightFromFlightTime, sayersPower } from '../utils/biomechanics';
 import { usePoseEstimation } from '../hooks/usePoseEstimation';
 
 const JUMP_TYPES = ['SJ', 'CMJ', 'Drop Jump'];
 
-// FPS usado para calcular tiempo de vuelo en análisis de video
-const ANALYSIS_FPS = 30;
-
-// Color semáforo para ángulos de articulación
 function angleColor(angle) {
   if (angle > 160) return '#22c55e';
   if (angle > 120) return '#f59e0b';
   return '#ef4444';
 }
 
-// Color de altura de salto
 function heightColor(cm) {
   if (cm >= 40) return '#22c55e';
   if (cm >= 25) return '#f59e0b';
   return '#ef4444';
 }
 
-// Guardar resultado en localStorage bajo la clave fieldlab_jump_results
 function saveJumpResult(result) {
   try {
     const key      = 'fieldlab_jump_results';
     const existing = JSON.parse(localStorage.getItem(key) ?? '[]');
     existing.unshift({ ...result, timestamp: Date.now() });
-    // Mantener los últimos 50 resultados
     localStorage.setItem(key, JSON.stringify(existing.slice(0, 50)));
   } catch { /* ignorar errores de storage */ }
 }
@@ -39,7 +35,7 @@ function AngleChip({ label, value }) {
   const color = angleColor(value);
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <span className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</span>
+      <span className="text-[10px] text-slate-400 uppercase tracking-wide">{label}</span>
       <span className="text-base font-data font-bold" style={{ color }}>
         {value != null ? `${Math.round(value)}°` : '—'}
       </span>
@@ -47,13 +43,12 @@ function AngleChip({ label, value }) {
   );
 }
 
-// ── Panel de métricas en tiempo real ─────────────────────────────────────────
+// ── Panel de métricas (usado superpuesto sobre el video en fullscreen) ─────────
 function LiveMetrics({ poseData }) {
   if (!poseData) return null;
   const { kneeAngleLeft, kneeAngleRight, hipAngleLeft, hipAngleRight, tripleExtension } = poseData;
-
   return (
-    <div className="bg-surface/80 backdrop-blur rounded-xl p-3 flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <div className="grid grid-cols-4 gap-2">
         <AngleChip label="Rodilla I" value={kneeAngleLeft}  />
         <AngleChip label="Rodilla D" value={kneeAngleRight} />
@@ -61,11 +56,11 @@ function LiveMetrics({ poseData }) {
         <AngleChip label="Cadera D"  value={hipAngleRight}  />
       </div>
       <div
-        className="flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+        className="flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-semibold"
         style={{
-          background:  tripleExtension ? 'rgba(34,197,94,0.15)'  : 'rgba(100,116,139,0.12)',
-          color:       tripleExtension ? '#22c55e'                : '#64748b',
-          border:      `1px solid ${tripleExtension ? 'rgba(34,197,94,0.4)' : 'rgba(100,116,139,0.2)'}`,
+          background: tripleExtension ? 'rgba(34,197,94,0.2)'  : 'rgba(100,116,139,0.15)',
+          color:      tripleExtension ? '#22c55e'               : '#94a3b8',
+          border:     `1px solid ${tripleExtension ? 'rgba(34,197,94,0.5)' : 'rgba(100,116,139,0.25)'}`,
         }}
       >
         {tripleExtension
@@ -90,7 +85,6 @@ function JumpResult({ result, massKg, onSave, onDiscard }) {
           <span className="text-xl ml-1 text-slate-400">cm</span>
         </div>
       </div>
-
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="text-center">
           <p className="text-[10px] text-slate-500">Tiempo vuelo</p>
@@ -105,13 +99,12 @@ function JumpResult({ result, massKg, onSave, onDiscard }) {
           <p className="text-sm font-semibold text-slate-200">{result.type}</p>
         </div>
       </div>
-
       {result.maxKneeAngle != null && (
         <p className="text-xs text-slate-500 text-center mb-4">
-          Ángulo máx. rodilla: <span className="font-data text-slate-300">{Math.round(result.maxKneeAngle)}°</span>
+          Ángulo máx. rodilla:{' '}
+          <span className="font-data text-slate-300">{Math.round(result.maxKneeAngle)}°</span>
         </p>
       )}
-
       <div className="flex gap-3">
         <button
           onClick={onSave}
@@ -134,85 +127,71 @@ function JumpResult({ result, massKg, onSave, onDiscard }) {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function JumpAnalysis({ onNavigate }) {
-  const [mode,      setMode]      = useState('realtime'); // 'realtime' | 'video'
-  const [jumpType,  setJumpType]  = useState('CMJ');
-  const [massKg,    setMassKg]    = useState(70);
+  const [mode,       setMode]       = useState('realtime');
+  const [jumpType,   setJumpType]   = useState('CMJ');
+  const [massKg,     setMassKg]     = useState(70);
   const [jumpResult, setJumpResult] = useState(null);
-  const [saved,     setSaved]     = useState(false);
+  const [saved,      setSaved]      = useState(false);
 
-  // Estado para detección de vuelo en tiempo real
-  const baselineHipRef  = useRef(null); // altura cadera en posición de pie (calibrada)
-  const flightStartRef  = useRef(null); // timestamp al despegar
+  const baselineHipRef  = useRef(null);
+  const flightStartRef  = useRef(null);
   const inFlightRef     = useRef(false);
   const maxKneeAngleRef = useRef(0);
 
   const {
     videoRef, canvasRef,
     isRunning, poseData, poseReady, error,
-    progress,
-    mpLoading, mpError,
+    progress, mpLoading, mpError,
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
 
-  // Calibrar baseline de cadera cuando hay pose estable y no hay salto en curso
+  // Bloquear scroll del body cuando la cámara está en fullscreen
+  useEffect(() => {
+    document.body.style.overflow = isRunning ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [isRunning]);
+
+  // Calibrar baseline de cadera en reposo
   useEffect(() => {
     if (!poseData || inFlightRef.current || jumpResult) return;
-    // Promedio suave: si aún no hay baseline, tomarlo directo
     if (baselineHipRef.current === null) {
       baselineHipRef.current = poseData.hipHeight;
-    } else {
-      // Actualizar sólo si la cadera está en posición baja (no en vuelo)
-      if (poseData.hipHeight > baselineHipRef.current - 0.05) {
-        baselineHipRef.current = baselineHipRef.current * 0.95 + poseData.hipHeight * 0.05;
-      }
+    } else if (poseData.hipHeight > baselineHipRef.current - 0.05) {
+      baselineHipRef.current = baselineHipRef.current * 0.95 + poseData.hipHeight * 0.05;
     }
   }, [poseData, jumpResult]);
 
-  // Detección automática de vuelo en modo tiempo real
+  // Detección automática de vuelo
   useEffect(() => {
     if (mode !== 'realtime' || !poseData || !isRunning || jumpResult) return;
     if (baselineHipRef.current === null) return;
 
-    // Umbral: la cadera sube más de 8% de la altura de pantalla respecto al baseline
-    // En coordenadas normalizadas y-down, subir = valor menor
-    const THRESHOLD = 0.08;
+    const THRESHOLD  = 0.08;
     const isAirborne = poseData.hipHeight < baselineHipRef.current - THRESHOLD;
 
     if (isAirborne && !inFlightRef.current) {
-      // Despegue detectado
-      inFlightRef.current  = true;
-      flightStartRef.current = performance.now();
+      inFlightRef.current     = true;
+      flightStartRef.current  = performance.now();
       maxKneeAngleRef.current = Math.max(poseData.kneeAngleLeft, poseData.kneeAngleRight);
     } else if (isAirborne && inFlightRef.current) {
-      // Sigue en vuelo — registrar ángulo máximo
       const kMax = Math.max(poseData.kneeAngleLeft, poseData.kneeAngleRight);
       if (kMax > maxKneeAngleRef.current) maxKneeAngleRef.current = kMax;
     } else if (!isAirborne && inFlightRef.current) {
-      // Aterrizaje detectado
       inFlightRef.current = false;
-      const flightMs    = Math.round(performance.now() - flightStartRef.current);
-      const flightSec   = flightMs / 1000;
-      const heightCm    = jumpHeightFromFlightTime(flightSec) * 100;
-
-      // Ignorar saltos menores a 5 cm (ruido)
+      const flightMs  = Math.round(performance.now() - flightStartRef.current);
+      const heightCm  = jumpHeightFromFlightTime(flightMs / 1000) * 100;
       if (heightCm > 5) {
-        setJumpResult({
-          heightCm,
-          flightMs,
-          type:         jumpType,
-          maxKneeAngle: maxKneeAngleRef.current,
-        });
+        setJumpResult({ heightCm, flightMs, type: jumpType, maxKneeAngle: maxKneeAngleRef.current });
         stopCamera();
       }
     }
   }, [poseData, mode, isRunning, jumpResult, jumpType, stopCamera]);
 
-  // Limpiar baseline al detener la cámara
   function handleStop() {
     stopCamera();
-    baselineHipRef.current  = null;
-    inFlightRef.current     = false;
-    flightStartRef.current  = null;
+    baselineHipRef.current = null;
+    inFlightRef.current    = false;
+    flightStartRef.current = null;
   }
 
   function handleToggle() {
@@ -248,7 +227,6 @@ export default function JumpAnalysis({ onNavigate }) {
     baselineHipRef.current = null;
   }
 
-  // Cuando se cambia de modo, detener cámara si estaba corriendo
   function handleModeChange(m) {
     if (isRunning) handleStop();
     setMode(m);
@@ -256,6 +234,7 @@ export default function JumpAnalysis({ onNavigate }) {
     setSaved(false);
   }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -273,8 +252,8 @@ export default function JumpAnalysis({ onNavigate }) {
           <button
             key={id}
             onClick={() => handleModeChange(id)}
-            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm
-              font-semibold transition-all"
+            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg
+              text-sm font-semibold transition-all"
             style={{
               background: mode === id ? 'rgba(56,189,248,0.15)' : 'transparent',
               color:      mode === id ? '#38bdf8'               : '#64748b',
@@ -298,9 +277,9 @@ export default function JumpAnalysis({ onNavigate }) {
                 onClick={() => setJumpType(t)}
                 className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
                 style={{
-                  background:  jumpType === t ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)',
-                  color:       jumpType === t ? '#38bdf8'                : '#94a3b8',
-                  border:      `1px solid ${jumpType === t ? 'rgba(56,189,248,0.35)' : 'rgba(255,255,255,0.06)'}`,
+                  background: jumpType === t ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)',
+                  color:      jumpType === t ? '#38bdf8'                : '#94a3b8',
+                  border:     `1px solid ${jumpType === t ? 'rgba(56,189,248,0.35)' : 'rgba(255,255,255,0.06)'}`,
                 }}
               >
                 {t}
@@ -322,7 +301,7 @@ export default function JumpAnalysis({ onNavigate }) {
 
       {/* Estado de carga de MediaPipe */}
       {mpLoading && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-surface border border-white/8">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-surface border border-white/[0.08]">
           <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
           <div>
             <p className="text-sm font-semibold text-slate-200">Cargando MediaPipe…</p>
@@ -333,8 +312,7 @@ export default function JumpAnalysis({ onNavigate }) {
 
       {/* Error de inicialización de MediaPipe */}
       {mpError && (
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/25
-          text-sm text-danger">
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/25 text-sm text-danger">
           <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
           <div>
             <p className="font-semibold">Error al cargar MediaPipe</p>
@@ -346,16 +324,32 @@ export default function JumpAnalysis({ onNavigate }) {
 
       {/* Error de permisos / dispositivo */}
       {error && (
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/25
-          text-sm text-danger">
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/25 text-sm text-danger">
           <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
           {error}
         </div>
       )}
 
-      {/* Zona de cámara / video */}
+      {/*
+        Zona de cámara / video
+        — Mismo elemento React siempre montado (mientras !jumpResult) para que el ref del
+          <video> no se pierda al transicionar entre layout normal y fullscreen.
+        — Cuando isRunning=true: position:fixed cubriendo toda la pantalla (z-50).
+        — Cuando isRunning=false: aspect-ratio normal en el flujo del documento.
+      */}
       {!jumpResult && (
-        <div className="relative bg-black rounded-2xl overflow-hidden aspect-[4/3]">
+        <div
+          className={
+            isRunning
+              ? 'bg-black'
+              : 'relative bg-black rounded-2xl overflow-hidden aspect-[4/3]'
+          }
+          style={isRunning ? {
+            position: 'fixed',
+            inset:    0,
+            zIndex:   50,
+          } : undefined}
+        >
           <video
             ref={videoRef}
             autoPlay
@@ -366,42 +360,56 @@ export default function JumpAnalysis({ onNavigate }) {
           />
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 w-full h-full"
+            className="absolute inset-0 w-full h-full pointer-events-none"
             width={640}
             height={480}
             style={{ transform: mode === 'realtime' ? 'scaleX(-1)' : 'none' }}
           />
 
-          {/* Estado de detección */}
-          {isRunning && (
-            <div
-              className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-              style={{
-                background: poseReady ? 'rgba(34,197,94,0.85)' : 'rgba(15,23,42,0.75)',
-                color:      poseReady ? '#fff' : '#94a3b8',
-              }}
-            >
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ background: poseReady ? '#fff' : '#38bdf8', opacity: poseReady ? 1 : 0.7 }}
-              />
-              {poseReady ? 'Pose detectada ✓' : 'Detectando pose…'}
-            </div>
-          )}
+          {/* ── Barra superior ────────────────────────────────────────────── */}
+          <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-3 gap-2">
+            {/* Estado de detección de pose */}
+            {isRunning && (
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                style={{
+                  background: poseReady ? 'rgba(34,197,94,0.85)' : 'rgba(15,23,42,0.8)',
+                  color:      poseReady ? '#fff'                  : '#94a3b8',
+                }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{
+                    background: poseReady ? '#fff' : '#38bdf8',
+                    opacity:    poseReady ? 1     : 0.7,
+                  }}
+                />
+                {poseReady ? 'Pose detectada ✓' : 'Detectando pose…'}
+              </div>
+            )}
 
-          {/* Instrucción de orientación */}
-          {isRunning && !poseReady && (
-            <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-slate-400 px-4">
-              Colocate de perfil a la cámara
-            </p>
-          )}
+            {/* Botón Maximize2 — esquina superior derecha, visible cuando no corre */}
+            {!isRunning && !mpLoading && !mpError && mode === 'realtime' && (
+              <button
+                onClick={handleToggle}
+                title="Iniciar en pantalla completa"
+                className="ml-auto flex items-center justify-center w-8 h-8 rounded-lg
+                  bg-black/50 text-slate-300 hover:text-white hover:bg-black/70
+                  active:scale-90 transition-all"
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
+          </div>
 
-          {/* Overlay cuando no está corriendo */}
+          {/* ── Overlay cuando no está corriendo ───────────────────────── */}
           {!isRunning && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
               {mpLoading
-                ? <><div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                    <p className="text-slate-400 text-xs">Cargando modelo…</p></>
+                ? <>
+                    <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                    <p className="text-slate-400 text-xs">Cargando modelo…</p>
+                  </>
                 : <p className="text-slate-400 text-sm px-6 text-center">
                     {mode === 'realtime' ? 'Presioná START para iniciar' : 'Subí un video para analizar'}
                   </p>
@@ -409,42 +417,68 @@ export default function JumpAnalysis({ onNavigate }) {
             </div>
           )}
 
-          {/* Barra de progreso en modo video */}
+          {/* ── Panel inferior fullscreen: métricas + botón Detener ────── */}
+          {isRunning && (
+            <div
+              className="absolute bottom-0 left-0 right-0 px-4 pt-10 pb-6"
+              style={{
+                background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)',
+              }}
+            >
+              {poseData && mode === 'realtime' && (
+                <div className="mb-3">
+                  <LiveMetrics poseData={poseData} />
+                </div>
+              )}
+
+              {!poseReady && (
+                <p className="text-center text-xs text-slate-400 mb-3">
+                  Colocate de perfil a la cámara
+                </p>
+              )}
+
+              <button
+                onClick={handleStop}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
+                  text-sm font-bold active:scale-[0.98] transition-transform"
+                style={{
+                  background:  'rgba(239,68,68,0.2)',
+                  color:       '#ef4444',
+                  border:      '1px solid rgba(239,68,68,0.4)',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Square size={16} fill="currentColor" /> Detener
+              </button>
+            </div>
+          )}
+
+          {/* Barra de progreso modo video */}
           {mode === 'video' && isRunning && (
             <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
-              <div
-                className="h-full bg-accent transition-all"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="h-full bg-accent transition-all" style={{ width: `${progress}%` }} />
             </div>
           )}
         </div>
       )}
 
-      {/* Métricas en tiempo real */}
-      {isRunning && poseData && mode === 'realtime' && (
-        <LiveMetrics poseData={poseData} />
-      )}
-
-      {/* Controles — deshabilitados mientras MediaPipe carga */}
+      {/* Botón START en el layout normal (fuera del video) */}
       {!jumpResult && !mpError && mode === 'realtime' && (
         <button
           onClick={handleToggle}
-          disabled={mpLoading}
+          disabled={mpLoading || isRunning}
           className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
-            text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-40
-            disabled:cursor-not-allowed disabled:active:scale-100"
+            text-sm font-bold active:scale-[0.98] transition-transform
+            disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
           style={{
-            background:  isRunning ? 'rgba(239,68,68,0.15)' : 'rgba(56,189,248,0.15)',
-            color:       isRunning ? '#ef4444'               : '#38bdf8',
-            border:      `1px solid ${isRunning ? 'rgba(239,68,68,0.35)' : 'rgba(56,189,248,0.35)'}`,
+            background: 'rgba(56,189,248,0.15)',
+            color:      '#38bdf8',
+            border:     '1px solid rgba(56,189,248,0.35)',
           }}
         >
           {mpLoading
             ? 'Esperando MediaPipe…'
-            : isRunning
-              ? <><Square size={16} fill="currentColor" /> Detener</>
-              : <><Play  size={16} fill="currentColor" /> START — Iniciar cámara</>
+            : <><Play size={16} fill="currentColor" /> START — Iniciar cámara</>
           }
         </button>
       )}
@@ -452,7 +486,7 @@ export default function JumpAnalysis({ onNavigate }) {
       {!jumpResult && !mpError && mode === 'video' && (
         <label
           className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
-            text-sm font-bold transition-transform border border-accent/35 text-accent bg-accent/[0.08]"
+            text-sm font-bold border border-accent/35 text-accent bg-accent/[0.08]"
           style={{ cursor: mpLoading || isRunning ? 'not-allowed' : 'pointer', opacity: mpLoading ? 0.4 : 1 }}
         >
           <UploadCloud size={16} />
@@ -483,9 +517,7 @@ export default function JumpAnalysis({ onNavigate }) {
       )}
 
       {saved && (
-        <p className="text-center text-xs text-safe font-semibold">
-          Resultado guardado ✓
-        </p>
+        <p className="text-center text-xs text-safe font-semibold">Resultado guardado ✓</p>
       )}
 
       {/* Fallback manual */}
@@ -498,16 +530,16 @@ export default function JumpAnalysis({ onNavigate }) {
 
 // ── Formulario manual (fallback si MediaPipe no carga) ────────────────────────
 function ManualFallback({ jumpType, massKg, onResult }) {
-  const [tv, setTv] = useState('');
+  const [tv,   setTv]   = useState('');
   const [open, setOpen] = useState(false);
 
   function handleCalc() {
     const secs = parseFloat(tv);
     if (isNaN(secs) || secs <= 0) return;
     onResult({
-      heightCm:    jumpHeightFromFlightTime(secs) * 100,
-      flightMs:    Math.round(secs * 1000),
-      type:        jumpType,
+      heightCm:     jumpHeightFromFlightTime(secs) * 100,
+      flightMs:     Math.round(secs * 1000),
+      type:         jumpType,
       maxKneeAngle: null,
     });
   }

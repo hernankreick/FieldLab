@@ -412,8 +412,8 @@ export default function JumpAnalysis({ onNavigate }) {
           <Info size={14} className="text-accent mt-0.5 flex-shrink-0" />
           <p className="text-xs text-slate-400 leading-relaxed">
             {facing === 'environment'
-              ? 'Pedile a alguien que te filme de perfil, de cuerpo completo, a 2–3 metros de distancia. La cámara debe estar a la altura del pecho.'
-              : 'Apoyá el celu verticalmente a 2–3 metros de distancia, a la altura del pecho, con la cámara apuntando hacia donde vas a saltar. Asegurate de que tu cuerpo completo sea visible antes de saltar.'
+              ? 'Colocate a 2–3 metros del atleta. El atleta debe estar de perfil a la cámara, con el cuerpo completo visible en pantalla.'
+              : 'Apoyá el celu verticalmente a 2–3 metros de distancia. Posicionarte de perfil frente a la cámara y asegurate de que tu cuerpo completo sea visible antes de saltar.'
             }
           </p>
         </div>
@@ -534,8 +534,8 @@ export default function JumpAnalysis({ onNavigate }) {
               {frameStatus !== 'green' && (
                 <p className="text-center text-xs text-slate-400 mb-3 leading-relaxed">
                   {facing === 'environment'
-                    ? 'Pedile a alguien que te filme de perfil, de cuerpo completo, a 2–3 metros de distancia. La cámara debe estar a la altura del pecho.'
-                    : 'Apoyá el celu verticalmente a 2–3 metros de distancia, a la altura del pecho, con la cámara apuntando hacia donde vas a saltar. Asegurate de que tu cuerpo completo sea visible antes de saltar.'
+                    ? 'Colocate a 2–3 metros del atleta. El atleta debe estar de perfil a la cámara, con el cuerpo completo visible en pantalla.'
+                    : 'Apoyá el celu verticalmente a 2–3 metros de distancia. Posicionarte de perfil frente a la cámara y asegurate de que tu cuerpo completo sea visible antes de saltar.'
                   }
                 </p>
               )}

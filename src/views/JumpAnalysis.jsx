@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Camera, Video, Play, Square, Save,
-  AlertTriangle, CheckCircle, UploadCloud, Maximize2,
+  AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera,
 } from 'lucide-react';
 import Card from '../components/Card';
 import { jumpHeightFromFlightTime, sayersPower } from '../utils/biomechanics';
@@ -133,6 +133,8 @@ export default function JumpAnalysis({ onNavigate }) {
   const massKg = parseFloat(massInput) || 70;         // número derivado para cálculos
   const [jumpResult, setJumpResult] = useState(null);
   const [saved,      setSaved]      = useState(false);
+  const [facing,     setFacing]     = useState('environment'); // 'environment' | 'user'
+  const [isSwitching, setIsSwitching] = useState(false);
 
   const baselineHipRef  = useRef(null);
   const flightStartRef  = useRef(null);
@@ -146,11 +148,11 @@ export default function JumpAnalysis({ onNavigate }) {
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
 
-  // Bloquear scroll del body cuando la cámara está en fullscreen
+  // Bloquear scroll del body cuando la cámara está en fullscreen (incluso mientras cambia)
   useEffect(() => {
-    document.body.style.overflow = isRunning ? 'hidden' : '';
+    document.body.style.overflow = (isRunning || isSwitching) ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [isRunning]);
+  }, [isRunning, isSwitching]);
 
   // Calibrar baseline de cadera en reposo
   useEffect(() => {
@@ -203,8 +205,21 @@ export default function JumpAnalysis({ onNavigate }) {
       setSaved(false);
       baselineHipRef.current = null;
       inFlightRef.current    = false;
-      startCamera();
+      startCamera(facing);
     }
+  }
+
+  async function handleSwitchCamera() {
+    const newFacing = facing === 'environment' ? 'user' : 'environment';
+    setFacing(newFacing);
+    setIsSwitching(true);
+    // Resetear estado de detección — posición de cámara cambia
+    baselineHipRef.current = null;
+    inFlightRef.current    = false;
+    flightStartRef.current = null;
+    stopCamera();
+    await startCamera(newFacing);
+    setIsSwitching(false);
   }
 
   async function handleVideoUpload(e) {
@@ -352,11 +367,11 @@ export default function JumpAnalysis({ onNavigate }) {
       {!jumpResult && (
         <div
           className={
-            isRunning
+            (isRunning || isSwitching)
               ? 'bg-black'
               : 'relative bg-black rounded-2xl overflow-hidden aspect-[4/3]'
           }
-          style={isRunning ? {
+          style={(isRunning || isSwitching) ? {
             position: 'fixed',
             inset:    0,
             zIndex:   50,
@@ -380,10 +395,29 @@ export default function JumpAnalysis({ onNavigate }) {
 
           {/* ── Barra superior ────────────────────────────────────────────── */}
           <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-3 gap-2">
-            {/* Estado de detección de pose */}
+
+            {/* Izquierda: indicador cámara activa + botón switch (solo en realtime fullscreen) */}
+            {isRunning && mode === 'realtime' && (
+              <button
+                onClick={handleSwitchCamera}
+                title="Cambiar cámara"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs
+                  font-semibold transition-all active:scale-90"
+                style={{
+                  background: 'rgba(15,23,42,0.8)',
+                  color:      '#94a3b8',
+                  border:     '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                <SwitchCamera size={12} />
+                {facing === 'environment' ? 'Trasera' : 'Frontal'}
+              </button>
+            )}
+
+            {/* Centro-derecha: estado de detección de pose */}
             {isRunning && (
               <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ml-auto"
                 style={{
                   background: poseReady ? 'rgba(34,197,94,0.85)' : 'rgba(15,23,42,0.8)',
                   color:      poseReady ? '#fff'                  : '#94a3b8',
@@ -400,8 +434,8 @@ export default function JumpAnalysis({ onNavigate }) {
               </div>
             )}
 
-            {/* Botón Maximize2 — esquina superior derecha, visible cuando no corre */}
-            {!isRunning && !mpLoading && !mpError && mode === 'realtime' && (
+            {/* Botón Maximize2 — solo cuando no corre */}
+            {!isRunning && !isSwitching && !mpLoading && !mpError && mode === 'realtime' && (
               <button
                 onClick={handleToggle}
                 title="Iniciar en pantalla completa"
@@ -417,14 +451,19 @@ export default function JumpAnalysis({ onNavigate }) {
           {/* ── Overlay cuando no está corriendo ───────────────────────── */}
           {!isRunning && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
-              {mpLoading
+              {isSwitching
                 ? <>
                     <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                    <p className="text-slate-400 text-xs">Cargando modelo…</p>
+                    <p className="text-slate-400 text-xs">Cambiando cámara…</p>
                   </>
-                : <p className="text-slate-400 text-sm px-6 text-center">
-                    {mode === 'realtime' ? 'Presioná START para iniciar' : 'Subí un video para analizar'}
-                  </p>
+                : mpLoading
+                  ? <>
+                      <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                      <p className="text-slate-400 text-xs">Cargando modelo…</p>
+                    </>
+                  : <p className="text-slate-400 text-sm px-6 text-center">
+                      {mode === 'realtime' ? 'Presioná START para iniciar' : 'Subí un video para analizar'}
+                    </p>
               }
             </div>
           )}

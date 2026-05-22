@@ -190,13 +190,13 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     };
   }, [onResults]);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (facingMode = 'environment') => {
     if (!videoRef.current || !poseRef.current) return;
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: 'environment' },
+          facingMode: { ideal: facingMode },
           width:      { ideal: 640 },
           height:     { ideal: 480 },
         },

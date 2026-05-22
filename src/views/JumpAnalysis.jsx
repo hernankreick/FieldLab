@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Camera, Video, Play, Square, Save,
   AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera, Info,
@@ -168,16 +168,11 @@ export default function JumpAnalysis({ onNavigate }) {
   const [facing,     setFacing]     = useState('environment'); // 'environment' | 'user'
   const [isSwitching, setIsSwitching] = useState(false);
 
-  const baselineHipRef   = useRef(null);
-  const baselineAnkleRef = useRef(null);
-  const flightStartRef   = useRef(null);
-  const inFlightRef      = useRef(false);
-  const maxKneeAngleRef  = useRef(0);
-
   const {
     videoRef, canvasRef,
     isRunning, landmarks, poseData, poseReady, error,
     progress, mpLoading, mpError,
+    detectionPhase, jumpDetection, resetDetection,
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
 
@@ -189,55 +184,18 @@ export default function JumpAnalysis({ onNavigate }) {
     return () => { document.body.style.overflow = ''; };
   }, [isRunning, isSwitching]);
 
-  // Calibrar baselines de tobillos (primario) y cadera (secundario) en reposo
+  // Handle jump detected by the hook
   useEffect(() => {
-    if (!poseData || inFlightRef.current || jumpResult) return;
-    if (baselineAnkleRef.current === null) {
-      baselineAnkleRef.current = poseData.ankleHeight;
-    } else if (poseData.ankleHeight > baselineAnkleRef.current - 0.03) {
-      baselineAnkleRef.current = baselineAnkleRef.current * 0.95 + poseData.ankleHeight * 0.05;
-    }
-    if (baselineHipRef.current === null) {
-      baselineHipRef.current = poseData.hipHeight;
-    } else if (poseData.hipHeight > baselineHipRef.current - 0.05) {
-      baselineHipRef.current = baselineHipRef.current * 0.95 + poseData.hipHeight * 0.05;
-    }
-  }, [poseData, jumpResult]);
-
-  // Detección automática de vuelo: tobillos como referencia principal, cadera como validación
-  useEffect(() => {
-    if (mode !== 'realtime' || !poseData || !isRunning || jumpResult) return;
-    if (baselineAnkleRef.current === null || baselineHipRef.current === null) return;
-
-    // Tobillos suben (y disminuye) → despegue. Cadera lo valida para evitar falsos positivos.
-    const anklesUp   = poseData.ankleHeight < baselineAnkleRef.current - 0.06;
-    const hipUp      = poseData.hipHeight   < baselineHipRef.current   - 0.05;
-    const isAirborne = anklesUp && hipUp;
-
-    if (isAirborne && !inFlightRef.current) {
-      inFlightRef.current     = true;
-      flightStartRef.current  = performance.now();
-      maxKneeAngleRef.current = Math.max(poseData.kneeAngleLeft, poseData.kneeAngleRight);
-    } else if (isAirborne && inFlightRef.current) {
-      const kMax = Math.max(poseData.kneeAngleLeft, poseData.kneeAngleRight);
-      if (kMax > maxKneeAngleRef.current) maxKneeAngleRef.current = kMax;
-    } else if (!isAirborne && inFlightRef.current) {
-      inFlightRef.current = false;
-      const flightMs = Math.round(performance.now() - flightStartRef.current);
-      const heightCm = jumpHeightFromFlightTime(flightMs / 1000) * 100;
-      if (heightCm > 5) {
-        setJumpResult({ heightCm, flightMs, type: jumpType, maxKneeAngle: maxKneeAngleRef.current });
-        stopCamera();
-      }
-    }
-  }, [poseData, mode, isRunning, jumpResult, jumpType, stopCamera]);
+    if (!jumpDetection) return;
+    const { flightMs, maxKneeAngle } = jumpDetection;
+    const heightCm = jumpHeightFromFlightTime(flightMs / 1000) * 100;
+    setJumpResult({ heightCm, flightMs, type: jumpType, maxKneeAngle });
+    stopCamera();
+    resetDetection();
+  }, [jumpDetection, jumpType, stopCamera, resetDetection]);
 
   function handleStop() {
     stopCamera();
-    baselineHipRef.current   = null;
-    baselineAnkleRef.current = null;
-    inFlightRef.current      = false;
-    flightStartRef.current   = null;
   }
 
   function handleToggle() {
@@ -246,9 +204,6 @@ export default function JumpAnalysis({ onNavigate }) {
     } else {
       setJumpResult(null);
       setSaved(false);
-      baselineHipRef.current   = null;
-      baselineAnkleRef.current = null;
-      inFlightRef.current      = false;
       startCamera(facing);
     }
   }
@@ -258,11 +213,6 @@ export default function JumpAnalysis({ onNavigate }) {
     const newFacing = facing === 'environment' ? 'user' : 'environment';
     setFacing(newFacing);
     setIsSwitching(true);
-    // Resetear estado de detección — posición de cámara cambia
-    baselineHipRef.current   = null;
-    baselineAnkleRef.current = null;
-    inFlightRef.current      = false;
-    flightStartRef.current   = null;
     stopCamera();
     await startCamera(newFacing);
     setIsSwitching(false);
@@ -292,8 +242,6 @@ export default function JumpAnalysis({ onNavigate }) {
   function handleDiscard() {
     setJumpResult(null);
     setSaved(false);
-    baselineHipRef.current   = null;
-    baselineAnkleRef.current = null;
   }
 
   function handleModeChange(m) {
@@ -532,7 +480,26 @@ export default function JumpAnalysis({ onNavigate }) {
                 </div>
               )}
 
-              {mode === 'realtime' && frameStatus !== 'green' && (
+              {/* Detection phase indicator */}
+              {mode === 'realtime' && detectionPhase && (
+                <div className="flex items-center justify-center mb-3">
+                  <span
+                    className="text-sm font-bold tracking-wide"
+                    style={{
+                      color: detectionPhase === 'calibrating' ? '#94a3b8'
+                           : detectionPhase === 'ready'       ? '#22c55e'
+                           : '#f59e0b',
+                    }}
+                  >
+                    {detectionPhase === 'calibrating' && 'Calibrando…'}
+                    {detectionPhase === 'ready'       && 'Listo para saltar'}
+                    {detectionPhase === 'jumping'     && '¡Saltando!'}
+                  </span>
+                </div>
+              )}
+
+              {/* Setup instructions — only during calibration while body not yet visible */}
+              {mode === 'realtime' && detectionPhase === 'calibrating' && frameStatus !== 'green' && (
                 <p className="text-center text-xs text-slate-400 mb-3 leading-relaxed">
                   {facing === 'environment'
                     ? 'Colocate a 2–3 metros del atleta. El atleta debe estar de perfil a la cámara, con el cuerpo completo visible en pantalla.'

@@ -1,6 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 
-// Índices de landmarks relevantes para salto vertical
 const LM = {
   SHOULDER_L: 11, SHOULDER_R: 12,
   HIP_L: 23,      HIP_R: 24,
@@ -14,13 +13,18 @@ const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose';
 
-// Inyectar script de CDN (idempotente: si ya existe, resuelve inmediatamente)
+// Detection constants
+const CALIB_FRAMES  = 60;   // frames to average for baseline (~2 s @ 30 fps)
+const VIS_MIN       = 0.6;  // minimum ankle visibility to trust a reading
+const TAKEOFF_THR   = 0.05; // ankles must rise > 5 % of frame height to start flight
+const LAND_THR      = 0.03; // ankles within 3 % of baseline → landed
+const FLIGHT_MIN_MS = 200;  // reject flights shorter than this (noise)
+const FLIGHT_MAX_MS = 800;  // reject flights longer than this (tracking glitch)
+const COOLDOWN_MS   = 2000; // lockout after a detected jump
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) {
-      resolve();
-      return;
-    }
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
     const s    = document.createElement('script');
     s.src      = src;
     s.onload   = resolve;
@@ -55,9 +59,9 @@ function calcPoseData(lm) {
   const ankleAngleLeft  = calcAngle(lm[LM.KNEE_L], lm[LM.ANKLE_L], lm[LM.FOOT_L]);
   const ankleAngleRight = calcAngle(lm[LM.KNEE_R], lm[LM.ANKLE_R], lm[LM.FOOT_R]);
 
-  const hipHeight      = (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
+  const hipHeight      = (lm[LM.HIP_L].y    + lm[LM.HIP_R].y)    / 2;
   const shoulderHeight = (lm[LM.SHOULDER_L].y + lm[LM.SHOULDER_R].y) / 2;
-  const ankleHeight    = (lm[LM.ANKLE_L].y + lm[LM.ANKLE_R].y) / 2;
+  const ankleHeight    = (lm[LM.ANKLE_L].y  + lm[LM.ANKLE_R].y)  / 2;
 
   const tripleExtension =
     kneeAngleLeft  > 160 && kneeAngleRight  > 160 &&
@@ -74,13 +78,16 @@ function calcPoseData(lm) {
 }
 
 export function usePoseEstimation({ mode = 'realtime' } = {}) {
+  // ── Core refs ──────────────────────────────────────────────────────────────
   const videoRef   = useRef(null);
   const canvasRef  = useRef(null);
   const poseRef    = useRef(null);
   const streamRef  = useRef(null);
   const rafRef     = useRef(null);
   const runningRef = useRef(false);
+  const modeRef    = useRef(mode); // always-current mode for use inside closures
 
+  // ── Core state ─────────────────────────────────────────────────────────────
   const [isRunning, setIsRunning] = useState(false);
   const [landmarks, setLandmarks] = useState(null);
   const [poseData,  setPoseData]  = useState(null);
@@ -90,6 +97,114 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
   const [mpLoading, setMpLoading] = useState(true);
   const [mpError,   setMpError]   = useState(null);
 
+  // ── Jump detection refs (all mutable, no re-render cost) ───────────────────
+  const detPhaseRef = useRef(null); // 'calibrating' | 'ready' | 'jumping' | null
+  const calibBuf    = useRef([]);   // ankle-Y samples collected during calibration
+  const baselineRef = useRef(null); // mean ankle Y while standing (0–1, y=0 is top)
+  const flightT0    = useRef(null); // performance.now() at takeoff
+  const minVisRef   = useRef(1);    // minimum ankle visibility seen during flight
+  const cooldownRef = useRef(0);    // performance.now() threshold for next detection
+
+  // ── Jump detection state (drives component UI) ─────────────────────────────
+  // 'calibrating' → 'ready' → 'jumping' → 'ready' (loop)
+  const [detectionPhase, setDetectionPhase] = useState(null);
+  // Set once when a valid jump is measured; cleared by the component after handling
+  const [jumpDetection, setJumpDetection] = useState(null);
+  const resetDetection = useCallback(() => setJumpDetection(null), []);
+
+  // Keep modeRef in sync so the onResults closure always reads the current mode
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+
+  // ── Detection state machine ────────────────────────────────────────────────
+  // Called synchronously in onResults every frame (avoids useEffect round-trip lag).
+  // Only uses refs and stable setters → safe as useCallback([]).
+  const runDetection = useCallback((lm, pd) => {
+    const phase = detPhaseRef.current;
+    if (!phase) return;
+
+    const now    = performance.now();
+    const ankleL = lm[LM.ANKLE_L];
+    const ankleR = lm[LM.ANKLE_R];
+    const visL   = ankleL?.visibility ?? 0;
+    const visR   = ankleR?.visibility ?? 0;
+    const avgY   = (ankleL.y + ankleR.y) / 2; // smaller = higher in frame
+
+    // ── CALIBRATING: build ankle-Y baseline from first CALIB_FRAMES good frames ──
+    if (phase === 'calibrating') {
+      if (visL > VIS_MIN && visR > VIS_MIN) {
+        calibBuf.current.push(avgY);
+        if (calibBuf.current.length >= CALIB_FRAMES) {
+          const sum = calibBuf.current.reduce((a, b) => a + b, 0);
+          baselineRef.current = sum / calibBuf.current.length;
+          calibBuf.current    = [];
+          detPhaseRef.current = 'ready';
+          setDetectionPhase('ready');
+        }
+      }
+      return;
+    }
+
+    // ── READY: watch for takeoff ───────────────────────────────────────────────
+    if (phase === 'ready') {
+      if (now < cooldownRef.current) return;
+      // Both ankles rise more than TAKEOFF_THR above their standing position
+      if (visL > VIS_MIN && visR > VIS_MIN &&
+          avgY < baselineRef.current - TAKEOFF_THR) {
+        detPhaseRef.current = 'jumping';
+        setDetectionPhase('jumping');
+        flightT0.current  = now;
+        minVisRef.current = Math.min(visL, visR);
+      }
+      return;
+    }
+
+    // ── JUMPING: track visibility + detect landing ─────────────────────────────
+    if (phase === 'jumping') {
+      const visMin = Math.min(visL, visR);
+      if (visMin < minVisRef.current) minVisRef.current = visMin;
+
+      // Cancel flight if visibility drops below threshold (tracking lost)
+      if (visMin < VIS_MIN) {
+        detPhaseRef.current = 'ready';
+        setDetectionPhase('ready');
+        return;
+      }
+
+      // Landing: both ankles return within LAND_THR of standing baseline
+      if (avgY > baselineRef.current - LAND_THR) {
+        const flightMs = Math.round(now - flightT0.current);
+        if (flightMs >= FLIGHT_MIN_MS && flightMs <= FLIGHT_MAX_MS) {
+          setJumpDetection({
+            flightMs,
+            maxKneeAngle: pd ? Math.max(pd.kneeAngleLeft, pd.kneeAngleRight) : null,
+          });
+        }
+        cooldownRef.current = now + COOLDOWN_MS;
+        detPhaseRef.current = 'ready';
+        setDetectionPhase('ready');
+      }
+    }
+  }, []);
+
+  // Start detection — called when camera opens
+  const startDetection = useCallback(() => {
+    detPhaseRef.current = 'calibrating';
+    calibBuf.current    = [];
+    baselineRef.current = null;
+    flightT0.current    = null;
+    minVisRef.current   = 1;
+    cooldownRef.current = 0;
+    setDetectionPhase('calibrating');
+  }, []);
+
+  // Stop/reset detection — called when camera closes
+  const stopDetection = useCallback(() => {
+    detPhaseRef.current = null;
+    calibBuf.current    = [];
+    setDetectionPhase(null);
+  }, []);
+
+  // ── Skeleton drawing ───────────────────────────────────────────────────────
   const drawSkeleton = useCallback((results) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -139,24 +254,28 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
       });
   }, []);
 
+  // ── MediaPipe results handler ──────────────────────────────────────────────
   const onResults = useCallback((results) => {
     drawSkeleton(results);
     const lm = results.poseLandmarks ?? null;
     setLandmarks(lm);
-    setPoseData(lm ? calcPoseData(lm) : null);
+    const pd = lm ? calcPoseData(lm) : null;
+    setPoseData(pd);
     if (lm) setPoseReady(true);
-  }, [drawSkeleton]);
+    // Run detection synchronously on every frame — no useEffect lag
+    if (modeRef.current === 'realtime' && runningRef.current && lm && pd) {
+      runDetection(lm, pd);
+    }
+  }, [drawSkeleton, runDetection]);
 
-  // Cargar MediaPipe desde CDN e inicializar Pose
+  // ── Load MediaPipe from CDN ────────────────────────────────────────────────
   useEffect(() => {
     let pose;
     let cancelled = false;
 
     (async () => {
       try {
-        // Inyectar el script de CDN — window.Pose queda disponible tras onload
         await loadScript(`${CDN_BASE}/pose.js`);
-
         // eslint-disable-next-line no-undef
         pose = new window.Pose({
           locateFile: (file) => `${CDN_BASE}/${file}`,
@@ -191,9 +310,11 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     };
   }, [onResults]);
 
+  // ── Camera ─────────────────────────────────────────────────────────────────
   const startCamera = useCallback(async (facingMode = 'environment') => {
     if (!videoRef.current || !poseRef.current) return;
     setError(null);
+    startDetection();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -204,7 +325,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
         audio: false,
       });
 
-      const video    = videoRef.current;
+      const video     = videoRef.current;
       video.srcObject = stream;
       await new Promise((res, rej) => {
         video.onloadedmetadata = res;
@@ -228,6 +349,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
       rafRef.current = requestAnimationFrame(loop);
 
     } catch (err) {
+      stopDetection();
       if (err.name === 'NotAllowedError') {
         setError('Permiso de cámara denegado. Habilitá el acceso en la configuración del navegador.');
       } else if (err.name === 'NotFoundError') {
@@ -236,7 +358,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
         setError(`Error al iniciar la cámara: ${err.message}`);
       }
     }
-  }, []);
+  }, [startDetection, stopDetection]);
 
   const stopCamera = useCallback(() => {
     runningRef.current = false;
@@ -246,12 +368,14 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
       streamRef.current = null;
     }
     if (videoRef.current) videoRef.current.srcObject = null;
+    stopDetection();
     setIsRunning(false);
     setPoseReady(false);
     setLandmarks(null);
     setPoseData(null);
-  }, []);
+  }, [stopDetection]);
 
+  // ── Video file analysis (detection disabled — frame timing is synthetic) ───
   const analyzeVideo = useCallback(async (file) => {
     if (!poseRef.current) return;
     setError(null);
@@ -283,21 +407,16 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
 
     try {
       while (time <= duration) {
-        // Cancelar si el componente se desmontó o se llamó stopCamera
         if (!runningRef.current) break;
-
         video.currentTime = time;
         await new Promise(res => { video.onseeked = res; });
-
         if (!runningRef.current) break;
-
         try {
           await poseRef.current?.send({ image: video });
         } catch { /* ignorar frame con error */ }
         setProgress(Math.round((time / duration) * 100));
         time += step;
       }
-
       if (runningRef.current) setProgress(100);
     } finally {
       runningRef.current = false;
@@ -306,7 +425,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     }
   }, []);
 
-  // Detener cámara y stream al desmontar el componente que usa el hook
+  // ── Cleanup on unmount ─────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       runningRef.current = false;
@@ -322,6 +441,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     videoRef, canvasRef,
     isRunning, landmarks, poseData, poseReady,
     error, progress, mpLoading, mpError,
+    detectionPhase, jumpDetection, resetDetection,
     startCamera, stopCamera, analyzeVideo,
   };
 }

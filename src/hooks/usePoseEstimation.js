@@ -57,6 +57,7 @@ function calcPoseData(lm) {
 
   const hipHeight      = (lm[LM.HIP_L].y + lm[LM.HIP_R].y) / 2;
   const shoulderHeight = (lm[LM.SHOULDER_L].y + lm[LM.SHOULDER_R].y) / 2;
+  const ankleHeight    = (lm[LM.ANKLE_L].y + lm[LM.ANKLE_R].y) / 2;
 
   const tripleExtension =
     kneeAngleLeft  > 160 && kneeAngleRight  > 160 &&
@@ -67,7 +68,7 @@ function calcPoseData(lm) {
     kneeAngleLeft, kneeAngleRight,
     hipAngleLeft,  hipAngleRight,
     ankleAngleLeft, ankleAngleRight,
-    hipHeight, shoulderHeight,
+    hipHeight, shoulderHeight, ankleHeight,
     tripleExtension,
   };
 }

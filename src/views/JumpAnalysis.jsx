@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Camera, Video, Play, Square, Save,
-  AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera,
+  AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera, Info,
 } from 'lucide-react';
 import Card from '../components/Card';
 import { jumpHeightFromFlightTime, sayersPower } from '../utils/biomechanics';
@@ -19,6 +19,39 @@ function heightColor(cm) {
   if (cm >= 40) return '#22c55e';
   if (cm >= 25) return '#f59e0b';
   return '#ef4444';
+}
+
+// Verde: cabeza + tobillos con visibilidad ≥ 0.7. Amarillo: alguno < 0.7. Rojo: crítico ausente.
+function calcFrameStatus(lm) {
+  if (!lm || lm.length < 33) return null;
+  const critical   = [0, 27, 28];              // nariz + tobillos
+  const secondary  = [11, 12, 23, 24, 25, 26]; // hombros, caderas, rodillas
+  if (critical.some(i => (lm[i]?.visibility ?? 0) < 0.5)) return 'red';
+  if ([...critical, ...secondary].some(i => (lm[i]?.visibility ?? 0) < 0.7)) return 'yellow';
+  return 'green';
+}
+
+function FrameStatusBadge({ lm, poseReady }) {
+  const status = poseReady ? calcFrameStatus(lm) : null;
+  const cfg = status === 'green'
+    ? { bg: 'rgba(34,197,94,0.85)',  label: 'Cuerpo completo ✓' }
+    : status === 'yellow'
+    ? { bg: 'rgba(245,158,11,0.85)', label: 'Cuerpo parcial' }
+    : status === 'red'
+    ? { bg: 'rgba(239,68,68,0.85)',  label: 'Cuerpo no visible' }
+    : { bg: 'rgba(15,23,42,0.8)',    label: 'Detectando pose…' };
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+      style={{ background: cfg.bg, color: status ? '#fff' : '#94a3b8' }}
+    >
+      <span
+        className="w-2 h-2 rounded-full"
+        style={{ background: status ? 'rgba(255,255,255,0.7)' : '#38bdf8', opacity: status ? 1 : 0.7 }}
+      />
+      {cfg.label}
+    </div>
+  );
 }
 
 function saveJumpResult(result) {
@@ -136,14 +169,15 @@ export default function JumpAnalysis({ onNavigate }) {
   const [facing,     setFacing]     = useState('environment'); // 'environment' | 'user'
   const [isSwitching, setIsSwitching] = useState(false);
 
-  const baselineHipRef  = useRef(null);
-  const flightStartRef  = useRef(null);
-  const inFlightRef     = useRef(false);
-  const maxKneeAngleRef = useRef(0);
+  const baselineHipRef   = useRef(null);
+  const baselineAnkleRef = useRef(null);
+  const flightStartRef   = useRef(null);
+  const inFlightRef      = useRef(false);
+  const maxKneeAngleRef  = useRef(0);
 
   const {
     videoRef, canvasRef,
-    isRunning, poseData, poseReady, error,
+    isRunning, landmarks, poseData, poseReady, error,
     progress, mpLoading, mpError,
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
@@ -154,9 +188,14 @@ export default function JumpAnalysis({ onNavigate }) {
     return () => { document.body.style.overflow = ''; };
   }, [isRunning, isSwitching]);
 
-  // Calibrar baseline de cadera en reposo
+  // Calibrar baselines de tobillos (primario) y cadera (secundario) en reposo
   useEffect(() => {
     if (!poseData || inFlightRef.current || jumpResult) return;
+    if (baselineAnkleRef.current === null) {
+      baselineAnkleRef.current = poseData.ankleHeight;
+    } else if (poseData.ankleHeight > baselineAnkleRef.current - 0.03) {
+      baselineAnkleRef.current = baselineAnkleRef.current * 0.95 + poseData.ankleHeight * 0.05;
+    }
     if (baselineHipRef.current === null) {
       baselineHipRef.current = poseData.hipHeight;
     } else if (poseData.hipHeight > baselineHipRef.current - 0.05) {
@@ -164,13 +203,15 @@ export default function JumpAnalysis({ onNavigate }) {
     }
   }, [poseData, jumpResult]);
 
-  // Detección automática de vuelo
+  // Detección automática de vuelo: tobillos como referencia principal, cadera como validación
   useEffect(() => {
     if (mode !== 'realtime' || !poseData || !isRunning || jumpResult) return;
-    if (baselineHipRef.current === null) return;
+    if (baselineAnkleRef.current === null || baselineHipRef.current === null) return;
 
-    const THRESHOLD  = 0.08;
-    const isAirborne = poseData.hipHeight < baselineHipRef.current - THRESHOLD;
+    // Tobillos suben (y disminuye) → despegue. Cadera lo valida para evitar falsos positivos.
+    const anklesUp   = poseData.ankleHeight < baselineAnkleRef.current - 0.06;
+    const hipUp      = poseData.hipHeight   < baselineHipRef.current   - 0.05;
+    const isAirborne = anklesUp && hipUp;
 
     if (isAirborne && !inFlightRef.current) {
       inFlightRef.current     = true;
@@ -181,8 +222,8 @@ export default function JumpAnalysis({ onNavigate }) {
       if (kMax > maxKneeAngleRef.current) maxKneeAngleRef.current = kMax;
     } else if (!isAirborne && inFlightRef.current) {
       inFlightRef.current = false;
-      const flightMs  = Math.round(performance.now() - flightStartRef.current);
-      const heightCm  = jumpHeightFromFlightTime(flightMs / 1000) * 100;
+      const flightMs = Math.round(performance.now() - flightStartRef.current);
+      const heightCm = jumpHeightFromFlightTime(flightMs / 1000) * 100;
       if (heightCm > 5) {
         setJumpResult({ heightCm, flightMs, type: jumpType, maxKneeAngle: maxKneeAngleRef.current });
         stopCamera();
@@ -192,9 +233,10 @@ export default function JumpAnalysis({ onNavigate }) {
 
   function handleStop() {
     stopCamera();
-    baselineHipRef.current = null;
-    inFlightRef.current    = false;
-    flightStartRef.current = null;
+    baselineHipRef.current   = null;
+    baselineAnkleRef.current = null;
+    inFlightRef.current      = false;
+    flightStartRef.current   = null;
   }
 
   function handleToggle() {
@@ -203,8 +245,9 @@ export default function JumpAnalysis({ onNavigate }) {
     } else {
       setJumpResult(null);
       setSaved(false);
-      baselineHipRef.current = null;
-      inFlightRef.current    = false;
+      baselineHipRef.current   = null;
+      baselineAnkleRef.current = null;
+      inFlightRef.current      = false;
       startCamera(facing);
     }
   }
@@ -215,9 +258,10 @@ export default function JumpAnalysis({ onNavigate }) {
     setFacing(newFacing);
     setIsSwitching(true);
     // Resetear estado de detección — posición de cámara cambia
-    baselineHipRef.current = null;
-    inFlightRef.current    = false;
-    flightStartRef.current = null;
+    baselineHipRef.current   = null;
+    baselineAnkleRef.current = null;
+    inFlightRef.current      = false;
+    flightStartRef.current   = null;
     stopCamera();
     await startCamera(newFacing);
     setIsSwitching(false);
@@ -246,7 +290,8 @@ export default function JumpAnalysis({ onNavigate }) {
   function handleDiscard() {
     setJumpResult(null);
     setSaved(false);
-    baselineHipRef.current = null;
+    baselineHipRef.current   = null;
+    baselineAnkleRef.current = null;
   }
 
   function handleModeChange(m) {
@@ -359,6 +404,17 @@ export default function JumpAnalysis({ onNavigate }) {
         </div>
       )}
 
+      {/* Instrucciones de configuración — solo modo realtime cuando no hay cámara activa */}
+      {!jumpResult && !isRunning && mode === 'realtime' && (
+        <div className="flex items-start gap-3 p-3 rounded-xl border border-white/[0.06]"
+          style={{ background: 'rgba(56,189,248,0.05)' }}>
+          <Info size={14} className="text-accent mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Apoyá el celu <span className="text-slate-200 font-semibold">verticalmente</span> a unos 2–3 metros de distancia, a la altura del pecho. Asegurate de que tu cuerpo completo (cabeza y pies) sea visible en la pantalla antes de saltar.
+          </p>
+        </div>
+      )}
+
       {/*
         Zona de cámara / video
         — Mismo elemento React siempre montado (mientras !jumpResult) para que el ref del
@@ -416,23 +472,10 @@ export default function JumpAnalysis({ onNavigate }) {
               </button>
             )}
 
-            {/* Centro-derecha: estado de detección de pose */}
+            {/* Centro-derecha: indicador de cuerpo en cuadro */}
             {isRunning && (
-              <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ml-auto"
-                style={{
-                  background: poseReady ? 'rgba(34,197,94,0.85)' : 'rgba(15,23,42,0.8)',
-                  color:      poseReady ? '#fff'                  : '#94a3b8',
-                }}
-              >
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{
-                    background: poseReady ? '#fff' : '#38bdf8',
-                    opacity:    poseReady ? 1     : 0.7,
-                  }}
-                />
-                {poseReady ? 'Pose detectada ✓' : 'Detectando pose…'}
+              <div className="ml-auto">
+                <FrameStatusBadge lm={landmarks} poseReady={poseReady} />
               </div>
             )}
 
@@ -486,7 +529,7 @@ export default function JumpAnalysis({ onNavigate }) {
 
               {!poseReady && (
                 <p className="text-center text-xs text-slate-400 mb-3">
-                  Colocate de perfil a la cámara
+                  Asegurate que todo tu cuerpo sea visible (cabeza y pies)
                 </p>
               )}
 

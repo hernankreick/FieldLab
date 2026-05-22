@@ -270,6 +270,7 @@ export default function JumpAnalysis({ onNavigate }) {
 
   async function handleVideoUpload(e) {
     const file = e.target.files?.[0];
+    e.target.value = null; // permite re-seleccionar el mismo archivo
     if (!file) return;
     setJumpResult(null);
     setSaved(false);
@@ -531,7 +532,7 @@ export default function JumpAnalysis({ onNavigate }) {
                 </div>
               )}
 
-              {frameStatus !== 'green' && (
+              {mode === 'realtime' && frameStatus !== 'green' && (
                 <p className="text-center text-xs text-slate-400 mb-3 leading-relaxed">
                   {facing === 'environment'
                     ? 'Colocate a 2–3 metros del atleta. El atleta debe estar de perfil a la cámara, con el cuerpo completo visible en pantalla.'

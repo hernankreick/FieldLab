@@ -175,6 +175,72 @@ function JumpResult({ result, massKg, onSave, onDiscard }) {
   );
 }
 
+// ── Panel de debug en pantalla ────────────────────────────────────────────────
+// Lee debugRef.current (ref, no estado) — no causa re-renders extra por sí solo.
+// El componente ya re-renderiza cada frame porque poseData cambia, así que los
+// valores siempre están frescos.
+function DebugPanel({ debugRef, detectionPhase, timerState }) {
+  const d = debugRef?.current ?? {};
+
+  const row = (label, value, color = '#94a3b8') => (
+    <div className="flex justify-between gap-3 leading-snug">
+      <span style={{ color: '#64748b', fontSize: 10 }}>{label}</span>
+      <span style={{ color, fontSize: 10, fontFamily: 'monospace', textAlign: 'right' }}>{value ?? '—'}</span>
+    </div>
+  );
+
+  const vis = (v) => {
+    if (v == null) return '—';
+    const s = Number(v).toFixed(2);
+    return s;
+  };
+
+  const deltaColor = (d.delta != null)
+    ? (d.delta > 0.03 ? '#22c55e' : d.delta > 0 ? '#f59e0b' : '#ef4444')
+    : '#94a3b8';
+
+  const phaseColor = detectionPhase === 'calibrating' ? '#94a3b8'
+    : detectionPhase === 'ready'   ? '#22c55e'
+    : detectionPhase === 'jumping' ? '#f59e0b'
+    : '#64748b';
+
+  return (
+    <div
+      className="absolute left-2 bottom-24 z-20 flex flex-col gap-0.5 rounded-xl px-2.5 py-2"
+      style={{
+        background:   'rgba(2,6,23,0.88)',
+        border:       '1px solid rgba(255,255,255,0.1)',
+        minWidth:     160,
+        backdropFilter: 'blur(6px)',
+      }}
+    >
+      <div style={{ color: '#38bdf8', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 3 }}>
+        ▶ DEBUG
+      </div>
+      {row('Fase',       detectionPhase ?? '—',                                    phaseColor)}
+      {row('Timer',      timerState ?? '—')}
+      {row('Baseline',   d.baseline != null ? `Y=${d.baseline.toFixed(3)} ✓` : 'calibrando…')}
+      {row('Tobillo Y',  d.ankleY  != null ? d.ankleY.toFixed(3)  : '—')}
+      {row('Δ baseline', d.delta   != null ? `${d.delta > 0 ? '+' : ''}${(d.delta * 100).toFixed(1)}%` : '—', deltaColor)}
+      {row('Vis. L/R',   (d.visL != null && d.visR != null)
+        ? `${vis(d.visL)} / ${vis(d.visR)}`
+        : '—',
+        (d.visL != null && d.visR != null && Math.min(d.visL, d.visR) >= 0.50) ? '#22c55e' : '#ef4444'
+      )}
+      {row('LowVis buf', d.lowVisBuf != null ? `${d.lowVisBuf}/8 frames` : '—',
+        d.lowVisBuf >= 6 ? '#ef4444' : d.lowVisBuf >= 3 ? '#f59e0b' : '#94a3b8'
+      )}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', marginTop: 3, paddingTop: 3 }} />
+      {row('Despegue',   d.takeoffAt  ?? '—', '#f59e0b')}
+      {row('Aterrizaje', d.landingAt  ?? '—', '#22c55e')}
+      {row('Vuelo',      d.lastFlightMs != null ? `${d.lastFlightMs} ms` : '—',
+        d.lastFlightMs != null ? '#38bdf8' : '#94a3b8'
+      )}
+      {row('Rechazo',    d.rejectReason ?? '—', d.rejectReason ? '#ef4444' : '#94a3b8')}
+    </div>
+  );
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function JumpAnalysis({ onNavigate }) {
   const [mode,       setMode]       = useState('realtime');
@@ -201,6 +267,7 @@ export default function JumpAnalysis({ onNavigate }) {
     isRunning, landmarks, poseData, poseReady, error,
     progress, mpLoading, mpError,
     detectionPhase, jumpDetection, resetDetection,
+    debugRef,
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
 
@@ -560,6 +627,15 @@ export default function JumpAnalysis({ onNavigate }) {
                 ¡SALTÁ!
               </span>
             </div>
+          )}
+
+          {/* ── Panel debug (solo realtime, mientras cámara activa) ─────── */}
+          {isRunning && mode === 'realtime' && (
+            <DebugPanel
+              debugRef={debugRef}
+              detectionPhase={detectionPhase}
+              timerState={timerState}
+            />
           )}
 
           {/* ── Barra superior ────────────────────────────────────────────── */}

@@ -13,15 +13,15 @@ const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose';
 
-// Detection constants
+// Detection constants  (amplios temporalmente para diagnóstico)
 const CALIB_FRAMES    = 60;   // frames to average for baseline (~2 s @ 30 fps)
-const VIS_MIN         = 0.55; // minimum ankle visibility to trust a reading (lowered slightly)
-const TAKEOFF_THR     = 0.04; // ankles must rise > 4 % of frame height to start flight
-const LAND_THR        = 0.03; // ankles within 3 % of baseline → landed
-const FLIGHT_MIN_MS   = 150;  // reject flights shorter than this (noise)
-const FLIGHT_MAX_MS   = 900;  // reject flights longer than this (tracking glitch)
+const VIS_MIN         = 0.50; // minimum ankle visibility
+const TAKEOFF_THR     = 0.03; // ankles must rise > 3 % of frame height to start flight
+const LAND_THR        = 0.02; // ankles within 2 % of baseline → landed
+const FLIGHT_MIN_MS   = 120;  // reject flights shorter than this
+const FLIGHT_MAX_MS   = 1000; // reject flights longer than this
 const COOLDOWN_MS     = 2000; // lockout after a detected jump
-const LOW_VIS_CANCEL  = 5;    // consecutive low-vis frames needed to abort a flight
+const LOW_VIS_CANCEL  = 8;    // consecutive low-vis frames needed to abort a flight
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -107,6 +107,21 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
   const cooldownRef     = useRef(0);    // performance.now() threshold for next detection
   const lowVisFramesRef = useRef(0);    // consecutive low-vis frames during flight (buffer)
 
+  // ── Debug snapshot (updated every frame, read by component on each render) ──
+  const debugRef = useRef({
+    baseline:     null,   // frozen ankle-Y baseline (null while calibrating)
+    ankleY:       null,   // current average ankle Y
+    delta:        null,   // baseline - ankleY (positive = above baseline)
+    deltaPercent: null,   // delta * 100 as string '±X.X%'
+    visL:         null,   // left ankle visibility
+    visR:         null,   // right ankle visibility
+    lowVisBuf:    0,      // current consecutive low-vis frame count
+    takeoffAt:    null,   // time string of last takeoff
+    landingAt:    null,   // time string of last landing
+    lastFlightMs: null,   // last calculated flight time (even if rejected)
+    rejectReason: null,   // why last jump was rejected
+  });
+
   // ── Jump detection state (drives component UI) ─────────────────────────────
   // 'calibrating' → 'ready' → 'jumping' → 'ready' (loop)
   const [detectionPhase, setDetectionPhase] = useState(null);
@@ -131,6 +146,19 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     const visR   = ankleR?.visibility ?? 0;
     const avgY   = (ankleL.y + ankleR.y) / 2; // smaller = higher in frame
 
+    // Update debug snapshot on every frame (component reads this on each render)
+    const dbg = debugRef.current;
+    dbg.ankleY    = avgY;
+    dbg.visL      = visL;
+    dbg.visR      = visR;
+    dbg.lowVisBuf = lowVisFramesRef.current;
+    if (baselineRef.current != null) {
+      const delta        = baselineRef.current - avgY; // positive = above baseline
+      dbg.baseline       = baselineRef.current;
+      dbg.delta          = delta;
+      dbg.deltaPercent   = (delta * 100).toFixed(1);
+    }
+
     // ── CALIBRATING: build ankle-Y baseline from first CALIB_FRAMES good frames ──
     if (phase === 'calibrating') {
       if (visL > VIS_MIN && visR > VIS_MIN) {
@@ -138,10 +166,12 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
         if (calibBuf.current.length >= CALIB_FRAMES) {
           const sum = calibBuf.current.reduce((a, b) => a + b, 0);
           baselineRef.current = sum / calibBuf.current.length;
+          dbg.baseline        = baselineRef.current;
+          dbg.rejectReason    = null;
           calibBuf.current    = [];
           detPhaseRef.current = 'ready';
           setDetectionPhase('ready');
-          console.log('[Detección] Baseline OK — ankleY promedio:', baselineRef.current.toFixed(3));
+          console.log('[Det] Baseline OK:', baselineRef.current.toFixed(3));
         }
       }
       return;
@@ -150,17 +180,23 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     // ── READY: watch for takeoff ───────────────────────────────────────────────
     if (phase === 'ready') {
       if (now < cooldownRef.current) return;
-      // Both ankles rise more than TAKEOFF_THR above their standing position
       if (visL > VIS_MIN && visR > VIS_MIN &&
           avgY < baselineRef.current - TAKEOFF_THR) {
-        detPhaseRef.current   = 'jumping';
+        detPhaseRef.current     = 'jumping';
         lowVisFramesRef.current = 0;
+        dbg.lowVisBuf           = 0;
         setDetectionPhase('jumping');
         flightT0.current  = now;
         minVisRef.current = Math.min(visL, visR);
-        console.log('[Detección] Despegue detectado — ankleY:', avgY.toFixed(3),
+        dbg.takeoffAt     = new Date().toLocaleTimeString('es', { hour12: false,
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          fractionalSecondDigits: 3 });
+        dbg.landingAt     = null;
+        dbg.lastFlightMs  = null;
+        dbg.rejectReason  = null;
+        console.log('[Det] Despegue — ankleY:', avgY.toFixed(3),
           '| baseline:', baselineRef.current.toFixed(3),
-          '| delta:', (baselineRef.current - avgY).toFixed(3));
+          '| Δ:', (baselineRef.current - avgY).toFixed(3));
       }
       return;
     }
@@ -170,35 +206,41 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
       const visMin = Math.min(visL, visR);
       if (visMin < minVisRef.current) minVisRef.current = visMin;
 
-      // Buffer: sólo cancelar si hay LOW_VIS_CANCEL frames consecutivos con baja vis.
-      // Durante el vuelo real es normal perder 1-2 frames de tobillo.
       if (visMin < VIS_MIN) {
         lowVisFramesRef.current += 1;
+        dbg.lowVisBuf = lowVisFramesRef.current;
         if (lowVisFramesRef.current >= LOW_VIS_CANCEL) {
-          console.log('[Detección] Vuelo cancelado — baja visibilidad por',
-            lowVisFramesRef.current, 'frames consecutivos. visMin:', visMin.toFixed(2));
+          dbg.rejectReason = `vis. baja (${lowVisFramesRef.current} frames)`;
+          console.log('[Det] Cancelado por baja vis —', lowVisFramesRef.current, 'frames');
           detPhaseRef.current = 'ready';
           setDetectionPhase('ready');
         }
-        return; // skip landing check while visibility is low
+        return;
       }
-      // Visibility OK — reset consecutive counter
       lowVisFramesRef.current = 0;
+      dbg.lowVisBuf = 0;
 
       // Landing: both ankles return within LAND_THR of standing baseline
       if (avgY > baselineRef.current - LAND_THR) {
         const flightMs = Math.round(now - flightT0.current);
-        console.log('[Detección] Aterrizaje — ankleY:', avgY.toFixed(3),
-          '| flightMs:', flightMs,
-          '| válido:', flightMs >= FLIGHT_MIN_MS && flightMs <= FLIGHT_MAX_MS);
+        dbg.landingAt    = new Date().toLocaleTimeString('es', { hour12: false,
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          fractionalSecondDigits: 3 });
+        dbg.lastFlightMs = flightMs;
+        console.log('[Det] Aterrizaje — flightMs:', flightMs,
+          '| ankleY:', avgY.toFixed(3));
+
         if (flightMs >= FLIGHT_MIN_MS && flightMs <= FLIGHT_MAX_MS) {
+          dbg.rejectReason = null;
           setJumpDetection({
             flightMs,
             maxKneeAngle: pd ? Math.max(pd.kneeAngleLeft, pd.kneeAngleRight) : null,
           });
         } else {
-          console.log('[Detección] Rechazado — flightMs', flightMs,
-            'fuera de rango [', FLIGHT_MIN_MS, '-', FLIGHT_MAX_MS, ']');
+          dbg.rejectReason = flightMs < FLIGHT_MIN_MS
+            ? `muy corto (${flightMs}ms < ${FLIGHT_MIN_MS})`
+            : `muy largo (${flightMs}ms > ${FLIGHT_MAX_MS})`;
+          console.log('[Det] Rechazado —', dbg.rejectReason);
         }
         cooldownRef.current = now + COOLDOWN_MS;
         detPhaseRef.current = 'ready';
@@ -216,6 +258,11 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     minVisRef.current        = 1;
     cooldownRef.current      = 0;
     lowVisFramesRef.current  = 0;
+    debugRef.current = {
+      baseline: null, ankleY: null, delta: null, deltaPercent: null,
+      visL: null, visR: null, lowVisBuf: 0,
+      takeoffAt: null, landingAt: null, lastFlightMs: null, rejectReason: null,
+    };
     setDetectionPhase('calibrating');
   }, []);
 
@@ -464,6 +511,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
     isRunning, landmarks, poseData, poseReady,
     error, progress, mpLoading, mpError,
     detectionPhase, jumpDetection, resetDetection,
+    debugRef,
     startCamera, stopCamera, analyzeVideo,
   };
 }

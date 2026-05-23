@@ -78,7 +78,16 @@ function calcPoseData(lm) {
   };
 }
 
-export function usePoseEstimation({ mode = 'realtime' } = {}) {
+// Portable timestamp — avoids Intl.DateTimeFormat fractionalSecondDigits
+// which isn't supported on Safari < 14.5 / older Android.
+function nowStamp() {
+  const t = new Date();
+  const h = t.getHours().toString().padStart(2, '0');
+  const m = t.getMinutes().toString().padStart(2, '0');
+  const s = t.getSeconds().toString().padStart(2, '0');
+  const ms = t.getMilliseconds().toString().padStart(3, '0');
+  return `${h}:${m}:${s}.${ms}`;
+}
   // ── Core refs ──────────────────────────────────────────────────────────────
   const videoRef   = useRef(null);
   const canvasRef  = useRef(null);
@@ -188,9 +197,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
         setDetectionPhase('jumping');
         flightT0.current  = now;
         minVisRef.current = Math.min(visL, visR);
-        dbg.takeoffAt     = new Date().toLocaleTimeString('es', { hour12: false,
-          hour: '2-digit', minute: '2-digit', second: '2-digit',
-          fractionalSecondDigits: 3 });
+        dbg.takeoffAt     = nowStamp();
         dbg.landingAt     = null;
         dbg.lastFlightMs  = null;
         dbg.rejectReason  = null;
@@ -223,9 +230,7 @@ export function usePoseEstimation({ mode = 'realtime' } = {}) {
       // Landing: both ankles return within LAND_THR of standing baseline
       if (avgY > baselineRef.current - LAND_THR) {
         const flightMs = Math.round(now - flightT0.current);
-        dbg.landingAt    = new Date().toLocaleTimeString('es', { hour12: false,
-          hour: '2-digit', minute: '2-digit', second: '2-digit',
-          fractionalSecondDigits: 3 });
+        dbg.landingAt    = nowStamp();
         dbg.lastFlightMs = flightMs;
         console.log('[Det] Aterrizaje — flightMs:', flightMs,
           '| ankleY:', avgY.toFixed(3));

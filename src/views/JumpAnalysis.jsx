@@ -377,6 +377,7 @@ export default function JumpAnalysis({ onNavigate }) {
     if (!file) return;
     setJumpResult(null);
     setSaved(false);
+    setSavedPlayerName(null);
     try {
       await analyzeVideo(file);
     } catch (err) {
@@ -930,7 +931,7 @@ export default function JumpAnalysis({ onNavigate }) {
             <div>
               <h2 className="text-base font-bold text-slate-100">¿Para quién es el resultado?</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {jumpResult?.heightCm.toFixed(1)} cm · {jumpResult?.type}
+                {jumpResult?.heightCm?.toFixed(1)} cm · {jumpResult?.type}
               </p>
             </div>
             <button

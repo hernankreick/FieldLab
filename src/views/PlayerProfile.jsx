@@ -16,6 +16,13 @@ import { PLAYERS } from '../data/players';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Colores por altura de salto (mismo criterio que JumpAnalysis)
+function heightColor(cm) {
+  if (cm >= 40) return '#22c55e';
+  if (cm >= 25) return '#f59e0b';
+  return '#ef4444';
+}
+
 function isToday(ts) {
   return new Date(ts).toDateString() === new Date().toDateString();
 }

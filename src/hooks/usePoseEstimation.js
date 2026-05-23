@@ -116,6 +116,7 @@ export function usePoseEstimation({ mode }) {
   const calibLastGoodRef = useRef(null); // performance.now() of last good calib frame
   const baselineRef      = useRef(null); // mean ankle Y while standing (0–1, y=0 is top)
   const flightT0         = useRef(null); // performance.now() at takeoff
+  const lockedSideRef    = useRef(null); // 'I' | 'D' — ankle locked at takeoff for landing check
   const minVisRef        = useRef(1);    // minimum ankle visibility seen during flight
   const cooldownRef      = useRef(0);    // performance.now() threshold for next detection
   const lowVisFramesRef  = useRef(0);    // consecutive low-vis frames during flight (buffer)
@@ -222,16 +223,17 @@ export function usePoseEstimation({ mode }) {
         lowVisFramesRef.current  = 0;
         dbg.lowVisBuf            = 0;
         setDetectionPhase('jumping');
-        flightT0.current  = now;
-        minVisRef.current = bestVis;
-        dbg.takeoffAt     = nowStamp();
-        dbg.landingAt     = null;
-        dbg.lastFlightMs  = null;
-        dbg.rejectReason  = null;
+        flightT0.current     = now;
+        lockedSideRef.current = bestSide; // lock ankle identity for landing detection
+        minVisRef.current    = bestVis;
+        dbg.takeoffAt        = nowStamp();
+        dbg.landingAt        = null;
+        dbg.lastFlightMs     = null;
+        dbg.rejectReason     = null;
         console.log('[Det] Despegue — bestY:', bestY.toFixed(3),
           '| baseline:', baselineRef.current.toFixed(3),
           '| Δ:', (baselineRef.current - bestY).toFixed(3),
-          '| tobillo:', bestSide);
+          '| tobillo bloqueado:', bestSide);
       }
       return;
     }
@@ -240,6 +242,7 @@ export function usePoseEstimation({ mode }) {
     if (phase === 'jumping') {
       if (bestVis < minVisRef.current) minVisRef.current = bestVis;
 
+      // Cancellation uses best-visible ankle (either) — don't cancel if any ankle visible
       if (bestVis < VIS_MIN) {
         lowVisFramesRef.current += 1;
         dbg.lowVisBuf = lowVisFramesRef.current;
@@ -254,13 +257,19 @@ export function usePoseEstimation({ mode }) {
       lowVisFramesRef.current = 0;
       dbg.lowVisBuf = 0;
 
-      // Landing: best ankle returns within LAND_THR of the standing baseline
-      if (bestY > baselineRef.current - LAND_THR) {
+      // Landing: use the LOCKED ankle (set at takeoff) so that a frame-to-frame
+      // switch of the dominant ankle doesn't cause a false landing signal.
+      // e.g. if the elevated near-ankle loses visibility and the grounded far-ankle
+      // takes over as bestY, the Y would jump to ground level → false landing.
+      const lockedY = lockedSideRef.current === 'I'
+        ? (ankleL?.y ?? bestY)
+        : (ankleR?.y ?? bestY);
+      if (lockedY > baselineRef.current - LAND_THR) {
         const flightMs = Math.round(now - flightT0.current);
         dbg.landingAt    = nowStamp();
         dbg.lastFlightMs = flightMs;
         console.log('[Det] Aterrizaje — flightMs:', flightMs,
-          '| bestY:', bestY.toFixed(3), '| tobillo:', bestSide);
+          '| lockedY:', lockedY.toFixed(3), '| tobillo:', lockedSideRef.current);
 
         if (flightMs >= FLIGHT_MIN_MS && flightMs <= FLIGHT_MAX_MS) {
           dbg.rejectReason = null;
@@ -288,6 +297,7 @@ export function usePoseEstimation({ mode }) {
     calibLastGoodRef.current = null;
     baselineRef.current      = null;
     flightT0.current         = null;
+    lockedSideRef.current    = null;
     minVisRef.current        = 1;
     cooldownRef.current      = 0;
     lowVisFramesRef.current  = 0;

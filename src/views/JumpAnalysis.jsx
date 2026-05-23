@@ -23,14 +23,16 @@ function heightColor(cm) {
   return '#ef4444';
 }
 
-// Verde: tobillos + caderas visibles ≥ 0.7. Amarillo: alguno parcial. Rojo: crítico ausente.
-// Nota: NO incluye nariz/cabeza porque al filmar de perfil la cara puede no verse bien.
+// Rojo:    mejor tobillo < 0.15 → detección fallará con seguridad.
+// Amarillo: mejor tobillo 0.15–0.50 → detección marginal, vale la pena ajustar posición.
+// Verde:    mejor tobillo ≥ 0.50 y caderas/rodillas visibles → detección confiable.
+// Nota: usa el tobillo MÁS visible (max), igual que la lógica de detección.
 function calcFrameStatus(lm) {
   if (!lm || lm.length < 33) return null;
-  const critical   = [27, 28];                 // tobillos (clave para detección)
-  const secondary  = [23, 24, 25, 26];         // caderas y rodillas
-  if (critical.some(i => (lm[i]?.visibility ?? 0) < 0.5)) return 'red';
-  if ([...critical, ...secondary].some(i => (lm[i]?.visibility ?? 0) < 0.6)) return 'yellow';
+  const bestAnkle  = Math.max(lm[27]?.visibility ?? 0, lm[28]?.visibility ?? 0);
+  const secondary  = [23, 24, 25, 26]; // caderas y rodillas
+  if (bestAnkle < 0.15) return 'red';
+  if (bestAnkle < 0.50 || secondary.some(i => (lm[i]?.visibility ?? 0) < 0.5)) return 'yellow';
   return 'green';
 }
 
@@ -295,7 +297,7 @@ export default function JumpAnalysis({ onNavigate }) {
         playBeep(1760, 200);
         countdownTimerRef.current = setTimeout(() => {
           setTimerState('detecting');
-          // 3-second detection window — auto-timeout if no valid jump
+          // 5-second detection window — auto-timeout if no valid jump
           detectionTimerRef.current = setTimeout(() => {
             setTimerState('timeout');
             stopCamera();

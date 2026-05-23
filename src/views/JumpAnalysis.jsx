@@ -248,6 +248,10 @@ export default function JumpAnalysis({ onNavigate }) {
   } = usePoseEstimation({ mode });
 
   const frameStatus = poseReady ? calcFrameStatus(landmarks) : null;
+  // Minimum ankle visibility (landmarks 27=left, 28=right) — used for framing guards
+  const ankleVis = landmarks
+    ? Math.min(landmarks[27]?.visibility ?? 0, landmarks[28]?.visibility ?? 0)
+    : 0;
 
   // Bloquear scroll del body cuando la cámara está en fullscreen (incluso mientras cambia)
   useEffect(() => {
@@ -296,13 +300,14 @@ export default function JumpAnalysis({ onNavigate }) {
     countdownTimerRef.current = setTimeout(tick, 1000);
   }, [stopCamera]);
 
-  // Fire countdown the first time calibration completes (detectionPhase flips to 'ready')
+  // Fire countdown once calibration completes AND ankles are visible (vis ≥ 0.3).
+  // ankleVis is in the dep array so the effect retries if the person re-frames.
   useEffect(() => {
-    if (detectionPhase === 'ready' && isRunning && !countdownStartedRef.current) {
+    if (detectionPhase === 'ready' && isRunning && !countdownStartedRef.current && ankleVis >= 0.3) {
       countdownStartedRef.current = true;
       startCountdown();
     }
-  }, [detectionPhase, isRunning, startCountdown]);
+  }, [detectionPhase, isRunning, ankleVis, startCountdown]);
 
   // Handle jump detected by the hook — only during the active detection window
   useEffect(() => {
@@ -602,6 +607,52 @@ export default function JumpAnalysis({ onNavigate }) {
               >
                 ¡SALTÁ!
               </span>
+            </div>
+          )}
+
+          {/* ── Aviso tobillos no detectados ─────────────────────────────── */}
+          {isRunning && mode === 'realtime' && poseReady && ankleVis < 0.1
+            && detectionPhase === 'calibrating' && (
+            <div
+              className="absolute inset-x-4 z-20 flex items-start gap-2 px-4 py-3 rounded-2xl"
+              style={{
+                top:        '38%',
+                background: 'rgba(234,179,8,0.18)',
+                border:     '1px solid rgba(234,179,8,0.45)',
+              }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#fde047' }}>
+                  Tobillos no detectados
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#fef08a' }}>
+                  Alejate más o encuadrá el cuerpo completo en pantalla
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Aviso post-calibración: cuerpo bien encuadrado pero vis baja → countdown en espera */}
+          {isRunning && mode === 'realtime' && detectionPhase === 'ready'
+            && !timerState && ankleVis < 0.3 && (
+            <div
+              className="absolute inset-x-4 z-20 flex items-start gap-2 px-4 py-3 rounded-2xl"
+              style={{
+                top:        '38%',
+                background: 'rgba(234,179,8,0.18)',
+                border:     '1px solid rgba(234,179,8,0.45)',
+              }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#fde047' }}>
+                  Ajustá la posición
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#fef08a' }}>
+                  El countdown no arranca hasta que los tobillos sean visibles
+                </p>
+              </div>
             </div>
           )}
 

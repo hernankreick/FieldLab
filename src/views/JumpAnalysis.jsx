@@ -760,6 +760,14 @@ export default function JumpAnalysis({ onNavigate }) {
                       ¡Saltá ahora!
                     </span>
                   )}
+                  {timerState === 'detecting' && detectionPhase === 'countermove' && (
+                    <span
+                      className="text-sm font-bold tracking-wide"
+                      style={{ color: '#a78bfa' }}
+                    >
+                      Contramovimiento…
+                    </span>
+                  )}
                   {timerState === 'detecting' && detectionPhase === 'jumping' && (
                     <span
                       className="text-sm font-bold tracking-wide"

@@ -13,15 +13,17 @@ const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose';
 
-const CALIB_FRAMES    = 60;   // frames to average for baseline (~2 s @ 30 fps)
-const CALIB_RESET_MS  = 2000; // restart calib buffer if no good frame in this window
-const VIS_MIN         = 0.15; // minimum visibility on the best-visible ankle
-const TAKEOFF_THR     = 0.03; // best ankle must rise > 3 % of frame height
-const LAND_THR        = 0.02; // best ankle within 2 % of baseline → landed
-const FLIGHT_MIN_MS   = 120;  // reject flights shorter than this
-const FLIGHT_MAX_MS   = 1000; // reject flights longer than this
-const COOLDOWN_MS     = 2000; // lockout after a detected jump
-const LOW_VIS_CANCEL  = 8;    // consecutive low-vis frames needed to abort a flight
+const CALIB_FRAMES         = 60;   // frames to average for baseline (~2 s @ 30 fps)
+const CALIB_RESET_MS       = 2000; // restart calib buffer if no good frame in this window
+const VIS_MIN              = 0.15; // minimum visibility on the best-visible ankle
+const COUNTER_THR          = 0.03; // ankles must sink > 3 % below baseline to enter countermove
+const COUNTER_ABORT_FRAMES = 10;   // consecutive frames at/above baseline to abort countermove
+const TAKEOFF_THR          = 0.03; // ankle must rise > 3 % above baseline to fire takeoff
+const LAND_THR             = 0.02; // best ankle within 2 % of baseline → landed
+const FLIGHT_MIN_MS        = 120;  // reject flights shorter than this
+const FLIGHT_MAX_MS        = 1000; // reject flights longer than this
+const COOLDOWN_MS          = 2000; // lockout after a detected jump
+const LOW_VIS_CANCEL       = 8;    // consecutive low-vis frames needed to abort a flight
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -111,15 +113,17 @@ export function usePoseEstimation({ mode }) {
   const [mpError,   setMpError]   = useState(null);
 
   // ── Jump detection refs (all mutable, no re-render cost) ───────────────────
-  const detPhaseRef      = useRef(null); // 'calibrating' | 'ready' | 'jumping' | null
-  const calibBuf         = useRef([]);   // ankle-Y samples collected during calibration
-  const calibLastGoodRef = useRef(null); // performance.now() of last good calib frame
-  const baselineRef      = useRef(null); // mean ankle Y while standing (0–1, y=0 is top)
-  const flightT0         = useRef(null); // performance.now() at takeoff
-  const lockedSideRef    = useRef(null); // 'I' | 'D' — ankle locked at takeoff for landing check
-  const minVisRef        = useRef(1);    // minimum ankle visibility seen during flight
-  const cooldownRef      = useRef(0);    // performance.now() threshold for next detection
-  const lowVisFramesRef  = useRef(0);    // consecutive low-vis frames during flight (buffer)
+  // 'calibrating' | 'ready' | 'countermove' | 'jumping' | null
+  const detPhaseRef          = useRef(null);
+  const calibBuf             = useRef([]);   // ankle-Y samples collected during calibration
+  const calibLastGoodRef     = useRef(null); // performance.now() of last good calib frame
+  const baselineRef          = useRef(null); // mean ankle Y while standing (0–1, y=0 is top)
+  const flightT0             = useRef(null); // performance.now() at takeoff
+  const lockedSideRef        = useRef(null); // 'I'|'D' — ankle locked at takeoff for landing
+  const minVisRef            = useRef(1);    // minimum ankle visibility seen during flight
+  const cooldownRef          = useRef(0);    // performance.now() threshold for next detection
+  const lowVisFramesRef      = useRef(0);    // consecutive low-vis frames during flight
+  const counterAbortCountRef = useRef(0);    // consecutive frames at/above baseline in countermove
 
   // ── Debug snapshot (updated every frame, read by component on each render) ──
   const debugRef = useRef({
@@ -215,25 +219,73 @@ export function usePoseEstimation({ mode }) {
       return;
     }
 
-    // ── READY: watch for takeoff ───────────────────────────────────────────────
+    // ── READY: wait for downward countermovement ──────────────────────────────
+    // Takeoff is NOT detected directly from ready. The jump is only valid once
+    // the downward (countermovement) phase has been observed first. This prevents
+    // ankle dorsiflexion noise during squat prep from triggering a false takeoff.
     if (phase === 'ready') {
       if (now < cooldownRef.current) return;
-      if (bestVis > VIS_MIN && bestY < baselineRef.current - TAKEOFF_THR) {
-        detPhaseRef.current      = 'jumping';
-        lowVisFramesRef.current  = 0;
-        dbg.lowVisBuf            = 0;
+      if (bestVis > VIS_MIN && bestY > baselineRef.current + COUNTER_THR) {
+        detPhaseRef.current          = 'countermove';
+        counterAbortCountRef.current = 0;
+        setDetectionPhase('countermove');
+        console.log('[Det] Contramovimiento — bestY:', bestY.toFixed(3),
+          '| baseline:', baselineRef.current.toFixed(3),
+          '| Δ:', (bestY - baselineRef.current).toFixed(3));
+      }
+      return;
+    }
+
+    // ── COUNTERMOVE: ankles went DOWN — now watch for the real upward takeoff ──
+    // Only exits to: 'jumping' (takeoff triggered) or 'ready' (movement aborted).
+    if (phase === 'countermove') {
+      if (now < cooldownRef.current) return;
+
+      // Visibility lost → abort back to ready
+      if (bestVis < VIS_MIN) {
+        detPhaseRef.current          = 'ready';
+        counterAbortCountRef.current = 0;
+        setDetectionPhase('ready');
+        return;
+      }
+
+      // Takeoff: ankle rose past TAKEOFF_THR above baseline.
+      // Check this BEFORE the abort counter so a fast push-off isn't cancelled
+      // when it briefly passes through the baseline level on the way up.
+      if (bestY < baselineRef.current - TAKEOFF_THR) {
+        detPhaseRef.current          = 'jumping';
+        counterAbortCountRef.current = 0;
+        lowVisFramesRef.current      = 0;
+        dbg.lowVisBuf                = 0;
         setDetectionPhase('jumping');
-        flightT0.current     = now;
+        flightT0.current      = now;
         lockedSideRef.current = bestSide; // lock ankle identity for landing detection
-        minVisRef.current    = bestVis;
-        dbg.takeoffAt        = nowStamp();
-        dbg.landingAt        = null;
-        dbg.lastFlightMs     = null;
-        dbg.rejectReason     = null;
+        minVisRef.current     = bestVis;
+        dbg.takeoffAt         = nowStamp();
+        dbg.landingAt         = null;
+        dbg.lastFlightMs      = null;
+        dbg.rejectReason      = null;
         console.log('[Det] Despegue — bestY:', bestY.toFixed(3),
           '| baseline:', baselineRef.current.toFixed(3),
           '| Δ:', (baselineRef.current - bestY).toFixed(3),
           '| tobillo bloqueado:', bestSide);
+        return;
+      }
+
+      // Ankle at or above baseline but below takeoff threshold → push-off or abort.
+      // We count consecutive frames at standing height; if the person has clearly
+      // returned to rest (> COUNTER_ABORT_FRAMES) we cancel the countermove state.
+      if (bestY <= baselineRef.current) {
+        counterAbortCountRef.current += 1;
+        if (counterAbortCountRef.current >= COUNTER_ABORT_FRAMES) {
+          detPhaseRef.current          = 'ready';
+          counterAbortCountRef.current = 0;
+          setDetectionPhase('ready');
+          console.log('[Det] Contramovimiento abortado — vuelve a ready');
+        }
+      } else {
+        // Still in the squat zone — keep waiting for the upward push
+        counterAbortCountRef.current = 0;
       }
       return;
     }
@@ -259,8 +311,6 @@ export function usePoseEstimation({ mode }) {
 
       // Landing: use the LOCKED ankle (set at takeoff) so that a frame-to-frame
       // switch of the dominant ankle doesn't cause a false landing signal.
-      // e.g. if the elevated near-ankle loses visibility and the grounded far-ankle
-      // takes over as bestY, the Y would jump to ground level → false landing.
       const lockedY = lockedSideRef.current === 'I'
         ? (ankleL?.y ?? bestY)
         : (ankleR?.y ?? bestY);
@@ -299,8 +349,9 @@ export function usePoseEstimation({ mode }) {
     flightT0.current         = null;
     lockedSideRef.current    = null;
     minVisRef.current        = 1;
-    cooldownRef.current      = 0;
-    lowVisFramesRef.current  = 0;
+    cooldownRef.current          = 0;
+    lowVisFramesRef.current      = 0;
+    counterAbortCountRef.current = 0;
     debugRef.current = {
       baseline: null, ankleY: null, delta: null, deltaPercent: null,
       visL: null, visR: null, activeAnkle: null, activeVis: null, lowVisBuf: 0,

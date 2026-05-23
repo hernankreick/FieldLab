@@ -180,47 +180,8 @@ function JumpResult({ result, massKg, onSave, onDiscard }) {
 }
 
 // ── Panel de debug en pantalla ────────────────────────────────────────────────
-// Lee debugRef.current (ref, no estado) — no causa re-renders extra por sí solo.
-// El componente ya re-renderiza cada frame porque poseData cambia, así que los
-// valores siempre están frescos.
-function DebugPanel({ debugRef, detectionPhase }) {
-  const d = debugRef?.current ?? {};
-  const F = 9; // font-size base
-
-  const phaseColor = detectionPhase === 'calibrating' ? '#94a3b8'
-    : detectionPhase === 'ready'   ? '#22c55e'
-    : detectionPhase === 'jumping' ? '#f59e0b'
-    : '#64748b';
-
-  // Active ankle: show which one is being used and its visibility
-  const ankleOk  = d.activeVis != null && d.activeVis >= 0.15;
-  const ankleStr = d.activeAnkle != null && d.activeVis != null
-    ? `${d.activeAnkle} ${d.activeVis.toFixed(2)}  (I:${(d.visL ?? 0).toFixed(2)} D:${(d.visR ?? 0).toFixed(2)})`
-    : '—';
-
-  const row = (label, value, color = '#94a3b8') => (
-    <div className="flex justify-between gap-2">
-      <span style={{ color: '#475569', fontSize: F }}>{label}</span>
-      <span style={{ color, fontSize: F, fontFamily: 'monospace' }}>{value ?? '—'}</span>
-    </div>
-  );
-
-  return (
-    <div
-      className="absolute top-12 right-2 z-20 flex flex-col gap-0.5 rounded-lg px-2 py-1.5"
-      style={{
-        background: 'rgba(2,6,23,0.65)',
-        border:     '1px solid rgba(255,255,255,0.08)',
-        opacity:    0.75,
-        minWidth:   148,
-      }}
-    >
-      {row('Fase',     detectionPhase ?? '—', phaseColor)}
-      {row('Tobillo',  ankleStr, ankleOk ? '#22c55e' : '#ef4444')}
-      {row('Rechazo',  d.rejectReason ?? '—', d.rejectReason ? '#ef4444' : '#475569')}
-    </div>
-  );
-}
+// (componente mantenido pero sin renderizar — útil para reactivar temporalmente)
+// function DebugPanel({ debugRef, detectionPhase }) { ... }
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function JumpAnalysis({ onNavigate }) {
@@ -250,7 +211,6 @@ export default function JumpAnalysis({ onNavigate }) {
     isRunning, landmarks, poseData, poseReady, error,
     progress, mpLoading, mpError,
     detectionPhase, jumpDetection, resetDetection,
-    debugRef,
     startCamera, stopCamera, analyzeVideo,
   } = usePoseEstimation({ mode });
 
@@ -297,10 +257,10 @@ export default function JumpAnalysis({ onNavigate }) {
         playBeep(1760, 200);
         countdownTimerRef.current = setTimeout(() => {
           setTimerState('detecting');
-          // 5-second detection window — auto-timeout if no valid jump
+          // 5-second detection window — on timeout keep camera running so
+          // Reintentar just restarts the countdown without re-opening the camera
           detectionTimerRef.current = setTimeout(() => {
             setTimerState('timeout');
-            stopCamera();
           }, 5000);
         }, 500);
       }
@@ -436,15 +396,11 @@ export default function JumpAnalysis({ onNavigate }) {
     countdownStartedRef.current = false;
   }
 
-  async function handleRetry() {
+  function handleRetry() {
+    // Camera is already running — just reset the countdown and fire it again.
     clearTimers();
-    setTimerState(null);
     countdownStartedRef.current = false;
-    stopCamera();
-    setJumpResult(null);
-    setSaved(false);
-    setSavedPlayerName(null);
-    await startCamera(facing);
+    startCountdown();
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -690,11 +646,6 @@ export default function JumpAnalysis({ onNavigate }) {
             </div>
           )}
 
-          {/* ── Panel debug (solo realtime, mientras cámara activa) ─────── */}
-          {isRunning && mode === 'realtime' && (
-            <DebugPanel debugRef={debugRef} detectionPhase={detectionPhase} />
-          )}
-
           {/* ── Barra superior ────────────────────────────────────────────── */}
           <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-3 gap-2"
             style={{ zIndex: 15 }}>
@@ -738,6 +689,30 @@ export default function JumpAnalysis({ onNavigate }) {
             )}
           </div>
 
+          {/* ── Overlay timeout — cámara sigue activa ──────────────────── */}
+          {isRunning && timerState === 'timeout' && (
+            <div
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3"
+              style={{ background: 'rgba(0,0,0,0.72)' }}
+            >
+              <AlertTriangle size={32} className="text-amber-400" />
+              <p className="text-slate-200 text-sm font-semibold">No se detectó salto</p>
+              <p className="text-slate-400 text-xs">¿Intentás de nuevo?</p>
+              <button
+                onClick={handleRetry}
+                className="mt-1 flex items-center gap-2 px-5 py-2.5 rounded-xl
+                  text-sm font-bold active:scale-95 transition-transform"
+                style={{
+                  background: 'rgba(56,189,248,0.15)',
+                  color:      '#38bdf8',
+                  border:     '1px solid rgba(56,189,248,0.35)',
+                }}
+              >
+                <RotateCcw size={14} /> Reintentar
+              </button>
+            </div>
+          )}
+
           {/* ── Overlay cuando no está corriendo ───────────────────────── */}
           {!isRunning && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
@@ -746,25 +721,6 @@ export default function JumpAnalysis({ onNavigate }) {
                   <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
                   <p className="text-slate-400 text-xs">Cambiando cámara…</p>
                 </>
-              ) : timerState === 'timeout' ? (
-                /* Timeout — sin salto detectado */
-                <div className="flex flex-col items-center gap-3 px-6 text-center">
-                  <AlertTriangle size={32} className="text-amber-400" />
-                  <p className="text-slate-200 text-sm font-semibold">No se detectó salto</p>
-                  <p className="text-slate-400 text-xs">¿Intentás de nuevo?</p>
-                  <button
-                    onClick={handleRetry}
-                    className="mt-1 flex items-center gap-2 px-5 py-2.5 rounded-xl
-                      text-sm font-bold active:scale-95 transition-transform"
-                    style={{
-                      background: 'rgba(56,189,248,0.15)',
-                      color:      '#38bdf8',
-                      border:     '1px solid rgba(56,189,248,0.35)',
-                    }}
-                  >
-                    <RotateCcw size={14} /> Reintentar
-                  </button>
-                </div>
               ) : mpLoading ? (
                 <>
                   <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -858,8 +814,8 @@ export default function JumpAnalysis({ onNavigate }) {
         </div>
       )}
 
-      {/* Botón START en el layout normal — oculto cuando la cámara está en fullscreen o en timeout */}
-      {!jumpResult && !mpError && !isRunning && mode === 'realtime' && timerState !== 'timeout' && (
+      {/* Botón START en el layout normal — oculto cuando la cámara está activa */}
+      {!jumpResult && !mpError && !isRunning && mode === 'realtime' && (
         <button
           onClick={handleToggle}
           disabled={mpLoading}

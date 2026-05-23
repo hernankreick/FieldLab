@@ -150,6 +150,31 @@ export function getPlayerRecentLoads(playerId, days = 28) {
   return result;
 }
 
+// ─── Evaluaciones (saltos, velocidad, etc.) ───────────────────────────────────
+
+const EVAL_PREFIX = 'fieldlab_eval_';
+
+/**
+ * Guarda un registro de evaluación para un jugador.
+ * Formato esperado:
+ * { playerId, date, type, jumpType, height, flightTime, power, kneeAngle }
+ */
+export function savePlayerEval(record) {
+  try {
+    const key     = `${EVAL_PREFIX}${record.playerId}`;
+    const records = readKey(key);
+    records.unshift(record);                 // newest first
+    localStorage.setItem(key, JSON.stringify(records.slice(0, 100)));
+  } catch { /* localStorage no disponible o cuota llena */ }
+}
+
+/**
+ * Retorna todos los registros de evaluación de un jugador (newest first).
+ */
+export function getPlayerEvals(playerId) {
+  return readKey(`${EVAL_PREFIX}${playerId}`);
+}
+
 // Retorna las sesiones de los últimos `days` días, ordenadas de más antigua a más reciente
 export function getRecentSessions(days = 28) {
   const result = [];

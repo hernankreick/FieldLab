@@ -9,124 +9,10 @@ import ResultCard from '../components/ResultCard';
 import StatusBadge from '../components/StatusBadge';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
 import { cn } from '../utils/cn';
-import { getLatestWellness, getWellnessByPlayer, getPlayerRecentLoads } from '../utils/storage';
+import { getLatestWellness, getWellnessByPlayer, getPlayerRecentLoads, getPlayerEvals } from '../utils/storage';
+import { PLAYERS } from '../data/players';
 
-// ── Datos de atletas con evaluaciones mock ───────────────────────────────────
-
-const PLAYERS = [
-  {
-    id: 1, name: 'Ramiro Sánchez',   position: 'Fullback',      sport: 'Rugby',
-    acwr: 1.42, lsi: 6.2,
-    eval: {
-      sj:         { height: 34.2, power: 3200 },
-      cmj:        { height: 38.5, power: 3580, iue: 11.8 },
-      dj:         { rsi: 1.8 },
-      sprint10:   { time: 1.78 },
-      sprint30:   { time: 4.25 },
-      topSpeed:   7.8,
-      resistance: { test: 'Yo-Yo IR1', vo2max: 48.5, vam: 13.9 },
-      lsiPct:     6.2,
-    },
-  },
-  {
-    id: 2, name: 'Leandro Martínez', position: 'Apertura',      sport: 'Rugby',
-    acwr: 1.61, lsi: 18.4,
-    eval: {
-      sj:         { height: 30.1, power: 2950 },
-      cmj:        { height: 33.8, power: 3210, iue: 12.2 },
-      dj:         { rsi: 1.4 },
-      sprint10:   { time: 1.92 },
-      sprint30:   { time: 4.68 },
-      topSpeed:   7.1,
-      resistance: { test: 'Navette', vo2max: 43.2, vam: 12.5 },
-      lsiPct:     18.4,
-    },
-  },
-  {
-    id: 3, name: 'Tomás Ruiz',       position: 'Hooker',        sport: 'Rugby',
-    acwr: 1.1,  lsi: 4.8,
-    eval: {
-      sj:         { height: 36.8, power: 3480 },
-      cmj:        { height: 41.2, power: 3850, iue: 12.0 },
-      dj:         { rsi: 2.1 },
-      sprint10:   { time: 1.74 },
-      sprint30:   { time: 4.10 },
-      topSpeed:   8.1,
-      resistance: { test: 'Yo-Yo IR1', vo2max: 52.0, vam: 14.5 },
-      lsiPct:     4.8,
-    },
-  },
-  {
-    id: 4, name: 'Facundo Benítez',  position: 'Ala',           sport: 'Rugby',
-    acwr: 0.95, lsi: 11.2,
-    eval: {
-      sj:         { height: 32.5, power: 3100 },
-      cmj:        { height: 36.0, power: 3390, iue: 10.8 },
-      dj:         { rsi: 1.6 },
-      sprint10:   { time: 1.85 },
-      sprint30:   { time: 4.40 },
-      topSpeed:   7.4,
-      resistance: { test: 'Cooper', vo2max: 46.8, vam: 13.2 },
-      lsiPct:     11.2,
-    },
-  },
-  {
-    id: 5, name: 'Agustín Torres',   position: 'Centro',        sport: 'Rugby',
-    acwr: 1.05, lsi: 5.0,
-    eval: {
-      sj:         { height: 38.0, power: 3620 },
-      cmj:        { height: 42.5, power: 4010, iue: 11.8 },
-      dj:         { rsi: 2.3 },
-      sprint10:   { time: 1.71 },
-      sprint30:   { time: 4.05 },
-      topSpeed:   8.3,
-      resistance: { test: 'Yo-Yo IR1', vo2max: 54.2, vam: 15.0 },
-      lsiPct:     5.0,
-    },
-  },
-  {
-    id: 6, name: 'Lucía Fernández',  position: 'Mediocampista', sport: 'Fútbol',
-    acwr: 0.88, lsi: 7.3,
-    eval: {
-      sj:         { height: 28.4, power: 2680 },
-      cmj:        { height: 32.1, power: 3050, iue: 13.0 },
-      dj:         { rsi: 1.5 },
-      sprint10:   { time: 1.90 },
-      sprint30:   { time: 4.52 },
-      topSpeed:   7.3,
-      resistance: { test: 'UNCa', vo2max: 44.5, vam: 12.8 },
-      lsiPct:     7.3,
-    },
-  },
-  {
-    id: 7, name: 'Valentina López',  position: 'Delantera',     sport: 'Fútbol',
-    acwr: 1.22, lsi: 9.8,
-    eval: {
-      sj:         { height: 31.5, power: 2920 },
-      cmj:        { height: 35.2, power: 3280, iue: 11.7 },
-      dj:         { rsi: 1.7 },
-      sprint10:   { time: 1.83 },
-      sprint30:   { time: 4.35 },
-      topSpeed:   7.6,
-      resistance: { test: 'Navette', vo2max: 47.8, vam: 13.5 },
-      lsiPct:     9.8,
-    },
-  },
-  {
-    id: 8, name: 'Martín González',  position: 'Delantero',     sport: 'Fútbol',
-    acwr: 1.35, lsi: 6.1,
-    eval: {
-      sj:         { height: 40.2, power: 3780 },
-      cmj:        { height: 44.8, power: 4180, iue: 11.4 },
-      dj:         { rsi: 2.2 },
-      sprint10:   { time: 1.69 },
-      sprint30:   { time: 3.98 },
-      topSpeed:   8.5,
-      resistance: { test: 'Yo-Yo IR1', vo2max: 56.1, vam: 15.5 },
-      lsiPct:     6.1,
-    },
-  },
-];
+// PLAYERS se importa desde src/data/players.js
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -302,6 +188,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const [activeTab,       setActiveTab]       = useState('wellness');
   const [latestWellness,  setLatestWellness]  = useState(null);
   const [wellnessHistory, setWellnessHistory] = useState([]);
+  const [playerEvals,     setPlayerEvals]     = useState([]);
   const [playerLoads,     setPlayerLoads]     = useState(
     Array.from({ length: 28 }, (_, i) => ({
       date: new Date(Date.now() - (27 - i) * 86_400_000).toISOString().split('T')[0],
@@ -314,6 +201,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       setLatestWellness(getLatestWellness(player.id));
       setWellnessHistory(getWellnessByPlayer(player.id).slice(0, 7));
       setPlayerLoads(getPlayerRecentLoads(player.id, 28));
+      setPlayerEvals(getPlayerEvals(player.id));
     }
     loadData();
     const iv = setInterval(loadData, 30_000);
@@ -341,6 +229,18 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   }));
 
   const { eval: ev } = player;
+
+  // Último registro real por tipo de salto (newest-first desde storage)
+  const realByType = {};
+  for (const e of playerEvals) {
+    if (e.type === 'jump' && !realByType[e.jumpType]) realByType[e.jumpType] = e;
+  }
+  const realSJ  = realByType['SJ']          ?? null;
+  const realCMJ = realByType['CMJ']         ?? null;
+  // IUE calculado con datos reales si hay ambos; sino mock
+  const iueHeight = (realSJ && realCMJ)
+    ? ((realCMJ.height - realSJ.height) / realSJ.height) * 100
+    : ev.cmj.iue;
 
   return (
     <div className="space-y-4">
@@ -589,33 +489,44 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'evaluaciones' && (
         <>
-          {/* Salto */}
+          {/* Salto — datos reales cuando existen, mock como fallback */}
           <Card title="Salto" icon={ClipboardList}>
+            {/* Banner si hay datos reales */}
+            {(realSJ || realCMJ) && (
+              <div className="mb-3 px-2 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5"
+                style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
+                <span>✓</span>
+                <span>
+                  Datos reales registrados
+                  {(realSJ || realCMJ) && ` — ${formatDate((realSJ || realCMJ).date)}`}
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <ResultCard
-                label="SJ altura"
-                value={ev.sj.height.toFixed(1)} unit="cm"
-                status={jumpSt(ev.sj.height)}
+                label={realSJ ? 'SJ altura ✓' : 'SJ altura'}
+                value={(realSJ?.height ?? ev.sj.height).toFixed(1)} unit="cm"
+                status={jumpSt(realSJ?.height ?? ev.sj.height)}
               />
               <ResultCard
-                label="SJ potencia"
-                value={Math.round(ev.sj.power)} unit="W"
+                label={realSJ ? 'SJ potencia ✓' : 'SJ potencia'}
+                value={Math.round(realSJ?.power ?? ev.sj.power)} unit="W"
                 status="neutral"
               />
               <ResultCard
-                label="CMJ altura"
-                value={ev.cmj.height.toFixed(1)} unit="cm"
-                status={jumpSt(ev.cmj.height)}
+                label={realCMJ ? 'CMJ altura ✓' : 'CMJ altura'}
+                value={(realCMJ?.height ?? ev.cmj.height).toFixed(1)} unit="cm"
+                status={jumpSt(realCMJ?.height ?? ev.cmj.height)}
               />
               <ResultCard
-                label="CMJ potencia"
-                value={Math.round(ev.cmj.power)} unit="W"
+                label={realCMJ ? 'CMJ potencia ✓' : 'CMJ potencia'}
+                value={Math.round(realCMJ?.power ?? ev.cmj.power)} unit="W"
                 status="neutral"
               />
               <ResultCard
                 label="IUE"
-                value={ev.cmj.iue.toFixed(1)} unit="%"
-                status={ev.cmj.iue >= 10 && ev.cmj.iue <= 15 ? 'safe' : 'warning'}
+                value={iueHeight.toFixed(1)} unit="%"
+                status={iueHeight >= 10 && iueHeight <= 15 ? 'safe' : 'warning'}
                 sub="Normal 10–15%"
                 className="col-span-2"
               />
@@ -628,6 +539,38 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               />
             </div>
           </Card>
+
+          {/* Historial de saltos registrados */}
+          {playerEvals.filter(e => e.type === 'jump').length > 0 && (
+            <Card title="Historial de saltos registrados" icon={ClipboardList}>
+              <div className="space-y-2">
+                {playerEvals.filter(e => e.type === 'jump').slice(0, 10).map((e, i) => (
+                  <div key={i}
+                    className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                    <div>
+                      <span className="text-xs font-semibold text-slate-300">{e.jumpType}</span>
+                      <span className="text-xs text-slate-500 ml-2">{formatDate(e.date)}</span>
+                    </div>
+                    <div className="flex gap-3 text-right">
+                      <div>
+                        <span className="text-sm font-data font-bold"
+                          style={{ color: heightColor(e.height) }}>
+                          {e.height.toFixed(1)}
+                        </span>
+                        <span className="text-[10px] text-slate-500 ml-0.5">cm</span>
+                      </div>
+                      <div>
+                        <span className="text-sm font-data font-bold text-slate-300">
+                          {e.power}
+                        </span>
+                        <span className="text-[10px] text-slate-500 ml-0.5">W</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Velocidad */}
           <Card title="Velocidad" icon={ClipboardList}>
@@ -684,7 +627,10 @@ export default function PlayerProfile({ initialId, onNavigate }) {
           </Card>
 
           <p className="text-xs text-slate-600 text-center pb-2">
-            Datos de la última evaluación registrada
+            {(realSJ || realCMJ)
+              ? '✓ indica datos registrados con cámara · resto son valores de referencia'
+              : 'Valores de referencia · usá Análisis de Salto para registrar datos reales'
+            }
           </p>
         </>
       )}

@@ -88,6 +88,9 @@ function nowStamp() {
   const ms = t.getMilliseconds().toString().padStart(3, '0');
   return `${h}:${m}:${s}.${ms}`;
 }
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+export function usePoseEstimation({ mode }) {
   // ── Core refs ──────────────────────────────────────────────────────────────
   const videoRef   = useRef(null);
   const canvasRef  = useRef(null);

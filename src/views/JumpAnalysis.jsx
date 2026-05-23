@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Camera, Video, Play, Square, Save,
-  AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera, Info, RotateCcw,
+  AlertTriangle, CheckCircle, UploadCloud, Maximize2, SwitchCamera, Info, RotateCcw, X,
 } from 'lucide-react';
 import Card from '../components/Card';
 import { jumpHeightFromFlightTime, sayersPower } from '../utils/biomechanics';
 import { usePoseEstimation } from '../hooks/usePoseEstimation';
+import { PLAYERS } from '../data/players';
+import { savePlayerEval } from '../utils/storage';
 
 const JUMP_TYPES = ['SJ', 'CMJ', 'Drop Jump'];
 
@@ -223,10 +225,12 @@ export default function JumpAnalysis({ onNavigate }) {
   const [jumpType,   setJumpType]   = useState('CMJ');
   const [massInput,  setMassInput]  = useState('70'); // string para edición libre
   const massKg = parseFloat(massInput) || 70;         // número derivado para cálculos
-  const [jumpResult, setJumpResult] = useState(null);
-  const [saved,      setSaved]      = useState(false);
-  const [facing,     setFacing]     = useState('environment'); // 'environment' | 'user'
-  const [isSwitching, setIsSwitching] = useState(false);
+  const [jumpResult,       setJumpResult]       = useState(null);
+  const [saved,            setSaved]            = useState(false);
+  const [savedPlayerName,  setSavedPlayerName]  = useState(null);
+  const [showPlayerModal,  setShowPlayerModal]  = useState(false);
+  const [facing,           setFacing]           = useState('environment'); // 'environment' | 'user'
+  const [isSwitching,      setIsSwitching]      = useState(false);
 
   // Countdown timer state
   // null | 'countdown' | 'go' | 'detecting' | 'timeout'
@@ -253,11 +257,11 @@ export default function JumpAnalysis({ onNavigate }) {
     ? Math.min(landmarks[27]?.visibility ?? 0, landmarks[28]?.visibility ?? 0)
     : 0;
 
-  // Bloquear scroll del body cuando la cámara está en fullscreen (incluso mientras cambia)
+  // Bloquear scroll cuando la cámara está en fullscreen o el modal de jugadores está abierto
   useEffect(() => {
-    document.body.style.overflow = (isRunning || isSwitching) ? 'hidden' : '';
+    document.body.style.overflow = (isRunning || isSwitching || showPlayerModal) ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [isRunning, isSwitching]);
+  }, [isRunning, isSwitching, showPlayerModal]);
 
   // Limpiar timers del countdown al desmontar el componente
   useEffect(() => {
@@ -347,6 +351,7 @@ export default function JumpAnalysis({ onNavigate }) {
     } else {
       setJumpResult(null);
       setSaved(false);
+      setSavedPlayerName(null);
       setTimerState(null);
       countdownStartedRef.current = false;
       startCamera(facing);
@@ -380,16 +385,38 @@ export default function JumpAnalysis({ onNavigate }) {
     }
   }
 
+  // Abre el modal para seleccionar a qué jugador asignar el resultado
   function handleSave() {
     if (!jumpResult) return;
+    setShowPlayerModal(true);
+  }
+
+  // Guarda el resultado para el jugador seleccionado y vuelve al estado inicial
+  function handleSaveForPlayer(player) {
+    if (!jumpResult) return;
+    const power = sayersPower(jumpResult.heightCm, massKg);
+    savePlayerEval({
+      playerId:   player.id,
+      date:       new Date().toISOString(),
+      type:       'jump',
+      jumpType:   jumpResult.type,
+      height:     jumpResult.heightCm,
+      flightTime: jumpResult.flightMs,
+      power:      Math.round(power),
+      kneeAngle:  jumpResult.maxKneeAngle ?? null,
+    });
+    // Guardar también en el historial global de resultados (sin jugador)
     saveJumpResult({ ...jumpResult, massKg });
+    setShowPlayerModal(false);
+    setSavedPlayerName(player.name);
     setSaved(true);
-    onNavigate?.('evaluaciones');
+    setJumpResult(null); // volver a pantalla inicial de JumpAnalysis
   }
 
   function handleDiscard() {
     setJumpResult(null);
     setSaved(false);
+    setSavedPlayerName(null);
   }
 
   function handleModeChange(m) {
@@ -398,6 +425,7 @@ export default function JumpAnalysis({ onNavigate }) {
     setMode(m);
     setJumpResult(null);
     setSaved(false);
+    setSavedPlayerName(null);
     setIsSwitching(false);
     setTimerState(null);
     countdownStartedRef.current = false;
@@ -410,6 +438,7 @@ export default function JumpAnalysis({ onNavigate }) {
     stopCamera();
     setJumpResult(null);
     setSaved(false);
+    setSavedPlayerName(null);
     await startCamera(facing);
   }
 
@@ -879,12 +908,70 @@ export default function JumpAnalysis({ onNavigate }) {
       )}
 
       {saved && (
-        <p className="text-center text-xs text-safe font-semibold">Resultado guardado ✓</p>
+        <div className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl"
+          style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)' }}>
+          <CheckCircle size={14} className="text-safe flex-shrink-0" />
+          <p className="text-sm font-semibold text-safe">
+            {savedPlayerName ? `Guardado para ${savedPlayerName}` : 'Resultado guardado'}
+          </p>
+        </div>
       )}
 
       {/* Fallback manual */}
       {!isRunning && !jumpResult && (
         <ManualFallback jumpType={jumpType} massKg={massKg} onResult={setJumpResult} />
+      )}
+
+      {/* ── Modal selector de jugador ─────────────────────────────────── */}
+      {showPlayerModal && (
+        <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: 'rgba(2,6,23,0.96)' }}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-4 border-b border-white/[0.06]">
+            <div>
+              <h2 className="text-base font-bold text-slate-100">¿Para quién es el resultado?</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {jumpResult?.heightCm.toFixed(1)} cm · {jumpResult?.type}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowPlayerModal(false)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400
+                hover:text-slate-200 hover:bg-white/5 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Lista de jugadores */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+            {PLAYERS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => handleSaveForPlayer(p)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl text-left
+                  active:scale-[0.98] transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border:     '1px solid rgba(255,255,255,0.07)',
+                }}
+              >
+                {/* Avatar con iniciales */}
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center
+                    text-sm font-bold flex-shrink-0"
+                  style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8' }}
+                >
+                  {p.name.split(' ').slice(0, 2).map(n => n[0]).join('')}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-100 truncate">{p.name}</p>
+                  <p className="text-xs text-slate-500">{p.position} · {p.sport}</p>
+                </div>
+                <Save size={14} className="text-accent flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

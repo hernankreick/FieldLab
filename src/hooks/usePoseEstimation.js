@@ -13,11 +13,11 @@ const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose';
 
-// Detection constants  (amplios temporalmente para diagnóstico)
 const CALIB_FRAMES    = 60;   // frames to average for baseline (~2 s @ 30 fps)
-const VIS_MIN         = 0.50; // minimum ankle visibility
-const TAKEOFF_THR     = 0.03; // ankles must rise > 3 % of frame height to start flight
-const LAND_THR        = 0.02; // ankles within 2 % of baseline → landed
+const CALIB_RESET_MS  = 2000; // restart calib buffer if no good frame in this window
+const VIS_MIN         = 0.15; // minimum visibility on the best-visible ankle
+const TAKEOFF_THR     = 0.03; // best ankle must rise > 3 % of frame height
+const LAND_THR        = 0.02; // best ankle within 2 % of baseline → landed
 const FLIGHT_MIN_MS   = 120;  // reject flights shorter than this
 const FLIGHT_MAX_MS   = 1000; // reject flights longer than this
 const COOLDOWN_MS     = 2000; // lockout after a detected jump
@@ -111,22 +111,25 @@ export function usePoseEstimation({ mode }) {
   const [mpError,   setMpError]   = useState(null);
 
   // ── Jump detection refs (all mutable, no re-render cost) ───────────────────
-  const detPhaseRef     = useRef(null); // 'calibrating' | 'ready' | 'jumping' | null
-  const calibBuf        = useRef([]);   // ankle-Y samples collected during calibration
-  const baselineRef     = useRef(null); // mean ankle Y while standing (0–1, y=0 is top)
-  const flightT0        = useRef(null); // performance.now() at takeoff
-  const minVisRef       = useRef(1);    // minimum ankle visibility seen during flight
-  const cooldownRef     = useRef(0);    // performance.now() threshold for next detection
-  const lowVisFramesRef = useRef(0);    // consecutive low-vis frames during flight (buffer)
+  const detPhaseRef      = useRef(null); // 'calibrating' | 'ready' | 'jumping' | null
+  const calibBuf         = useRef([]);   // ankle-Y samples collected during calibration
+  const calibLastGoodRef = useRef(null); // performance.now() of last good calib frame
+  const baselineRef      = useRef(null); // mean ankle Y while standing (0–1, y=0 is top)
+  const flightT0         = useRef(null); // performance.now() at takeoff
+  const minVisRef        = useRef(1);    // minimum ankle visibility seen during flight
+  const cooldownRef      = useRef(0);    // performance.now() threshold for next detection
+  const lowVisFramesRef  = useRef(0);    // consecutive low-vis frames during flight (buffer)
 
   // ── Debug snapshot (updated every frame, read by component on each render) ──
   const debugRef = useRef({
     baseline:     null,   // frozen ankle-Y baseline (null while calibrating)
-    ankleY:       null,   // current average ankle Y
+    ankleY:       null,   // current Y of the best-visible ankle
     delta:        null,   // baseline - ankleY (positive = above baseline)
     deltaPercent: null,   // delta * 100 as string '±X.X%'
     visL:         null,   // left ankle visibility
     visR:         null,   // right ankle visibility
+    activeAnkle:  null,   // 'I' | 'D' — which ankle is currently being used
+    activeVis:    null,   // visibility of the active ankle
     lowVisBuf:    0,      // current consecutive low-vis frame count
     takeoffAt:    null,   // time string of last takeoff
     landingAt:    null,   // time string of last landing
@@ -156,25 +159,35 @@ export function usePoseEstimation({ mode }) {
     const ankleR = lm[LM.ANKLE_R];
     const visL   = ankleL?.visibility ?? 0;
     const visR   = ankleR?.visibility ?? 0;
-    const avgY   = (ankleL.y + ankleR.y) / 2; // smaller = higher in frame
+
+    // Use the best-visible ankle for all detection logic.
+    // In profile shots one ankle is consistently more visible; this avoids
+    // requiring both to be visible (which fails with side-on camera angle).
+    const useLeft  = visL >= visR;
+    const bestVis  = useLeft ? visL : visR;
+    const bestY    = useLeft ? (ankleL?.y ?? 0) : (ankleR?.y ?? 0);
+    const bestSide = useLeft ? 'I' : 'D'; // Izquierda / Derecha
 
     // Update debug snapshot on every frame (component reads this on each render)
     const dbg = debugRef.current;
-    dbg.ankleY    = avgY;
-    dbg.visL      = visL;
-    dbg.visR      = visR;
-    dbg.lowVisBuf = lowVisFramesRef.current;
+    dbg.ankleY      = bestY;
+    dbg.visL        = visL;
+    dbg.visR        = visR;
+    dbg.activeAnkle = bestSide;
+    dbg.activeVis   = bestVis;
+    dbg.lowVisBuf   = lowVisFramesRef.current;
     if (baselineRef.current != null) {
-      const delta        = baselineRef.current - avgY; // positive = above baseline
-      dbg.baseline       = baselineRef.current;
-      dbg.delta          = delta;
-      dbg.deltaPercent   = (delta * 100).toFixed(1);
+      const delta      = baselineRef.current - bestY; // positive = above baseline
+      dbg.baseline     = baselineRef.current;
+      dbg.delta        = delta;
+      dbg.deltaPercent = (delta * 100).toFixed(1);
     }
 
-    // ── CALIBRATING: build ankle-Y baseline from first CALIB_FRAMES good frames ──
+    // ── CALIBRATING: build baseline from CALIB_FRAMES good frames ─────────────
     if (phase === 'calibrating') {
-      if (visL > VIS_MIN && visR > VIS_MIN) {
-        calibBuf.current.push(avgY);
+      if (bestVis > VIS_MIN) {
+        calibLastGoodRef.current = now;
+        calibBuf.current.push(bestY);
         if (calibBuf.current.length >= CALIB_FRAMES) {
           const sum = calibBuf.current.reduce((a, b) => a + b, 0);
           baselineRef.current = sum / calibBuf.current.length;
@@ -183,8 +196,20 @@ export function usePoseEstimation({ mode }) {
           calibBuf.current    = [];
           detPhaseRef.current = 'ready';
           setDetectionPhase('ready');
-          console.log('[Det] Baseline OK:', baselineRef.current.toFixed(3));
+          console.log('[Det] Baseline OK:', baselineRef.current.toFixed(3),
+            '| tobillo:', bestSide, '| vis:', bestVis.toFixed(2));
         }
+      } else if (
+        calibBuf.current.length > 0 &&
+        calibLastGoodRef.current != null &&
+        now - calibLastGoodRef.current > CALIB_RESET_MS
+      ) {
+        // Lost the ankle mid-calibration for > 2 s — restart so stale frames
+        // don't pollute the baseline when the person re-enters the frame.
+        calibBuf.current         = [];
+        calibLastGoodRef.current = null;
+        dbg.rejectReason         = 'calib reiniciada';
+        console.log('[Det] Calibración reiniciada (tobillo perdido)');
       }
       return;
     }
@@ -192,31 +217,30 @@ export function usePoseEstimation({ mode }) {
     // ── READY: watch for takeoff ───────────────────────────────────────────────
     if (phase === 'ready') {
       if (now < cooldownRef.current) return;
-      if (visL > VIS_MIN && visR > VIS_MIN &&
-          avgY < baselineRef.current - TAKEOFF_THR) {
-        detPhaseRef.current     = 'jumping';
-        lowVisFramesRef.current = 0;
-        dbg.lowVisBuf           = 0;
+      if (bestVis > VIS_MIN && bestY < baselineRef.current - TAKEOFF_THR) {
+        detPhaseRef.current      = 'jumping';
+        lowVisFramesRef.current  = 0;
+        dbg.lowVisBuf            = 0;
         setDetectionPhase('jumping');
         flightT0.current  = now;
-        minVisRef.current = Math.min(visL, visR);
+        minVisRef.current = bestVis;
         dbg.takeoffAt     = nowStamp();
         dbg.landingAt     = null;
         dbg.lastFlightMs  = null;
         dbg.rejectReason  = null;
-        console.log('[Det] Despegue — ankleY:', avgY.toFixed(3),
+        console.log('[Det] Despegue — bestY:', bestY.toFixed(3),
           '| baseline:', baselineRef.current.toFixed(3),
-          '| Δ:', (baselineRef.current - avgY).toFixed(3));
+          '| Δ:', (baselineRef.current - bestY).toFixed(3),
+          '| tobillo:', bestSide);
       }
       return;
     }
 
     // ── JUMPING: track visibility + detect landing ─────────────────────────────
     if (phase === 'jumping') {
-      const visMin = Math.min(visL, visR);
-      if (visMin < minVisRef.current) minVisRef.current = visMin;
+      if (bestVis < minVisRef.current) minVisRef.current = bestVis;
 
-      if (visMin < VIS_MIN) {
+      if (bestVis < VIS_MIN) {
         lowVisFramesRef.current += 1;
         dbg.lowVisBuf = lowVisFramesRef.current;
         if (lowVisFramesRef.current >= LOW_VIS_CANCEL) {
@@ -230,13 +254,13 @@ export function usePoseEstimation({ mode }) {
       lowVisFramesRef.current = 0;
       dbg.lowVisBuf = 0;
 
-      // Landing: both ankles return within LAND_THR of standing baseline
-      if (avgY > baselineRef.current - LAND_THR) {
+      // Landing: best ankle returns within LAND_THR of the standing baseline
+      if (bestY > baselineRef.current - LAND_THR) {
         const flightMs = Math.round(now - flightT0.current);
         dbg.landingAt    = nowStamp();
         dbg.lastFlightMs = flightMs;
         console.log('[Det] Aterrizaje — flightMs:', flightMs,
-          '| ankleY:', avgY.toFixed(3));
+          '| bestY:', bestY.toFixed(3), '| tobillo:', bestSide);
 
         if (flightMs >= FLIGHT_MIN_MS && flightMs <= FLIGHT_MAX_MS) {
           dbg.rejectReason = null;
@@ -261,6 +285,7 @@ export function usePoseEstimation({ mode }) {
   const startDetection = useCallback(() => {
     detPhaseRef.current      = 'calibrating';
     calibBuf.current         = [];
+    calibLastGoodRef.current = null;
     baselineRef.current      = null;
     flightT0.current         = null;
     minVisRef.current        = 1;
@@ -268,7 +293,7 @@ export function usePoseEstimation({ mode }) {
     lowVisFramesRef.current  = 0;
     debugRef.current = {
       baseline: null, ankleY: null, delta: null, deltaPercent: null,
-      visL: null, visR: null, lowVisBuf: 0,
+      visL: null, visR: null, activeAnkle: null, activeVis: null, lowVisBuf: 0,
       takeoffAt: null, landingAt: null, lastFlightMs: null, rejectReason: null,
     };
     setDetectionPhase('calibrating');

@@ -190,9 +190,10 @@ function DebugPanel({ debugRef, detectionPhase }) {
     : detectionPhase === 'jumping' ? '#f59e0b'
     : '#64748b';
 
-  const visOk = d.visL != null && d.visR != null && Math.min(d.visL, d.visR) >= 0.50;
-  const visStr = (d.visL != null && d.visR != null)
-    ? `${d.visL.toFixed(2)}/${d.visR.toFixed(2)}`
+  // Active ankle: show which one is being used and its visibility
+  const ankleOk  = d.activeVis != null && d.activeVis >= 0.15;
+  const ankleStr = d.activeAnkle != null && d.activeVis != null
+    ? `${d.activeAnkle} ${d.activeVis.toFixed(2)}  (I:${(d.visL ?? 0).toFixed(2)} D:${(d.visR ?? 0).toFixed(2)})`
     : '—';
 
   const row = (label, value, color = '#94a3b8') => (
@@ -209,12 +210,12 @@ function DebugPanel({ debugRef, detectionPhase }) {
         background: 'rgba(2,6,23,0.65)',
         border:     '1px solid rgba(255,255,255,0.08)',
         opacity:    0.75,
-        minWidth:   120,
+        minWidth:   148,
       }}
     >
-      {row('Fase',    detectionPhase ?? '—', phaseColor)}
-      {row('Vis L/R', visStr, visOk ? '#22c55e' : '#ef4444')}
-      {row('Rechazo', d.rejectReason ?? '—', d.rejectReason ? '#ef4444' : '#475569')}
+      {row('Fase',     detectionPhase ?? '—', phaseColor)}
+      {row('Tobillo',  ankleStr, ankleOk ? '#22c55e' : '#ef4444')}
+      {row('Rechazo',  d.rejectReason ?? '—', d.rejectReason ? '#ef4444' : '#475569')}
     </div>
   );
 }
@@ -252,9 +253,10 @@ export default function JumpAnalysis({ onNavigate }) {
   } = usePoseEstimation({ mode });
 
   const frameStatus = poseReady ? calcFrameStatus(landmarks) : null;
-  // Minimum ankle visibility (landmarks 27=left, 28=right) — used for framing guards
+  // Best ankle visibility (max of left/right) — mirrors the detection logic
+  // which uses the more-visible ankle rather than requiring both.
   const ankleVis = landmarks
-    ? Math.min(landmarks[27]?.visibility ?? 0, landmarks[28]?.visibility ?? 0)
+    ? Math.max(landmarks[27]?.visibility ?? 0, landmarks[28]?.visibility ?? 0)
     : 0;
 
   // Bloquear scroll cuando la cámara está en fullscreen o el modal de jugadores está abierto
@@ -297,7 +299,7 @@ export default function JumpAnalysis({ onNavigate }) {
           detectionTimerRef.current = setTimeout(() => {
             setTimerState('timeout');
             stopCamera();
-          }, 3000);
+          }, 5000);
         }, 500);
       }
     };

@@ -15,23 +15,25 @@ import RPEForm from './views/RPEForm';
 import CargaSesionView from './views/CargaSesionView';
 import PlayerProfile from './views/PlayerProfile';
 import JumpAnalysis from './views/JumpAnalysis';
+import MovilidadTobillo from './views/MovilidadTobillo';
 
 // Detectar ruta /hooper/:teamId y /rpe/:teamId sin React Router (módulo-level, no cambia en runtime)
 const HOOPER_MATCH = window.location.pathname.match(/^\/hooper\/([^/]+)/);
 const RPE_MATCH    = window.location.pathname.match(/^\/rpe\/([^/]+)/);
 
 const views = {
-  dashboard:    Dashboard,
-  acwr:         ACWR,
-  bosco:        Bosco,
-  velocidad:    TabVelocidad,
-  agilidad:     TabAgilidad,
-  evaluaciones: EvaluacionesView,
-  wellness:     Wellness,
-  vbt:          VBT,
-  carga:        CargaSesionView,
-  player:       PlayerProfile,
-  jumpAnalysis: JumpAnalysis,
+  dashboard:       Dashboard,
+  acwr:            ACWR,
+  bosco:           Bosco,
+  velocidad:       TabVelocidad,
+  agilidad:        TabAgilidad,
+  evaluaciones:    EvaluacionesView,
+  wellness:        Wellness,
+  vbt:             VBT,
+  carga:           CargaSesionView,
+  player:          PlayerProfile,
+  jumpAnalysis:    JumpAnalysis,
+  movilidadTobillo: MovilidadTobillo,
 };
 
 function AppContent() {
@@ -60,7 +62,7 @@ function AppContent() {
         <NavBar active={active} onChange={navigate} />
         <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
           <View
-            key={active === 'wellness' || active === 'player'
+            key={active === 'wellness' || active === 'player' || active === 'movilidadTobillo'
               ? `${active}-${navParam}` : active}
             onNavigate={navigate}
             initialId={navParam}

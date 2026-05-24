@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Heart, Zap, ClipboardList, Activity } from 'lucide-react';
+import { ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { getAngleStatus, statusColor, statusLabel, statusBg } from '../hooks/useAngleDetection';
 import {
   LineChart, Line, AreaChart, Area,
   XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer,
@@ -187,12 +189,54 @@ const TOOLTIP_STYLE = {
 
 const DAYS_ES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
+// ── Mobility data reader ─────────────────────────────────────────────────────
+
+function getMobilidadTobillo(coachId, athleteId) {
+  const pfx  = `fieldlab_${coachId}_mobility_${athleteId}_tobillo_`;
+  const keys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(pfx)) keys.push(k);
+    }
+    if (!keys.length) return null;
+    keys.sort().reverse();
+    return JSON.parse(localStorage.getItem(keys[0]));
+  } catch { return null; }
+}
+
+function AngleChip({ label, angle, sport }) {
+  if (angle == null) return null;
+  const st  = getAngleStatus(angle, sport);
+  const col = statusColor(st);
+  const bg  = statusBg(st);
+  const lbl = statusLabel(st);
+  return (
+    <div className="flex-1 rounded-xl p-4 flex flex-col items-center gap-2"
+      style={{ background: bg, border: `1px solid ${col}` }}>
+      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{label}</p>
+      <span style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '40px', fontWeight: 900, color: col, lineHeight: 1,
+      }}>
+        {angle}°
+      </span>
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+        style={{ background: col, color: '#0f172a' }}>
+        {lbl}
+      </span>
+    </div>
+  );
+}
+
 // ── Componente principal ─────────────────────────────────────────────────────
 
 export default function PlayerProfile({ initialId, onNavigate }) {
+  const { coach } = useAuth();
   const player = PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
 
   const [activeTab,       setActiveTab]       = useState('wellness');
+  const [mobilidadData,   setMobilidadData]   = useState(null);
   const [latestWellness,  setLatestWellness]  = useState(null);
   const [wellnessHistory, setWellnessHistory] = useState([]);
   const [playerEvals,     setPlayerEvals]     = useState([]);
@@ -209,12 +253,14 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       setWellnessHistory(getWellnessByPlayer(player.id).slice(0, 7));
       setPlayerLoads(getPlayerRecentLoads(player.id, 28));
       setPlayerEvals(getPlayerEvals(player.id));
+      const cid = coach?.id ?? 'anon';
+      setMobilidadData(getMobilidadTobillo(cid, player.id));
     }
     loadData();
     const iv = setInterval(loadData, 30_000);
     window.addEventListener('storage', loadData);
     return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
-  }, [player.id]);
+  }, [player.id, coach?.id]);
 
   // Derivados de carga
   const todayW        = latestWellness && isToday(latestWellness.timestamp) ? latestWellness : null;
@@ -285,11 +331,12 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       </div>
 
       {/* ── Tabs ─────────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-surface rounded-full p-1 border border-white/5">
+      <div className="flex gap-1 bg-surface rounded-full p-1 border border-white/5 overflow-x-auto scrollbar-none">
         {[
           { id: 'wellness',     label: 'Wellness'     },
           { id: 'carga',        label: 'Carga'        },
           { id: 'evaluaciones', label: 'Evaluaciones' },
+          { id: 'movilidad',    label: 'Movilidad'    },
         ].map(({ id, label }) => (
           <button
             key={id}
@@ -639,6 +686,88 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               : 'Valores de referencia · usá Análisis de Salto para registrar datos reales'
             }
           </p>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* TAB MOVILIDAD                                                      */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'movilidad' && (
+        <>
+          <Card title="Dorsiflexión de Tobillo — Lunge Test" icon={Footprints}>
+            {mobilidadData ? (
+              <>
+                {/* Date */}
+                <div className="mb-4 flex items-center justify-between">
+                  <p className="text-xs text-slate-500">
+                    Última evaluación:{' '}
+                    <span className="text-slate-300">
+                      {formatDate(mobilidadData.timestamp)}
+                    </span>
+                  </p>
+                  {mobilidadData.sport && mobilidadData.sport !== 'default' && (
+                    <span className="text-xs text-slate-500 capitalize">
+                      {mobilidadData.sport}
+                    </span>
+                  )}
+                </div>
+
+                {/* Side-by-side angles */}
+                <div className="flex gap-3 mb-4">
+                  <AngleChip
+                    label="Izquierdo"
+                    angle={mobilidadData.izq}
+                    sport={mobilidadData.sport ?? 'default'}
+                  />
+                  <AngleChip
+                    label="Derecho"
+                    angle={mobilidadData.der}
+                    sport={mobilidadData.sport ?? 'default'}
+                  />
+                </div>
+
+                {/* Asymmetry */}
+                {mobilidadData.asimetria != null && (
+                  <div className="rounded-xl p-3 flex items-center justify-between"
+                    style={{
+                      background: mobilidadData.asimetria >= 15
+                        ? 'rgba(239,68,68,0.1)'
+                        : mobilidadData.asimetria >= 10
+                        ? 'rgba(234,179,8,0.1)'
+                        : 'rgba(34,197,94,0.1)',
+                      border: `1px solid ${mobilidadData.asimetria >= 15 ? '#ef4444' : mobilidadData.asimetria >= 10 ? '#eab308' : '#22c55e'}`,
+                    }}>
+                    <p className="text-sm text-slate-300">Asimetría</p>
+                    <span style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: '20px',
+                      fontWeight: 700,
+                      color: mobilidadData.asimetria >= 15 ? '#ef4444'
+                        : mobilidadData.asimetria >= 10 ? '#eab308' : '#22c55e',
+                    }}>
+                      {mobilidadData.asimetria}%
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-slate-400 text-sm mb-1">Sin evaluación registrada</p>
+                <p className="text-slate-600 text-xs mb-4 leading-relaxed">
+                  Realizá el Lunge Test para registrar la dorsiflexión de tobillo
+                </p>
+              </div>
+            )}
+
+            {/* Evaluate button */}
+            <button
+              onClick={() => onNavigate?.('movilidadTobillo', player.id)}
+              className="w-full mt-4 py-2.5 rounded-xl font-semibold text-sm"
+              style={{ background: '#38bdf8', color: '#0f172a' }}
+            >
+              {mobilidadData ? '↺ Re-evaluar tobillo' : '▶ Evaluar tobillo'}
+            </button>
+          </Card>
         </>
       )}
 

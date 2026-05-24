@@ -1,16 +1,17 @@
-import { Activity, BarChart2, Zap, Heart, Eye, Timer, Shuffle, ClipboardList, Dumbbell } from 'lucide-react';
+import { Activity, BarChart2, Zap, Heart, Eye, Timer, Shuffle, ClipboardList, Dumbbell, Footprints } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const tabs = [
-  { id: 'dashboard',    label: 'Dashboard', Icon: Activity      },
-  { id: 'acwr',         label: 'Carga',     Icon: BarChart2     },
-  { id: 'carga',        label: 'Sesión',    Icon: Dumbbell      },
-  { id: 'bosco',        label: 'Bosco',     Icon: Zap           },
-  { id: 'velocidad',    label: 'Sprint',    Icon: Timer         },
-  { id: 'agilidad',     label: 'COD',       Icon: Shuffle       },
-  { id: 'evaluaciones', label: 'Eval.',     Icon: ClipboardList },
-  { id: 'wellness',     label: 'Wellness',  Icon: Heart         },
-  { id: 'vbt',          label: 'VBT',       Icon: Eye           },
+  { id: 'dashboard',        label: 'Dashboard', Icon: Activity      },
+  { id: 'acwr',             label: 'Carga',     Icon: BarChart2     },
+  { id: 'carga',            label: 'Sesión',    Icon: Dumbbell      },
+  { id: 'bosco',            label: 'Bosco',     Icon: Zap           },
+  { id: 'velocidad',        label: 'Sprint',    Icon: Timer         },
+  { id: 'agilidad',         label: 'COD',       Icon: Shuffle       },
+  { id: 'evaluaciones',     label: 'Eval.',     Icon: ClipboardList },
+  { id: 'wellness',         label: 'Wellness',  Icon: Heart         },
+  { id: 'vbt',              label: 'VBT',       Icon: Eye           },
+  { id: 'movilidadTobillo', label: 'Tobillo',   Icon: Footprints    },
 ];
 
 export default function NavBar({ active, onChange }) {

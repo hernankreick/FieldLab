@@ -40,6 +40,7 @@ function AppContent() {
   const { coach } = useAuth();
   const [active,   setActive]   = useState('dashboard');
   const [navParam, setNavParam] = useState(null);
+  const [hideNav,  setHideNav]  = useState(false);
 
   function navigate(view, param = null) {
     setActive(view);
@@ -59,13 +60,14 @@ function AppContent() {
     <div className="min-h-screen bg-background text-slate-100"
       style={{ fontFamily: 'Inter, sans-serif' }}>
       <div className="flex md:flex-row flex-col min-h-screen">
-        <NavBar active={active} onChange={navigate} />
+        {!hideNav && <NavBar active={active} onChange={navigate} />}
         <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
           <View
             key={active === 'wellness' || active === 'player' || active === 'movilidadTobillo'
               ? `${active}-${navParam}` : active}
             onNavigate={navigate}
             initialId={navParam}
+            onFullscreen={setHideNav}
           />
         </main>
       </div>

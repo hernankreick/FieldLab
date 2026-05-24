@@ -33,15 +33,11 @@ function todayStr() {
 }
 
 // ── CameraSessionView ─────────────────────────────────────────────────────────
-// Handles calibracion → grabando internally to avoid remounting between phases.
-// key="left" or key="right" in parent ensures separate instances per side.
-//
-// Fix 3: mpLoading y mpError se muestran como overlays SOBRE el video,
-//         no como pantalla de reemplazo. El <video> se renderiza siempre
-//         para que videoRef esté disponible en el primer efecto.
-// Fix 4: startCamera se llama al montar sin esperar a mpLoading.
+// Renders inside a fullscreen fixed container provided by the parent.
+// Handles calibracion → grabando transition internally (same MediaPipe instance).
+// All controls float absolutely over the video.
 
-function CameraSessionView({ side, startPhase, sport, onCapture }) {
+function CameraSessionView({ side, startPhase, sport, sideLabel, onBack, onCapture }) {
   const [phase, setPhase] = useState(startPhase ?? 'calibracion');
 
   const {
@@ -51,179 +47,230 @@ function CameraSessionView({ side, startPhase, sport, onCapture }) {
     startCamera, stopCamera,
   } = useAngleDetection({ side, sport });
 
-  // Fix 4: llamar startCamera inmediatamente al montar — NO esperar a MP.
-  // startCamera abre el stream de video; el loop interno espera a poseRef.
+  // Open camera immediately on mount — does NOT wait for MediaPipe
   useEffect(() => {
     startCamera();
     return () => { stopCamera(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasLm = !!landmarks;
-  const st    = angle != null ? getAngleStatus(angle, sport) : null;
-  const col   = st ? statusColor(st) : '#38bdf8';
-  const bgCol = st ? statusBg(st)    : 'rgba(56,189,248,0.1)';
+  // Sync canvas pixel dimensions to video intrinsic size so overlay aligns
+  useEffect(() => {
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const sync = () => {
+      canvas.width  = video.videoWidth  || video.clientWidth;
+      canvas.height = video.videoHeight || video.clientHeight;
+    };
+    video.addEventListener('loadedmetadata', sync);
+    window.addEventListener('resize', sync);
+    return () => {
+      video.removeEventListener('loadedmetadata', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasLm    = !!landmarks;
+  const st       = angle != null ? getAngleStatus(angle, sport) : null;
+  const angleCol = st ? statusColor(st) : '#38bdf8';
 
   return (
-    <div className="space-y-4">
-      {/* Video + canvas — siempre montado para que videoRef esté disponible */}
-      <div className="relative rounded-2xl overflow-hidden bg-slate-950"
-        style={{ aspectRatio: '4/3' }}>
-        <video
-          ref={videoRef}
-          playsInline autoPlay muted
-          className="w-full h-full object-cover"
-        />
-        <canvas
-          ref={canvasRef}
-          width={640} height={480}
-          className="absolute inset-0 w-full h-full pointer-events-none"
-        />
+    // flex:1 fills the fixed fullscreen container from parent
+    <div style={{ position: 'relative', flex: 1, width: '100%', background: '#000', overflow: 'hidden' }}>
 
-        {/* Fix 3: overlay de carga — visible mientras MP se descarga */}
-        {mpLoading && !cameraError && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(15,23,42,0.85)',
-            borderRadius: '1rem', gap: 12,
+      {/* ── Video feed ──────────────────────────────────────────────────────── */}
+      <video
+        ref={videoRef}
+        playsInline autoPlay muted
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+      />
+      <canvas
+        ref={canvasRef}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+      />
+
+      {/* ── Loading overlay ─────────────────────────────────────────────────── */}
+      {mpLoading && !cameraError && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(15,23,42,0.85)', gap: 12,
+        }}>
+          <div className="animate-spin" style={{
+            width: 36, height: 36, borderRadius: '50%',
+            border: '3px solid #334155', borderTopColor: '#38bdf8',
+          }} />
+          <span style={{
+            color: '#94a3b8', fontSize: 13,
+            fontFamily: "'JetBrains Mono', monospace",
           }}>
-            <div
-              className="animate-spin"
-              style={{
-                width: 36, height: 36, borderRadius: '50%',
-                border: '3px solid #334155',
-                borderTopColor: '#38bdf8',
-              }}
-            />
-            <span style={{
-              color: '#94a3b8', fontSize: 13,
-              fontFamily: "'JetBrains Mono', monospace",
-            }}>
-              Cargando modelo IA…
-            </span>
-          </div>
-        )}
+            Cargando modelo IA…
+          </span>
+        </div>
+      )}
 
-        {/* Fix 3: overlay de error — con botón Reintentar */}
-        {mpError && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(15,23,42,0.92)',
-            borderRadius: '1rem', gap: 12,
-            padding: 20, textAlign: 'center',
-          }}>
-            <span style={{ color: '#ef4444', fontSize: 13 }}>{mpError}</span>
-            <button
-              onClick={() => window.location.reload()}
-              style={{
-                padding: '8px 16px', borderRadius: 8,
-                background: '#38bdf8', color: '#0f172a',
-                fontWeight: 700, fontSize: 12,
-                border: 'none', cursor: 'pointer',
-              }}
-            >
-              Reintentar
-            </button>
-          </div>
-        )}
-
-        {/* Live angle badge — shown in grabando phase */}
-        {phase === 'grabando' && angle != null && (
-          <div
-            className="absolute top-3 left-1/2 -translate-x-1/2 px-5 py-2 rounded-2xl"
+      {/* ── MediaPipe error overlay ──────────────────────────────────────────── */}
+      {mpError && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(15,23,42,0.92)', gap: 12,
+          padding: 20, textAlign: 'center',
+        }}>
+          <span style={{ color: '#ef4444', fontSize: 13 }}>{mpError}</span>
+          <button
+            onClick={() => window.location.reload()}
             style={{
-              background: bgCol,
-              border: `2px solid ${col}`,
-              backdropFilter: 'blur(8px)',
+              padding: '8px 16px', borderRadius: 8,
+              background: '#38bdf8', color: '#0f172a',
+              fontWeight: 700, fontSize: 12,
+              border: 'none', cursor: 'pointer',
             }}
           >
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: '72px',
-                fontWeight: 900,
-                color: col,
-                lineHeight: 1,
-                display: 'block',
-                textAlign: 'center',
-              }}
-            >
-              {angle}°
-            </span>
-          </div>
-        )}
+            Reintentar
+          </button>
+        </div>
+      )}
 
-        {/* Landmark status badge — calibracion only, hidden while MP loads */}
-        {phase === 'calibracion' && !mpLoading && (
-          <div
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap"
+      {/* ── Camera permission error overlay ─────────────────────────────────── */}
+      {cameraError && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(15,23,42,0.92)', gap: 8,
+          padding: 20, textAlign: 'center',
+        }}>
+          <span style={{ color: '#ef4444', fontSize: 14 }}>⚠</span>
+          <span style={{ color: '#ef4444', fontSize: 13 }}>{cameraError}</span>
+          <button
+            onClick={onBack}
             style={{
-              background: hasLm ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
-              border: `1px solid ${hasLm ? '#22c55e' : '#ef4444'}`,
-              color: hasLm ? '#22c55e' : '#ef4444',
+              marginTop: 8, padding: '8px 16px', borderRadius: 8,
+              background: '#334155', color: '#94a3b8',
+              fontWeight: 600, fontSize: 12,
+              border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer',
             }}
           >
-            {hasLm ? '✓ Landmarks detectados' : '⬤ Buscando landmarks…'}
-          </div>
-        )}
+            ← Volver
+          </button>
+        </div>
+      )}
+
+      {/* ── Floating UI (visible only when camera is live) ────────────────── */}
+
+      {/* Back button — top left */}
+      <button
+        onClick={onBack}
+        style={{
+          position: 'absolute', top: 16, left: 16, zIndex: 10,
+          background: 'rgba(15,23,42,0.75)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 10, padding: '8px 14px',
+          color: '#94a3b8', fontSize: 13,
+          cursor: 'pointer', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        ← Atrás
+      </button>
+
+      {/* Side label — top right */}
+      <div style={{
+        position: 'absolute', top: 16, right: 16, zIndex: 10,
+        background: 'rgba(15,23,42,0.75)',
+        borderRadius: 8, padding: '6px 12px',
+        backdropFilter: 'blur(8px)',
+        color: '#38bdf8', fontSize: 12,
+        fontWeight: 700, letterSpacing: '0.05em',
+      }}>
+        {sideLabel}
       </div>
 
-      {/* Camera permission / hardware error (below video) */}
-      {cameraError && (
-        <div className="p-3 rounded-xl text-sm text-red-400"
-          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
-          {cameraError}
-        </div>
-      )}
-
-      {/* Calibracion controls */}
-      {phase === 'calibracion' && (
-        <div className="space-y-3">
-          <p className="text-sm text-slate-400 text-center leading-relaxed">
-            Ajustá el encuadre hasta ver los 3 puntos (cadera · rodilla · tobillo)
-          </p>
-          <button
-            onClick={() => setPhase('grabando')}
-            disabled={!hasLm}
-            className="w-full py-3 rounded-xl font-semibold text-sm transition-colors"
-            style={{
-              background: hasLm ? '#38bdf8' : '#334155',
-              color:      hasLm ? '#0f172a' : '#64748b',
-              cursor:     hasLm ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {hasLm
-              ? `Listo — Evaluar ${side === 'left' ? 'Izquierdo' : 'Derecho'}`
-              : 'Esperando detección…'}
-          </button>
-        </div>
-      )}
-
-      {/* Grabando controls */}
+      {/* Angle display — top center (grabando phase) */}
       {phase === 'grabando' && (
-        <div className="space-y-3">
-          <p className="text-sm text-slate-400 text-center">
-            Flexioná la rodilla al máximo y capturá el ángulo pico.
-          </p>
-          <button
-            onClick={() => onCapture(angle)}
-            disabled={angle == null}
-            className="w-full py-4 rounded-xl font-bold text-base transition-colors"
-            style={{
-              background: angle != null ? '#38bdf8' : '#334155',
-              color:      angle != null ? '#0f172a' : '#64748b',
-              cursor:     angle != null ? 'pointer' : 'not-allowed',
-            }}
-          >
-            📐 Capturar ángulo máximo
-            {angle != null && (
-              <span className="ml-2 opacity-70 font-normal">({angle}°)</span>
-            )}
-          </button>
+        <div style={{
+          position: 'absolute', top: 20,
+          left: '50%', transform: 'translateX(-50%)',
+          zIndex: 10,
+          background: 'rgba(15,23,42,0.75)',
+          borderRadius: 12, padding: '6px 18px',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 52, fontWeight: 700,
+            color: angleCol,
+          }}>
+            {angle != null ? `${angle}°` : '--'}
+          </span>
         </div>
+      )}
+
+      {/* Landmark status — above capture button (calibracion, after MP loads) */}
+      {phase === 'calibracion' && !mpLoading && (
+        <div style={{
+          position: 'absolute', bottom: 112,
+          left: '50%', transform: 'translateX(-50%)',
+          zIndex: 10,
+          background: hasLm ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
+          border: `1px solid ${hasLm ? '#22c55e' : '#ef4444'}`,
+          color: hasLm ? '#22c55e' : '#ef4444',
+          borderRadius: 8, padding: '6px 14px',
+          fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+        }}>
+          {hasLm ? '✓ Landmarks detectados' : '⬤ Buscando landmarks…'}
+        </div>
+      )}
+
+      {/* Calibracion "Listo" button — bottom center */}
+      {phase === 'calibracion' && !mpLoading && (
+        <button
+          onClick={() => setPhase('grabando')}
+          disabled={!hasLm}
+          style={{
+            position: 'absolute', bottom: 32,
+            left: '50%', transform: 'translateX(-50%)',
+            zIndex: 10,
+            background: hasLm ? '#38bdf8' : 'rgba(51,65,85,0.9)',
+            color: hasLm ? '#0f172a' : '#64748b',
+            fontWeight: 700, fontSize: 14,
+            border: hasLm ? 'none' : '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 14, padding: '14px 32px',
+            cursor: hasLm ? 'pointer' : 'not-allowed',
+            whiteSpace: 'nowrap', backdropFilter: 'blur(8px)',
+            boxShadow: hasLm ? '0 4px 24px rgba(56,189,248,0.35)' : 'none',
+          }}
+        >
+          {hasLm
+            ? `Listo — Evaluar ${side === 'left' ? 'Izquierdo' : 'Derecho'}`
+            : 'Esperando detección…'}
+        </button>
+      )}
+
+      {/* Capture button — bottom center (grabando) */}
+      {phase === 'grabando' && (
+        <button
+          onClick={() => onCapture(angle)}
+          disabled={angle == null}
+          style={{
+            position: 'absolute', bottom: 32,
+            left: '50%', transform: 'translateX(-50%)',
+            zIndex: 10,
+            background: angle != null ? '#38bdf8' : 'rgba(51,65,85,0.9)',
+            color: angle != null ? '#0f172a' : '#64748b',
+            fontWeight: 700, fontSize: 15,
+            border: angle != null ? 'none' : '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 14, padding: '14px 40px',
+            cursor: angle != null ? 'pointer' : 'not-allowed',
+            boxShadow: angle != null ? '0 4px 24px rgba(56,189,248,0.35)' : 'none',
+            whiteSpace: 'nowrap', backdropFilter: 'blur(8px)',
+          }}
+        >
+          📐 Capturar ángulo máximo
+        </button>
       )}
     </div>
   );
@@ -232,10 +279,10 @@ function CameraSessionView({ side, startPhase, sport, onCapture }) {
 // ── ResultScreen ──────────────────────────────────────────────────────────────
 
 function ResultScreen({ side, angle, sport, onNext, nextLabel }) {
-  const st    = getAngleStatus(angle, sport);
-  const col   = statusColor(st);
-  const bg    = statusBg(st);
-  const label = statusLabel(st);
+  const st     = getAngleStatus(angle, sport);
+  const col    = statusColor(st);
+  const bg     = statusBg(st);
+  const label  = statusLabel(st);
   const interp = getInterpretation(angle, sport);
 
   return (
@@ -244,29 +291,20 @@ function ResultScreen({ side, angle, sport, onNext, nextLabel }) {
         Resultado — {side === 'left' ? 'Izquierdo' : 'Derecho'}
       </h2>
 
-      {/* Angle */}
       <div className="rounded-2xl p-8 flex flex-col items-center gap-4"
         style={{ background: bg, border: `2px solid ${col}` }}>
-        <span
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: '96px',
-            fontWeight: 900,
-            color: col,
-            lineHeight: 1,
-          }}
-        >
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '96px', fontWeight: 900, color: col, lineHeight: 1,
+        }}>
           {angle}°
         </span>
-        <div
-          className="px-5 py-1.5 rounded-full font-bold text-sm"
-          style={{ background: col, color: '#0f172a' }}
-        >
+        <div className="px-5 py-1.5 rounded-full font-bold text-sm"
+          style={{ background: col, color: '#0f172a' }}>
           {label}
         </div>
       </div>
 
-      {/* Interpretation */}
       <div className="rounded-xl p-4"
         style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}>
         <p className="text-sm text-slate-300 leading-relaxed">{interp}</p>
@@ -294,24 +332,15 @@ function SideCard({ label, angle, sport }) {
   return (
     <div className="flex-1 rounded-xl p-4 flex flex-col items-center gap-2"
       style={{ background: bg, border: `1px solid ${col}` }}>
-      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
-        {label}
-      </p>
-      <span
-        style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '52px',
-          fontWeight: 900,
-          color: col,
-          lineHeight: 1,
-        }}
-      >
+      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{label}</p>
+      <span style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '52px', fontWeight: 900, color: col, lineHeight: 1,
+      }}>
         {angle}°
       </span>
-      <span
-        className="text-xs font-bold px-2 py-0.5 rounded-full"
-        style={{ background: col, color: '#0f172a' }}
-      >
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+        style={{ background: col, color: '#0f172a' }}>
         {lbl}
       </span>
     </div>
@@ -322,8 +351,8 @@ function SummaryScreen({ izq, der, sport, coachId, athleteId, onRestart, onNavig
   const [saved,      setSaved]      = useState(false);
   const [selAthlete, setSelAthlete] = useState(athleteId ? String(athleteId) : '');
 
-  const asim   = calcAsimetria(izq, der);
-  const asimSt = asim >= 15 ? 'danger' : asim >= 10 ? 'warning' : 'ok';
+  const asim    = calcAsimetria(izq, der);
+  const asimSt  = asim >= 15 ? 'danger' : asim >= 10 ? 'warning' : 'ok';
   const asimCol = asimSt === 'danger' ? '#ef4444' : asimSt === 'warning' ? '#eab308' : '#22c55e';
   const asimBg  = asimSt === 'danger'
     ? 'rgba(239,68,68,0.12)'
@@ -336,59 +365,37 @@ function SummaryScreen({ izq, der, sport, coachId, athleteId, onRestart, onNavig
     const key  = `fieldlab_${coachId}_mobility_${aid}_tobillo_${todayStr()}`;
     const data = {
       izq, der, asimetria: asim, sport,
-      timestamp: new Date().toISOString(),
-      athleteId: aid,
+      timestamp: new Date().toISOString(), athleteId: aid,
     };
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-      setSaved(true);
-    } catch { /* storage full */ }
+    try { localStorage.setItem(key, JSON.stringify(data)); setSaved(true); }
+    catch { /* storage full */ }
   }
 
   return (
     <div className="space-y-5">
       <h2 className="text-2xl font-bold text-slate-100 text-center">Resumen final</h2>
 
-      {/* Side-by-side results */}
       <div className="flex gap-3">
         <SideCard label="Izquierdo" angle={izq} sport={sport} />
         <SideCard label="Derecho"   angle={der} sport={sport} />
       </div>
 
-      {/* Asymmetry */}
       <div className="rounded-xl p-4 space-y-2"
         style={{ background: asimBg, border: `1px solid ${asimCol}` }}>
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-slate-300">Asimetría</p>
-          <span
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '28px',
-              fontWeight: 700,
-              color: asimCol,
-            }}
-          >
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '28px', fontWeight: 700, color: asimCol,
+          }}>
             {asim}%
           </span>
         </div>
-        {asimSt === 'danger' && (
-          <p className="text-xs font-medium" style={{ color: '#ef4444' }}>
-            ⚠ Asimetría significativa — revisar cadena posterior
-          </p>
-        )}
-        {asimSt === 'warning' && (
-          <p className="text-xs font-medium" style={{ color: '#eab308' }}>
-            ⚠ Asimetría moderada — monitorear
-          </p>
-        )}
-        {asimSt === 'ok' && (
-          <p className="text-xs font-medium" style={{ color: '#22c55e' }}>
-            ✓ Asimetría dentro del rango aceptable
-          </p>
-        )}
+        {asimSt === 'danger'  && <p className="text-xs font-medium" style={{ color: '#ef4444' }}>⚠ Asimetría significativa — revisar cadena posterior</p>}
+        {asimSt === 'warning' && <p className="text-xs font-medium" style={{ color: '#eab308' }}>⚠ Asimetría moderada — monitorear</p>}
+        {asimSt === 'ok'      && <p className="text-xs font-medium" style={{ color: '#22c55e' }}>✓ Asimetría dentro del rango aceptable</p>}
       </div>
 
-      {/* Athlete selector (only if no pre-selected athlete) */}
       {!athleteId && (
         <div className="rounded-xl p-4"
           style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -409,49 +416,40 @@ function SummaryScreen({ izq, der, sport, coachId, athleteId, onRestart, onNavig
         </div>
       )}
 
-      {/* Save */}
       {!saved ? (
-        <button
-          onClick={handleSave}
-          className="w-full py-3 rounded-xl font-semibold text-sm"
-          style={{ background: '#38bdf8', color: '#0f172a' }}
-        >
+        <button onClick={handleSave} className="w-full py-3 rounded-xl font-semibold text-sm"
+          style={{ background: '#38bdf8', color: '#0f172a' }}>
           💾 Guardar en perfil del atleta
         </button>
       ) : (
-        <div
-          className="w-full py-3 rounded-xl font-semibold text-sm text-center"
-          style={{
-            background: 'rgba(34,197,94,0.15)',
-            color: '#22c55e',
-            border: '1px solid rgba(34,197,94,0.4)',
-          }}
-        >
+        <div className="w-full py-3 rounded-xl font-semibold text-sm text-center"
+          style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.4)' }}>
           ✓ Guardado correctamente
         </div>
       )}
 
-      <button
-        onClick={onRestart}
-        className="w-full py-3 rounded-xl font-semibold text-sm"
-        style={{
-          background: '#1e293b',
-          color: '#38bdf8',
-          border: '1px solid rgba(56,189,248,0.3)',
-        }}
-      >
+      <button onClick={onRestart} className="w-full py-3 rounded-xl font-semibold text-sm"
+        style={{ background: '#1e293b', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}>
         Nuevo test
       </button>
     </div>
   );
 }
 
+// ── Fullscreen camera wrapper ──────────────────────────────────────────────────
+
+const FS_STYLE = {
+  position: 'fixed', inset: 0, zIndex: 999,
+  background: '#000',
+  display: 'flex', flexDirection: 'column',
+};
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 // State machine:
 //   instrucciones → camera_left (calib+grab) → resultado_izq
 //   → camera_right (grab only) → resultado_der → resumen
 
-export default function MovilidadTobillo({ initialId, onNavigate }) {
+export default function MovilidadTobillo({ initialId, onNavigate, onFullscreen }) {
   const { coach } = useAuth();
   const [step,     setStep]     = useState('instrucciones');
   const [izqAngle, setIzqAngle] = useState(null);
@@ -460,6 +458,13 @@ export default function MovilidadTobillo({ initialId, onNavigate }) {
   const athlete = PLAYERS.find(p => p.id === Number(initialId)) ?? null;
   const sport   = (athlete?.sport ?? 'default').toLowerCase();
   const coachId = coach?.id ?? 'anon';
+
+  // Notify parent to hide/show NavBar based on camera step
+  useEffect(() => {
+    const isFs = step === 'camera_left' || step === 'camera_right';
+    onFullscreen?.(isFs);
+    return () => onFullscreen?.(false);
+  }, [step, onFullscreen]);
 
   function restart() {
     setStep('instrucciones');
@@ -487,7 +492,6 @@ export default function MovilidadTobillo({ initialId, onNavigate }) {
           )}
         </div>
 
-        {/* Instructions */}
         <div className="rounded-2xl p-5 space-y-4"
           style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h2 className="text-base font-semibold text-slate-200">Instrucciones</h2>
@@ -498,10 +502,8 @@ export default function MovilidadTobillo({ initialId, onNavigate }) {
             'Mantené la posición cuando veas la línea verde',
           ].map((txt, i) => (
             <div key={i} className="flex items-start gap-3">
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                style={{ background: '#38bdf8', color: '#0f172a' }}
-              >
+              <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                style={{ background: '#38bdf8', color: '#0f172a' }}>
                 <span className="text-xs font-bold">{i + 1}</span>
               </div>
               <p className="text-sm text-slate-300 leading-relaxed">{txt}</p>
@@ -509,7 +511,6 @@ export default function MovilidadTobillo({ initialId, onNavigate }) {
           ))}
         </div>
 
-        {/* Reference values */}
         <div className="rounded-2xl p-5"
           style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
@@ -540,33 +541,18 @@ export default function MovilidadTobillo({ initialId, onNavigate }) {
     );
   }
 
-  // ── CAMERA LEFT (calibracion + grabando_izq in one session) ───────────────
+  // ── CAMERA LEFT — fullscreen (calibracion + grabando_izq) ─────────────────
   if (step === 'camera_left') {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setStep('instrucciones')}
-            className="text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-100">
-              Lado <span style={{ color: '#38bdf8' }}>Izquierdo</span>
-            </h2>
-            <p className="text-xs text-slate-500">Calibrá y luego capturá el ángulo máximo</p>
-          </div>
-        </div>
+      <div style={FS_STYLE}>
         <CameraSessionView
           key="left"
           side="left"
           startPhase="calibracion"
           sport={sport}
-          onCapture={(ang) => {
-            setIzqAngle(ang);
-            setStep('resultado_izq');
-          }}
+          sideLabel="IZQUIERDO"
+          onBack={() => setStep('instrucciones')}
+          onCapture={(ang) => { setIzqAngle(ang); setStep('resultado_izq'); }}
         />
       </div>
     );
@@ -585,35 +571,18 @@ export default function MovilidadTobillo({ initialId, onNavigate }) {
     );
   }
 
-  // ── CAMERA RIGHT (grabando only) ───────────────────────────────────────────
+  // ── CAMERA RIGHT — fullscreen (grabando only) ──────────────────────────────
   if (step === 'camera_right') {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setStep('resultado_izq')}
-            className="text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h2 className="text-lg font-bold text-slate-100">
-              Lado <span style={{ color: '#38bdf8' }}>Derecho</span>
-            </h2>
-            <p className="text-xs text-slate-500">
-              Cambiá el pie adelante y capturá el ángulo máximo
-            </p>
-          </div>
-        </div>
+      <div style={FS_STYLE}>
         <CameraSessionView
           key="right"
           side="right"
           startPhase="grabando"
           sport={sport}
-          onCapture={(ang) => {
-            setDerAngle(ang);
-            setStep('resultado_der');
-          }}
+          sideLabel="DERECHO"
+          onBack={() => setStep('resultado_izq')}
+          onCapture={(ang) => { setDerAngle(ang); setStep('resultado_der'); }}
         />
       </div>
     );

@@ -188,6 +188,7 @@ export function useAngleDetection({ side, sport = 'default' }) {
   }, []); // stable — reads everything from refs
 
   // Load MediaPipe from CDN once on mount
+  // Fix 2: modelComplexity 0 (más liviano en iOS), timeout 15s en initialize()
   useEffect(() => {
     let pose;
     let cancelled = false;
@@ -198,15 +199,21 @@ export function useAngleDetection({ side, sport = 'default' }) {
         // eslint-disable-next-line no-undef
         pose = new window.Pose({ locateFile: (f) => `${CDN_BASE}/${f}` });
         pose.setOptions({
-          modelComplexity:        1,
+          modelComplexity:        0,   // liviano — carga más rápido en iOS
           smoothLandmarks:        true,
           enableSegmentation:     false,
           smoothSegmentation:     false,
-          minDetectionConfidence: 0.7,
-          minTrackingConfidence:  0.7,
+          minDetectionConfidence: 0.6,
+          minTrackingConfidence:  0.6,
         });
         pose.onResults(onResults);
-        await pose.initialize();
+        // Timeout de 15s: en iOS el modelo puede tardar en descargarse
+        await Promise.race([
+          pose.initialize(),
+          new Promise((_, rej) =>
+            setTimeout(() => rej(new Error('Timeout al cargar el modelo (>15s)')), 15000)
+          ),
+        ]);
         if (!cancelled) {
           poseRef.current = pose;
           setMpLoading(false);
@@ -226,8 +233,9 @@ export function useAngleDetection({ side, sport = 'default' }) {
     };
   }, [onResults]);
 
+  // Fix 1: startCamera NO espera a poseRef — abre el stream inmediatamente.
+  // El loop de inferencia espera internamente a que poseRef.current esté listo.
   const startCamera = useCallback(async (facingMode = 'environment') => {
-    if (!videoRef.current || !poseRef.current) return;
     setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -238,7 +246,8 @@ export function useAngleDetection({ side, sport = 'default' }) {
         },
         audio: false,
       });
-      const video     = videoRef.current;
+      const video = videoRef.current;
+      if (!video) return; // componente desmontado antes de que resolviera
       video.srcObject = stream;
       await new Promise((res, rej) => {
         video.onloadedmetadata = res;
@@ -250,19 +259,24 @@ export function useAngleDetection({ side, sport = 'default' }) {
       runningRef.current = true;
       setIsDetecting(true);
 
+      // Loop: espera a que MP esté listo antes de enviar frames
       const loop = async () => {
         if (!runningRef.current) return;
         try {
-          if (poseRef.current && videoRef.current?.readyState >= 2) {
+          if (
+            poseRef.current &&
+            videoRef.current?.readyState >= 2 &&
+            !videoRef.current.paused
+          ) {
             await poseRef.current.send({ image: videoRef.current });
           }
-        } catch { /* ignore individual frame errors */ }
+        } catch { /* ignorar errores de frame individual */ }
         rafRef.current = requestAnimationFrame(loop);
       };
       rafRef.current = requestAnimationFrame(loop);
     } catch (err) {
       if (err.name === 'NotAllowedError') {
-        setCameraError('Permiso de cámara denegado. Habilitá el acceso en configuración del navegador.');
+        setCameraError('Permiso de cámara denegado. Habilitalo en Ajustes → Safari → Cámara.');
       } else if (err.name === 'NotFoundError') {
         setCameraError('No se encontró cámara en este dispositivo.');
       } else {

@@ -35,6 +35,11 @@ function todayStr() {
 // ── CameraSessionView ─────────────────────────────────────────────────────────
 // Handles calibracion → grabando internally to avoid remounting between phases.
 // key="left" or key="right" in parent ensures separate instances per side.
+//
+// Fix 3: mpLoading y mpError se muestran como overlays SOBRE el video,
+//         no como pantalla de reemplazo. El <video> se renderiza siempre
+//         para que videoRef esté disponible en el primer efecto.
+// Fix 4: startCamera se llama al montar sin esperar a mpLoading.
 
 function CameraSessionView({ side, startPhase, sport, onCapture }) {
   const [phase, setPhase] = useState(startPhase ?? 'calibracion');
@@ -46,38 +51,21 @@ function CameraSessionView({ side, startPhase, sport, onCapture }) {
     startCamera, stopCamera,
   } = useAngleDetection({ side, sport });
 
+  // Fix 4: llamar startCamera inmediatamente al montar — NO esperar a MP.
+  // startCamera abre el stream de video; el loop interno espera a poseRef.
   useEffect(() => {
     startCamera();
     return () => { stopCamera(); };
-  }, [startCamera, stopCamera]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasLm  = !!landmarks;
-  const st     = angle != null ? getAngleStatus(angle, sport) : null;
-  const col    = st ? statusColor(st) : '#38bdf8';
-  const bgCol  = st ? statusBg(st)    : 'rgba(56,189,248,0.1)';
-
-  if (mpLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: '#38bdf8', borderTopColor: 'transparent' }} />
-        <p className="text-slate-400 text-sm">Iniciando cámara y MediaPipe…</p>
-      </div>
-    );
-  }
-
-  if (mpError) {
-    return (
-      <div className="p-4 rounded-xl text-sm text-red-400"
-        style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
-        {mpError}
-      </div>
-    );
-  }
+  const hasLm = !!landmarks;
+  const st    = angle != null ? getAngleStatus(angle, sport) : null;
+  const col   = st ? statusColor(st) : '#38bdf8';
+  const bgCol = st ? statusBg(st)    : 'rgba(56,189,248,0.1)';
 
   return (
     <div className="space-y-4">
-      {/* Video + canvas overlay */}
+      {/* Video + canvas — siempre montado para que videoRef esté disponible */}
       <div className="relative rounded-2xl overflow-hidden bg-slate-950"
         style={{ aspectRatio: '4/3' }}>
         <video
@@ -90,6 +78,57 @@ function CameraSessionView({ side, startPhase, sport, onCapture }) {
           width={640} height={480}
           className="absolute inset-0 w-full h-full pointer-events-none"
         />
+
+        {/* Fix 3: overlay de carga — visible mientras MP se descarga */}
+        {mpLoading && !cameraError && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(15,23,42,0.85)',
+            borderRadius: '1rem', gap: 12,
+          }}>
+            <div
+              className="animate-spin"
+              style={{
+                width: 36, height: 36, borderRadius: '50%',
+                border: '3px solid #334155',
+                borderTopColor: '#38bdf8',
+              }}
+            />
+            <span style={{
+              color: '#94a3b8', fontSize: 13,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              Cargando modelo IA…
+            </span>
+          </div>
+        )}
+
+        {/* Fix 3: overlay de error — con botón Reintentar */}
+        {mpError && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(15,23,42,0.92)',
+            borderRadius: '1rem', gap: 12,
+            padding: 20, textAlign: 'center',
+          }}>
+            <span style={{ color: '#ef4444', fontSize: 13 }}>{mpError}</span>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '8px 16px', borderRadius: 8,
+                background: '#38bdf8', color: '#0f172a',
+                fontWeight: 700, fontSize: 12,
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
 
         {/* Live angle badge — shown in grabando phase */}
         {phase === 'grabando' && angle != null && (
@@ -117,8 +156,8 @@ function CameraSessionView({ side, startPhase, sport, onCapture }) {
           </div>
         )}
 
-        {/* Landmark status in calibracion */}
-        {phase === 'calibracion' && (
+        {/* Landmark status badge — calibracion only, hidden while MP loads */}
+        {phase === 'calibracion' && !mpLoading && (
           <div
             className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap"
             style={{
@@ -132,7 +171,7 @@ function CameraSessionView({ side, startPhase, sport, onCapture }) {
         )}
       </div>
 
-      {/* Camera error */}
+      {/* Camera permission / hardware error (below video) */}
       {cameraError && (
         <div className="p-3 rounded-xl text-sm text-red-400"
           style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>

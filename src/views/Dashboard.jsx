@@ -7,6 +7,18 @@ import { acwrStatus, lsiStatus } from '../utils/biomechanics';
 import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
 import { useCoachStorage } from '../hooks/useCoachStorage';
 import { useAuth } from '../context/AuthContext';
+import { PLAYERS } from '../data/players';
+
+// Roster inicial derivado de PLAYERS: mismos IDs (1-8) para que PlayerProfile
+// y Wellness.jsx (que también usan esos IDs) funcionen sin cambios adicionales.
+const DEFAULT_ATHLETES = PLAYERS.map(p => ({
+  id:       p.id,
+  name:     p.name,
+  position: p.position,
+  number:   0,
+  acwr:     p.acwr,
+  lsi:      p.lsi,
+}));
 
 const DOT_COLOR  = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
 const KPI_COLOR  = { neutral: '#38bdf8', safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
@@ -51,7 +63,7 @@ function dotPriority(a, w) {
 
 export default function Dashboard({ onNavigate }) {
   const { coach, logout } = useAuth();
-  const [athletes, setAthletes] = useCoachStorage('athletes', []);
+  const [athletes, setAthletes] = useCoachStorage('athletes', DEFAULT_ATHLETES);
   const [showAdd,  setShowAdd]  = useState(false);
   const [newName,  setNewName]  = useState('');
   const [newPos,   setNewPos]   = useState('');
@@ -69,6 +81,10 @@ export default function Dashboard({ onNavigate }) {
 
   function addAthlete() {
     if (!newName.trim()) return;
+    // NOTA: los atletas nuevos usan id=Date.now(). Esos IDs no existen en
+    // data/players.js ni en el ATHLETES hardcodeado de Wellness.jsx, por lo que
+    // PlayerProfile y la vista Wellness no los mostrarán hasta que esas vistas
+    // sean migradas a leer desde el coach storage (trabajo futuro).
     const athlete = {
       id:       Date.now(),
       name:     newName.trim(),

@@ -13,10 +13,17 @@ export function useCoachStorage(key, defaultValue = null) {
   });
 
   const set = useCallback((newVal) => {
-    const toStore = typeof newVal === 'function' ? newVal(value) : newVal;
-    localStorage.setItem(fullKey, JSON.stringify(toStore));
-    setValue(toStore);
-  }, [fullKey, value]);
+    // Usamos la forma funcional de setValue para obtener siempre el estado
+    // más reciente (prev), evitando el stale-closure cuando se pasa un updater
+    // funcional (ej: set(prev => [...prev, item])) en llamadas rápidas sucesivas.
+    setValue(prev => {
+      const toStore = typeof newVal === 'function' ? newVal(prev) : newVal;
+      try {
+        localStorage.setItem(fullKey, JSON.stringify(toStore));
+      } catch { /* localStorage no disponible o cuota llena */ }
+      return toStore;
+    });
+  }, [fullKey]);
 
   const clear = useCallback(() => {
     localStorage.removeItem(fullKey);

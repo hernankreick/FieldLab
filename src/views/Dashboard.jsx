@@ -1,21 +1,12 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, Users } from 'lucide-react';
+import { AlertTriangle, Users, LogOut, Plus } from 'lucide-react';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import QRGenerator from '../components/QRGenerator';
 import { acwrStatus, lsiStatus } from '../utils/biomechanics';
 import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
-
-const BASE_ATHLETES = [
-  { id: 1, name: 'Ramiro S.',    acwr: 1.42, lsi: 6.2  },
-  { id: 2, name: 'Leandro M.',   acwr: 1.61, lsi: 18.4 },
-  { id: 3, name: 'Tomás R.',     acwr: 1.1,  lsi: 4.8  },
-  { id: 4, name: 'Facundo B.',   acwr: 0.95, lsi: 11.2 },
-  { id: 5, name: 'Agustín T.',   acwr: 1.05, lsi: 5.0  },
-  { id: 6, name: 'Lucía F.',     acwr: 0.88, lsi: 7.3  },
-  { id: 7, name: 'Valentina L.', acwr: 1.22, lsi: 9.8  },
-  { id: 8, name: 'Martín G.',    acwr: 1.35, lsi: 6.1  },
-];
+import { useCoachStorage } from '../hooks/useCoachStorage';
+import { useAuth } from '../context/AuthContext';
 
 const DOT_COLOR  = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
 const KPI_COLOR  = { neutral: '#38bdf8', safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
@@ -59,6 +50,12 @@ function dotPriority(a, w) {
 }
 
 export default function Dashboard({ onNavigate }) {
+  const { coach, logout } = useAuth();
+  const [athletes, setAthletes] = useCoachStorage('athletes', []);
+  const [showAdd,  setShowAdd]  = useState(false);
+  const [newName,  setNewName]  = useState('');
+  const [newPos,   setNewPos]   = useState('');
+  const [newNum,   setNewNum]   = useState('');
   const [wellnessMap, setWellnessMap] = useState({});
 
   useEffect(() => {
@@ -70,36 +67,57 @@ export default function Dashboard({ onNavigate }) {
     return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
   }, []);
 
-  const athletes = BASE_ATHLETES.map(a => ({
+  function addAthlete() {
+    if (!newName.trim()) return;
+    const athlete = {
+      id:       Date.now(),
+      name:     newName.trim(),
+      position: newPos.trim(),
+      number:   Number(newNum) || 0,
+      acwr:     1.0,
+      lsi:      0,
+    };
+    setAthletes(prev => [...prev, athlete]);
+    setNewName(''); setNewPos(''); setNewNum('');
+    setShowAdd(false);
+  }
+
+  const athletesWithWellness = athletes.map(a => ({
     ...a,
     w: wellnessMap[String(a.id)] ?? null,
   }));
 
-  const sortedAthletes = [...athletes].sort((a, b) => {
+  const sortedAthletes = [...athletesWithWellness].sort((a, b) => {
     const dp = dotPriority(a, a.w) - dotPriority(b, b.w);
     return dp !== 0 ? dp : b.acwr - a.acwr;
   });
 
-  const todayCount    = athletes.filter(a => a.w && isToday(a.w.timestamp)).length;
-  const noReportCount = athletes.length - todayCount;
-  const alerts = athletes.filter(a => {
+  const todayCount    = athletesWithWellness.filter(a => a.w && isToday(a.w.timestamp)).length;
+  const noReportCount = athletesWithWellness.length - todayCount;
+  const alerts = athletesWithWellness.filter(a => {
     const w = a.w && isToday(a.w.timestamp) ? a.w : null;
     return athleteRisk(a, w) === 'danger';
   });
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100">FieldLab</h1>
-        <p className="text-sm text-slate-400">Alto rendimiento deportivo</p>
+      {/* Header con nombre del coach y botón de logout */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100">FieldLab</h1>
+          <p className="text-sm text-slate-400">{coach.name}</p>
+        </div>
+        <button onClick={logout} className="text-slate-500 hover:text-slate-300 p-1 transition-colors">
+          <LogOut size={16} />
+        </button>
       </div>
 
       {/* KPI strip — 4 columnas compactas */}
       {(() => {
         const kpis = [
-          { value: athletes.length, label: 'Atletas',    color: KPI_COLOR.neutral },
+          { value: athletesWithWellness.length, label: 'Atletas',    color: KPI_COLOR.neutral },
           { value: alerts.length,   label: 'En riesgo',  color: alerts.length > 0 ? KPI_COLOR.danger  : KPI_COLOR.safe    },
-          { value: todayCount,      label: 'Hoy',        color: todayCount === athletes.length ? KPI_COLOR.safe : todayCount > 0 ? KPI_COLOR.warning : KPI_COLOR.neutral },
+          { value: todayCount,      label: 'Hoy',        color: todayCount === athletesWithWellness.length ? KPI_COLOR.safe : todayCount > 0 ? KPI_COLOR.warning : KPI_COLOR.neutral },
           { value: noReportCount,   label: 'Sin rep.',   color: noReportCount > 0 ? KPI_COLOR.warning : KPI_COLOR.safe    },
         ];
         return (
@@ -137,16 +155,52 @@ export default function Dashboard({ onNavigate }) {
 
       {/* Estado del plantel */}
       <Card title="Estado del plantel" icon={Users}
-        action={onNavigate && (
+        action={
           <button
-            onClick={() => onNavigate('wellness')}
-            className="text-xs text-accent hover:text-accent/80 font-semibold transition-colors"
+            onClick={() => setShowAdd(s => !s)}
+            className="text-xs text-accent font-semibold flex items-center gap-1 hover:text-accent/80 transition-colors"
           >
-            Ver Wellness →
+            <Plus size={12} /> Jugador
           </button>
-        )}
+        }
       >
+        {/* Mini-form de alta de jugador */}
+        {showAdd && (
+          <div className="flex flex-col gap-2 mb-3 p-3 bg-background rounded-xl border border-white/10">
+            <input
+              placeholder="Nombre"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
+            />
+            <input
+              placeholder="Posición"
+              value={newPos}
+              onChange={e => setNewPos(e.target.value)}
+              className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
+            />
+            <input
+              placeholder="Número"
+              type="number"
+              value={newNum}
+              onChange={e => setNewNum(e.target.value)}
+              className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
+            />
+            <button
+              onClick={addAthlete}
+              className="bg-accent text-background font-bold py-2 rounded-lg text-sm hover:bg-accent/90 transition-colors"
+            >
+              Agregar
+            </button>
+          </div>
+        )}
+
         <div className="space-y-0">
+          {sortedAthletes.length === 0 && (
+            <p className="text-sm text-slate-500 text-center py-4">
+              No hay jugadores — usá el botón + para agregar
+            </p>
+          )}
           {sortedAthletes.map(a => {
             const hasToday = a.w && isToday(a.w.timestamp);
             const dotColor = a.acwr > 1.5 || (hasToday && a.w.score > 18) ? DOT_COLOR.danger

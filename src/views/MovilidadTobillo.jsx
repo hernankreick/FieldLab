@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import {
   useAngleDetection,
@@ -37,8 +37,16 @@ function todayStr() {
 // Handles calibracion → grabando transition internally (same MediaPipe instance).
 // All controls float absolutely over the video.
 
+// Fix (bug #5): mínimo de frames consecutivos con landmarks antes de habilitar
+// el botón de captura. Evita capturar el primer frame ruidoso del modelo.
+const MIN_STABLE_FRAMES = 3;
+
 function CameraSessionView({ side, startPhase, sport, sideLabel, onBack, onCapture }) {
   const [phase, setPhase] = useState(startPhase ?? 'calibracion');
+
+  // Contador de frames consecutivos con landmarks — se reinicia si se pierden
+  const [stableFrames, setStableFrames] = useState(0);
+  const prevLmRef = useRef(false);
 
   const {
     videoRef, canvasRef,
@@ -46,6 +54,13 @@ function CameraSessionView({ side, startPhase, sport, sideLabel, onBack, onCaptu
     mpLoading, mpError, cameraError,
     startCamera, stopCamera,
   } = useAngleDetection({ side, sport });
+
+  // Actualizar contador de frames estables
+  useEffect(() => {
+    const hasLmNow = !!landmarks;
+    setStableFrames(hasLmNow ? prev => prev + 1 : 0);
+    prevLmRef.current = hasLmNow;
+  }, [landmarks]);
 
   // Open camera immediately on mount — does NOT wait for MediaPipe
   useEffect(() => {
@@ -70,9 +85,13 @@ function CameraSessionView({ side, startPhase, sport, sideLabel, onBack, onCaptu
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasLm    = !!landmarks;
-  const st       = angle != null ? getAngleStatus(angle, sport) : null;
-  const angleCol = st ? statusColor(st) : '#38bdf8';
+  const hasLm        = !!landmarks;
+  // En fase 'grabando': habilitar captura sólo tras MIN_STABLE_FRAMES frames estables
+  const readyToCapture = phase === 'grabando'
+    ? (angle != null && stableFrames >= MIN_STABLE_FRAMES)
+    : false;
+  const st         = angle != null ? getAngleStatus(angle, sport) : null;
+  const angleCol   = st ? statusColor(st) : '#38bdf8';
 
   return (
     // flex:1 fills the fixed fullscreen container from parent
@@ -209,8 +228,9 @@ function CameraSessionView({ side, startPhase, sport, sideLabel, onBack, onCaptu
         </div>
       )}
 
-      {/* Landmark status — above capture button (calibracion, after MP loads) */}
-      {phase === 'calibracion' && !mpLoading && (
+      {/* Landmark status — visible en ambas fases una vez que MP cargó.
+          Fix (bug #5): en grabando muestra progreso de estabilización. */}
+      {!mpLoading && (
         <div style={{
           position: 'absolute', bottom: 112,
           left: '50%', transform: 'translateX(-50%)',
@@ -221,7 +241,11 @@ function CameraSessionView({ side, startPhase, sport, sideLabel, onBack, onCaptu
           borderRadius: 8, padding: '6px 14px',
           fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
         }}>
-          {hasLm ? '✓ Landmarks detectados' : '⬤ Buscando landmarks…'}
+          {hasLm
+            ? (phase === 'grabando' && stableFrames < MIN_STABLE_FRAMES
+                ? `⬤ Estabilizando… (${stableFrames}/${MIN_STABLE_FRAMES})`
+                : '✓ Landmarks detectados')
+            : '⬤ Buscando landmarks…'}
         </div>
       )}
 
@@ -250,22 +274,24 @@ function CameraSessionView({ side, startPhase, sport, sideLabel, onBack, onCaptu
         </button>
       )}
 
-      {/* Capture button — bottom center (grabando) */}
+      {/* Capture button — bottom center (grabando).
+          Fix (bug #5): deshabilitado hasta MIN_STABLE_FRAMES frames con
+          landmarks para no capturar el primer frame ruidoso del modelo. */}
       {phase === 'grabando' && (
         <button
           onClick={() => onCapture(angle)}
-          disabled={angle == null}
+          disabled={!readyToCapture}
           style={{
             position: 'absolute', bottom: 32,
             left: '50%', transform: 'translateX(-50%)',
             zIndex: 10,
-            background: angle != null ? '#38bdf8' : 'rgba(51,65,85,0.9)',
-            color: angle != null ? '#0f172a' : '#64748b',
+            background: readyToCapture ? '#38bdf8' : 'rgba(51,65,85,0.9)',
+            color: readyToCapture ? '#0f172a' : '#64748b',
             fontWeight: 700, fontSize: 15,
-            border: angle != null ? 'none' : '1px solid rgba(255,255,255,0.1)',
+            border: readyToCapture ? 'none' : '1px solid rgba(255,255,255,0.1)',
             borderRadius: 14, padding: '14px 40px',
-            cursor: angle != null ? 'pointer' : 'not-allowed',
-            boxShadow: angle != null ? '0 4px 24px rgba(56,189,248,0.35)' : 'none',
+            cursor: readyToCapture ? 'pointer' : 'not-allowed',
+            boxShadow: readyToCapture ? '0 4px 24px rgba(56,189,248,0.35)' : 'none',
             whiteSpace: 'nowrap', backdropFilter: 'blur(8px)',
           }}
         >
@@ -513,21 +539,34 @@ export default function MovilidadTobillo({ initialId, onNavigate, onFullscreen }
 
         <div className="rounded-2xl p-5"
           style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            Valores normativos
-          </h3>
-          <div className="space-y-2.5">
-            {[
-              { col: '#22c55e', txt: 'Óptimo: ≥ 35°' },
-              { col: '#eab308', txt: 'Precaución: 25° – 34°' },
-              { col: '#ef4444', txt: 'Riesgo: < 25°' },
-            ].map(({ col, txt }) => (
-              <div key={txt} className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full shrink-0" style={{ background: col }} />
-                <span className="text-sm text-slate-300">{txt}</span>
-              </div>
-            ))}
-          </div>
+          {/* Fix (bug #3): derivar umbrales desde NORMAS[sport] para que
+              coincidan exactamente con los valores usados en getAngleStatus().
+              Antes estaban hardcodeados en 35/25 ignorando el deporte. */}
+          {(() => {
+            const n = NORMAS[sport] ?? NORMAS.default;
+            return (
+              <>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                  Valores normativos
+                  {sport !== 'default' && (
+                    <span className="ml-2 normal-case font-normal text-slate-500">({sport})</span>
+                  )}
+                </h3>
+                <div className="space-y-2.5">
+                  {[
+                    { col: '#22c55e', txt: `Óptimo: ≥ ${n.optimo}°` },
+                    { col: '#eab308', txt: `Precaución: ${n.precaucion}° – ${n.optimo - 1}°` },
+                    { col: '#ef4444', txt: `Riesgo: < ${n.precaucion}°` },
+                  ].map(({ col, txt }) => (
+                    <div key={txt} className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ background: col }} />
+                      <span className="text-sm text-slate-300">{txt}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         <button

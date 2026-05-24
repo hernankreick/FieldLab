@@ -58,9 +58,20 @@ function calcDorsiflexion(knee, ankle) {
 }
 
 // ── CDN script loader ─────────────────────────────────────────────────────────
+// Fix (bug #2): si la etiqueta <script> ya existe pero aún no disparó onload,
+// esperar el evento en vez de resolver de inmediato (evita el TypeError
+// "window.Pose is not a constructor" en remontajes rápidos del componente).
 function loadScript(src) {
   return new Promise((res, rej) => {
-    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      // El símbolo ya está disponible (carga previa completada)
+      if (window.Pose) { res(); return; }
+      // Script en el DOM pero todavía cargando — esperar onload
+      existing.addEventListener('load',  res,                                              { once: true });
+      existing.addEventListener('error', () => rej(new Error(`No se pudo cargar: ${src}`)), { once: true });
+      return;
+    }
     const s    = document.createElement('script');
     s.src      = src;
     s.onload   = res;
@@ -207,12 +218,15 @@ export function useAngleDetection({ side, sport = 'default' }) {
           minTrackingConfidence:  0.6,
         });
         pose.onResults(onResults);
-        // Timeout de 15s: en iOS el modelo puede tardar en descargarse
+        // Timeout de 15s: en iOS el modelo puede tardar en descargarse.
+        // Fix (bug #4): guardar el id del timer y limpiarlo cuando initialize()
+        // gana la carrera, para que no dispare una rejected promise huérfana.
+        let timeoutId;
         await Promise.race([
-          pose.initialize(),
-          new Promise((_, rej) =>
-            setTimeout(() => rej(new Error('Timeout al cargar el modelo (>15s)')), 15000)
-          ),
+          pose.initialize().finally(() => clearTimeout(timeoutId)),
+          new Promise((_, rej) => {
+            timeoutId = setTimeout(() => rej(new Error('Timeout al cargar el modelo (>15s)')), 15000);
+          }),
         ]);
         if (!cancelled) {
           poseRef.current = pose;
@@ -247,7 +261,12 @@ export function useAngleDetection({ side, sport = 'default' }) {
         audio: false,
       });
       const video = videoRef.current;
-      if (!video) return; // componente desmontado antes de que resolviera
+      if (!video) {
+        // Fix (bug #1): el componente se desmontó mientras getUserMedia resolvía.
+        // Detener el stream aquí para que el LED de cámara se apague.
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
       video.srcObject = stream;
       await new Promise((res, rej) => {
         video.onloadedmetadata = res;

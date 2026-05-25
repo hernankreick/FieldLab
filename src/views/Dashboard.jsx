@@ -3,6 +3,7 @@ import { AlertTriangle, Users, LogOut, Plus } from 'lucide-react';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import QRGenerator from '../components/QRGenerator';
+import ReportButton from '../components/ReportButton';
 import { acwrStatus, lsiStatus } from '../utils/biomechanics';
 import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
 import { useCoachStorage } from '../hooks/useCoachStorage';
@@ -117,15 +118,22 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div className="space-y-4">
-      {/* Header con nombre del coach y botón de logout */}
-      <div className="flex items-center justify-between">
+      {/* Header con nombre del coach, botón de informe y logout */}
+      <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-slate-100">FieldLab</h1>
           <p className="text-sm text-slate-400">{coach.name}</p>
         </div>
-        <button onClick={logout} className="text-slate-500 hover:text-slate-300 p-1 transition-colors">
-          <LogOut size={16} />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <ReportButton
+            type="team"
+            players={athletesWithWellness}
+            label="Informe Semanal"
+          />
+          <button onClick={logout} className="text-slate-500 hover:text-slate-300 p-1 transition-colors">
+            <LogOut size={16} />
+          </button>
+        </div>
       </div>
 
       {/* KPI strip — 4 columnas compactas */}

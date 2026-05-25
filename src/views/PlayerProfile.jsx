@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getAngleStatus, statusColor, statusLabel, statusBg } from '../hooks/useTiltAngle';
+import ReportButton from '../components/ReportButton';
 import {
   LineChart, Line, AreaChart, Area,
   XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer,
@@ -314,11 +315,13 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             <h1 className="text-2xl font-bold text-slate-100">{player.name}</h1>
             <p className="text-sm text-slate-400">{player.position} · {player.sport}</p>
           </div>
-          <StatusBadge
-            status={risk}
-            label={risk === 'safe' ? 'Apto' : risk === 'warning' ? 'Alerta' : 'Riesgo'}
-            className="mt-1 shrink-0"
-          />
+          <div className="flex items-center gap-2 mt-1 shrink-0">
+            <StatusBadge
+              status={risk}
+              label={risk === 'safe' ? 'Apto' : risk === 'warning' ? 'Alerta' : 'Riesgo'}
+            />
+            <ReportButton type="player" player={player} variant="icon" />
+          </div>
         </div>
 
         <div className="mt-2 flex items-center gap-2">

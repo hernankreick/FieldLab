@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
+import ReportButton from '../components/ReportButton';
 import { saveWellness } from '../utils/storage';
+import { PLAYERS } from '../data/players';
 
 const TEAM_PLAYERS = [
   { id: 1, name: 'Ramiro Sánchez',   position: 'Fullback',      sport: 'rugby'  },
@@ -206,7 +208,20 @@ export default function HooperQR({ teamId }) {
           ¡Gracias, {player.name.split(' ')[0]}!
         </h2>
         <p className="text-slate-400 text-center text-sm mb-1">Tu reporte fue enviado.</p>
-        <p className="text-slate-600 text-center text-xs mb-10">{fecha} — {hora}</p>
+        <p className="text-slate-600 text-center text-xs mb-6">{fecha} — {hora}</p>
+        {/* Botón de descarga del informe individual */}
+        {(() => {
+          const fullPlayer = PLAYERS.find(p => p.id === player.id) ?? null;
+          return fullPlayer ? (
+            <div className="mb-4">
+              <ReportButton
+                type="player"
+                player={fullPlayer}
+                label="Descargar mi informe"
+              />
+            </div>
+          ) : null;
+        })()}
         <button
           onClick={reset}
           className="w-full max-w-xs py-4 rounded-2xl font-bold text-sm

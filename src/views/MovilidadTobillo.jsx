@@ -711,8 +711,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
   // ══════════════════════════════════════════════════════════════════════════
   if (step === 'upload_izq' || step === 'upload_der') {
     const inputId = `upload-input-${isIzq ? 'izq' : 'der'}`;
-    // analyzing = imagen cargada, sin ángulo Y sin error de detección (está procesando)
-    const analyzing = hook.capturedImage && hook.capturedAngle == null && !hook.detectionError && !hook.mpLoading;
+    // analyzing viene del hook (true mientras poseRef.current.send() está en vuelo)
 
     return (
       <>
@@ -826,7 +825,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
                 }}
               />
               {/* Spinner de análisis encima de la foto */}
-              {analyzing && (
+              {hook.analyzing && (
                 <div style={{
                   position: 'absolute', inset: 0, borderRadius: 14,
                   display: 'flex', flexDirection: 'column',
@@ -907,7 +906,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
           )}
 
           {/* Sin pose detectada (ningún landmarks) */}
-          {hook.capturedImage && hook.capturedAngle == null && !analyzing && !hook.detectionError && !hook.mpLoading && (
+          {hook.capturedImage && hook.capturedAngle == null && !hook.analyzing && !hook.detectionError && !hook.mpLoading && (
             <div style={{
               padding: '14px 16px', borderRadius: 14,
               background: 'rgba(234,179,8,0.1)', border: `1px solid ${C.yellow}`,

@@ -95,6 +95,20 @@ function validateLandmarks(lm, ids) {
   return null; // sin error
 }
 
+// ── Redimensiona imagen a maxWidth px manteniendo aspect ratio ────────────────
+// Las fotos de iPhone llegan a 4032x3024 — demasiado grandes para WASM en el browser.
+// MediaPipe funciona bien con imágenes de hasta 640px de ancho.
+function resizeImage(img, maxWidth = 640) {
+  const scale     = Math.min(1, maxWidth / img.naturalWidth);
+  const w         = Math.round(img.naturalWidth  * scale);
+  const h         = Math.round(img.naturalHeight * scale);
+  const offscreen = document.createElement('canvas');
+  offscreen.width  = w;
+  offscreen.height = h;
+  offscreen.getContext('2d').drawImage(img, 0, 0, w, h);
+  return offscreen; // canvas es aceptado por poseRef.current.send({ image })
+}
+
 // ── Cargar script CDN, esperando si ya está en el DOM pero no ha cargado ─────
 function loadScript(src) {
   return new Promise((res, rej) => {
@@ -207,6 +221,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
   const [landmarks,      setLandmarks]      = useState(null);
   const [liveAngle,      setLiveAngle]      = useState(null);
   const [detectionError, setDetectionError] = useState(null);
+  const [analyzing,      setAnalyzing]      = useState(false);
 
   const ids = SIDES[side] ?? SIDES.left;
 
@@ -406,12 +421,16 @@ export function useLungePhoto({ side, sport = 'default' }) {
   }, [ids, onLiveResults]);
 
   // ANALIZAR FOTO CARGADA DESDE GALERÍA
+  // — Redimensiona a 640px max antes de enviar (fotos iPhone = 4032px → WASM lento)
+  // — Timeout de 10s: si MediaPipe no responde, muestra error en lugar de spinner eterno
   const analyzeUpload = useCallback(async (file) => {
     if (!poseRef.current) return;
     setCapturedAngle(null);
     setCapturedImage(null);
     setDetectionError(null);
+    setAnalyzing(true);
 
+    // Leer archivo como dataURL
     const dataURL = await new Promise((res, rej) => {
       const reader    = new FileReader();
       reader.onload   = e => res(e.target.result);
@@ -420,27 +439,52 @@ export function useLungePhoto({ side, sport = 'default' }) {
     });
     setCapturedImage(dataURL);
 
+    // Cargar imagen en un elemento <img>
     const img = new Image();
     img.src   = dataURL;
     await new Promise(res => { img.onload = res; });
 
+    // Redimensionar a máx 640px para que WASM no se cuelgue con fotos 4K
+    const resized = resizeImage(img, 640);
+
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) { setAnalyzing(false); return; }
+
+    // Helper: restaurar handler de live y limpiar analyzing
+    const restoreLive = () => {
+      if (poseRef.current) poseRef.current.onResults(onLiveResults);
+      setAnalyzing(false);
+    };
 
     let resolved = false;
+
+    // Timeout de 10s — MediaPipe a veces nunca llama al handler con imágenes grandes
+    const timeoutId = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      restoreLive();
+      setDetectionError(
+        'El análisis tardó demasiado. Intentá con una foto más pequeña o mejor iluminada.'
+      );
+    }, 10000);
+
     const handler = (results) => {
       if (resolved) return;
-      resolved  = true;
-      const lm  = results.poseLandmarks ?? null;
+      resolved = true;
+      clearTimeout(timeoutId);
+
+      const lm = results.poseLandmarks ?? null;
+
+      // Escalar canvas al tamaño ORIGINAL de la imagen para el overlay
       canvas.width  = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (!lm) {
-        setCapturedAngle(null);
         setDetectionError('No se detectó ninguna persona. ' +
           'Asegurate de que el cuerpo completo esté en cuadro.');
+        restoreLive();
         return;
       }
 
@@ -449,8 +493,8 @@ export function useLungePhoto({ side, sport = 'default' }) {
         const knee  = lm[ids.knee];
         const ankle = lm[ids.ankle];
         if (knee && ankle) drawOverlay(ctx, lm, ids, 0, canvas.width, canvas.height);
-        setCapturedAngle(null);
         setDetectionError(err);
+        restoreLive();
         return;
       }
 
@@ -459,14 +503,20 @@ export function useLungePhoto({ side, sport = 'default' }) {
       setLandmarks(lm);
       setDetectionError(null);
       drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
+      restoreLive();
     };
 
     poseRef.current.onResults(handler);
     try {
-      await poseRef.current.send({ image: img });
-    } catch { /* ignorar errores de análisis */ }
-    finally {
-      if (poseRef.current) poseRef.current.onResults(onLiveResults);
+      // Enviar imagen REDIMENSIONADA (canvas) — MediaPipe acepta HTMLCanvasElement
+      await poseRef.current.send({ image: resized });
+    } catch (err) {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeoutId);
+        setDetectionError(`Error al procesar la imagen: ${err.message}`);
+        restoreLive();
+      }
     }
   }, [ids, onLiveResults]);
 
@@ -518,6 +568,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
     setLandmarks(null);
     setCameraError(null);
     setDetectionError(null);
+    setAnalyzing(false);
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -550,6 +601,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
     capturedImage,
     landmarks,
     detectionError,
+    analyzing,
     startCamera,
     stopCamera,
     capturePhoto,

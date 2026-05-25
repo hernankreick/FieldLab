@@ -271,15 +271,6 @@ export default function MovilidadTobillo({ initialId, onNavigate, onFullscreen }
     return () => onFullscreen?.(false);
   }, [onFullscreen]);
 
-  // Solicitar permiso de giroscopio al entrar al paso 'permiso'
-  // En Android/Desktop resuelve de inmediato y salta a midiendo_izq.
-  useEffect(() => {
-    if (step !== 'permiso') return;
-    requestPermission().then(ok => {
-      if (ok) setStep('midiendo_izq');
-    });
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Controlar lectura del sensor según el paso activo
   useEffect(() => {
     if (step !== 'midiendo_izq' && step !== 'midiendo_der') return;
@@ -372,8 +363,17 @@ export default function MovilidadTobillo({ initialId, onNavigate, onFullscreen }
           </div>
         </div>
 
+        {/* Fix (bug #1): requestPermission() debe llamarse directamente desde
+            el onClick — iOS 13+ Safari exige que el call stack provenga del
+            gesture handler. Llamarlo desde useEffect (post-render) hace que
+            el token de user-gesture ya haya expirado y arroja SecurityError. */}
         <button
-          onClick={() => setStep('permiso')}
+          onClick={async () => {
+            const ok = await requestPermission();
+            if (ok) setStep('midiendo_izq');
+            // Si ok === false el hook ya seteó error; mostrar pantalla de error
+            else     setStep('permiso');
+          }}
           className="w-full py-4 rounded-xl font-bold text-base"
           style={{ background: '#38bdf8', color: '#0f172a' }}
         >
@@ -384,39 +384,38 @@ export default function MovilidadTobillo({ initialId, onNavigate, onFullscreen }
   }
 
   // ── PERMISO ───────────────────────────────────────────────────────────────
-  // En Android/Desktop se resuelve de inmediato sin mostrar nada.
-  // En iOS muestra el diálogo nativo y espera la respuesta.
+  // Sólo se muestra si requestPermission() falló (error !== null).
+  // El flujo normal (Android/desktop/iOS exitoso) salta directamente a
+  // midiendo_izq desde el onClick de "Comenzar" y nunca llega aquí.
   if (step === 'permiso') {
-    if (error) {
-      return (
-        <div className="space-y-5">
-          <div className="rounded-2xl p-6 text-center space-y-4"
-            style={{ background: '#1e293b', border: '1px solid rgba(239,68,68,0.3)' }}>
-            <span style={{ fontSize: 40 }}>⚠️</span>
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
-          <button
-            onClick={() => requestPermission().then(ok => { if (ok) setStep('midiendo_izq'); })}
-            className="w-full py-3 rounded-xl font-semibold text-sm"
-            style={{ background: '#38bdf8', color: '#0f172a' }}
-          >
-            Reintentar
-          </button>
-          <button
-            onClick={() => setStep('instrucciones')}
-            className="w-full py-3 rounded-xl font-semibold text-sm"
-            style={{ background: '#1e293b', color: '#64748b', border: '1px solid rgba(255,255,255,0.07)' }}
-          >
-            ← Volver
-          </button>
-        </div>
-      );
-    }
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-5">
-        <div className="animate-spin w-10 h-10 rounded-full"
-          style={{ border: '3px solid #334155', borderTopColor: '#38bdf8' }} />
-        <p className="text-slate-400 text-sm">Solicitando permiso de giroscopio…</p>
+      <div className="space-y-5">
+        <div className="rounded-2xl p-6 text-center space-y-4"
+          style={{ background: '#1e293b', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <span style={{ fontSize: 40 }}>⚠️</span>
+          <p className="text-sm text-red-400">
+            {error ?? 'No se pudo obtener permiso del giroscopio.'}
+          </p>
+        </div>
+        {/* Fix: Reintentar también llama desde onClick para respetar el
+            gesture requirement de iOS */}
+        <button
+          onClick={async () => {
+            const ok = await requestPermission();
+            if (ok) setStep('midiendo_izq');
+          }}
+          className="w-full py-3 rounded-xl font-semibold text-sm"
+          style={{ background: '#38bdf8', color: '#0f172a' }}
+        >
+          Reintentar
+        </button>
+        <button
+          onClick={() => setStep('instrucciones')}
+          className="w-full py-3 rounded-xl font-semibold text-sm"
+          style={{ background: '#1e293b', color: '#64748b', border: '1px solid rgba(255,255,255,0.07)' }}
+        >
+          ← Volver
+        </button>
       </div>
     );
   }

@@ -73,7 +73,8 @@ export function useTiltAngle() {
   }, []);
 
   const startReading = useCallback(() => {
-    setIsReading(true);
+    setAngle(null);   // Fix: reset ángulo al iniciar cada medición nueva para evitar
+    setIsReading(true); // que el valor del lado anterior quede visible y capturable
     baseRef.current = null;
     window.addEventListener('deviceorientation', handleOrientation, true);
   }, [handleOrientation]);

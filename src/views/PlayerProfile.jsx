@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getAngleStatus, statusColor, statusLabel, statusBg } from '../hooks/useTiltAngle';
+import { getAngleStatus, statusColor, statusLabel, statusBg } from '../hooks/useLungePhoto';
 import {
   LineChart, Line, AreaChart, Area,
   XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer,

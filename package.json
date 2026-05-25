@@ -10,6 +10,8 @@
   "dependencies": {
     "@tensorflow/tfjs-core": "^4.12.0",
     "clsx": "^2.0.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.284.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",

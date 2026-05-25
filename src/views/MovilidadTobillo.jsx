@@ -583,8 +583,8 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
             </button>
           </div>
 
-          {/* Barra inferior */}
-          {!hook.capturedAngle && (
+          {/* Barra inferior — sin foto capturada todavía */}
+          {!hook.capturedImage && (
             <div style={{
               padding: '16px 20px 36px',
               background: 'rgba(15,23,42,0.9)',
@@ -607,6 +607,43 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
                 }}
               >
                 📸 Capturar foto
+              </button>
+            </div>
+          )}
+
+          {/* Foto capturada pero detección falló */}
+          {hook.capturedImage && hook.capturedAngle == null && (
+            <div style={{
+              padding: '16px 20px 36px',
+              background: 'rgba(15,23,42,0.95)',
+              backdropFilter: 'blur(12px)',
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              {hook.detectionError ? (
+                <div style={{
+                  borderRadius: 12, padding: '12px 14px',
+                  background: 'rgba(239,68,68,0.12)',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                }}>
+                  <p style={{ color: C.red, fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+                    ⚠ {hook.detectionError}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <Spinner />
+                </div>
+              )}
+              <button
+                onClick={hook.retake}
+                style={{
+                  width: '100%', padding: '13px 0', borderRadius: 14,
+                  border: `1px solid ${C.border}`,
+                  background: 'transparent', color: C.muted,
+                  cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                }}
+              >
+                ↺ Repetir foto
               </button>
             </div>
           )}
@@ -674,7 +711,8 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
   // ══════════════════════════════════════════════════════════════════════════
   if (step === 'upload_izq' || step === 'upload_der') {
     const inputId = `upload-input-${isIzq ? 'izq' : 'der'}`;
-    const analyzing = hook.capturedImage && hook.capturedAngle == null;
+    // analyzing = imagen cargada, sin ángulo Y sin error de detección (está procesando)
+    const analyzing = hook.capturedImage && hook.capturedAngle == null && !hook.detectionError && !hook.mpLoading;
 
     return (
       <>
@@ -709,20 +747,22 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
             </p>
           </div>
 
-          {/* Instrucción de foto ideal */}
-          {!hook.capturedImage && (
-            <div style={{
-              borderRadius: 14, padding: '14px 16px',
-              background: C.card, border: `1px solid ${C.border}`,
-            }}>
-              <p style={{ fontSize: 12, color: C.muted, margin: 0, lineHeight: 1.6 }}>
-                📐 La foto debe mostrar:<br />
-                • Vista lateral del atleta en posición lunge<br />
-                • Tobillo, rodilla y cadera visibles<br />
-                • Talón apoyado en el suelo
-              </p>
-            </div>
-          )}
+          {/* Guía de foto correcta — siempre visible */}
+          <div style={{
+            borderRadius: 14, padding: '14px 16px',
+            background: C.card, border: `1px solid ${C.border}`,
+          }}>
+            <p style={{ fontSize: 12, color: C.muted, fontWeight: 600, margin: '0 0 6px' }}>
+              La foto debe mostrar:
+            </p>
+            <ul style={{ fontSize: 12, color: C.muted, margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
+              <li>Vista lateral estricta (90° de perfil)</li>
+              <li>Cuerpo completo: cadera, rodilla y tobillo visibles</li>
+              <li>Talón apoyado en el suelo</li>
+              <li>Rodilla en el punto máximo de flexión</li>
+              <li>Buena iluminación, sin ropa suelta que tape las articulaciones</li>
+            </ul>
+          </div>
 
           {/* Botón seleccionar foto */}
           <input
@@ -838,10 +878,15 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
 
               <button
                 onClick={confirmUpload}
+                disabled={!!hook.detectionError}
                 style={{
                   width: '100%', padding: '14px 0', borderRadius: 14,
-                  border: 'none', background: C.accent,
-                  color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+                  border: 'none',
+                  background: hook.detectionError ? C.border : C.accent,
+                  color: hook.detectionError ? C.muted : '#0f172a',
+                  fontWeight: 700, fontSize: 15,
+                  cursor: hook.detectionError ? 'not-allowed' : 'pointer',
+                  opacity: hook.detectionError ? 0.5 : 1,
                 }}
               >
                 {step === 'upload_izq' ? 'Continuar con Derecho →' : 'Ver Resumen →'}
@@ -849,14 +894,26 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
             </>
           )}
 
-          {/* Sin poses detectadas */}
-          {hook.capturedImage && hook.capturedAngle == null && !analyzing && !hook.mpLoading && (
+          {/* Error de detección específico */}
+          {hook.detectionError && (
+            <div style={{
+              padding: '12px 16px', borderRadius: 14,
+              background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)`,
+            }}>
+              <p style={{ fontSize: 13, color: C.red, margin: 0, lineHeight: 1.5 }}>
+                ⚠ {hook.detectionError}
+              </p>
+            </div>
+          )}
+
+          {/* Sin pose detectada (ningún landmarks) */}
+          {hook.capturedImage && hook.capturedAngle == null && !analyzing && !hook.detectionError && !hook.mpLoading && (
             <div style={{
               padding: '14px 16px', borderRadius: 14,
               background: 'rgba(234,179,8,0.1)', border: `1px solid ${C.yellow}`,
             }}>
               <p style={{ fontSize: 13, color: C.yellow, margin: 0 }}>
-                ⚠ No se detectó la pose. Probá con una foto más clara o en mejor posición lateral.
+                ⚠ No se detectó ninguna persona. Probá con una foto más clara o en mejor posición lateral.
               </p>
             </div>
           )}

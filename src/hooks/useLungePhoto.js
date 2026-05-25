@@ -19,6 +19,12 @@ const SIDES = {
   right: { hip: 24, knee: 26, ankle: 28 },
 };
 
+// Visibilidad mínima aceptable para cada landmark
+const MIN_VISIBILITY = 0.6;
+// Rango fisiológicamente válido de dorsiflexión de tobillo
+const ANG_MIN = 5;
+const ANG_MAX = 55;
+
 // ── Valores normativos por deporte (re-exportados para PlayerProfile) ─────────
 export const NORMAS = {
   rugby:   { optimo: 35, precaucion: 25 },
@@ -63,6 +69,32 @@ function calcDorsiflexion(knee, ankle) {
   return Math.round(rad * (180 / Math.PI));
 }
 
+// ── Validación de visibilidad y rango antes de usar los landmarks ─────────────
+// Devuelve null si válido, o un string de error si hay problema.
+function validateLandmarks(lm, ids) {
+  const hip   = lm[ids.hip];
+  const knee  = lm[ids.knee];
+  const ankle = lm[ids.ankle];
+
+  const allVisible =
+    hip   && (hip.visibility   ?? 1) >= MIN_VISIBILITY &&
+    knee  && (knee.visibility  ?? 1) >= MIN_VISIBILITY &&
+    ankle && (ankle.visibility ?? 1) >= MIN_VISIBILITY;
+
+  if (!allVisible) {
+    return 'No se pudieron detectar los puntos correctamente. ' +
+      'Asegurate de que cadera, rodilla y tobillo estén visibles.';
+  }
+
+  const ang = calcDorsiflexion(knee, ankle);
+  if (ang < ANG_MIN || ang > ANG_MAX) {
+    return `El ángulo detectado (${ang}°) está fuera del rango esperado. ` +
+      'Verificá que la foto sea vista lateral estricta.';
+  }
+
+  return null; // sin error
+}
+
 // ── Cargar script CDN, esperando si ya está en el DOM pero no ha cargado ─────
 function loadScript(src) {
   return new Promise((res, rej) => {
@@ -82,6 +114,7 @@ function loadScript(src) {
 }
 
 // ── Dibujar overlay en canvas sobre la foto analizada ────────────────────────
+// Puntos coloreados según la confianza (visibilidad) de cada landmark.
 function drawOverlay(ctx, lm, ids, angle, W, H) {
   if (!lm || lm.length < 33) return;
   const hip   = lm[ids.hip];
@@ -94,6 +127,14 @@ function drawOverlay(ctx, lm, ids, angle, W, H) {
   const ax = ankle.x * W, ay = ankle.y * H;
 
   const col = angle >= 35 ? '#22c55e' : angle >= 25 ? '#eab308' : '#ef4444';
+
+  // Color de cada punto según su visibilidad
+  const visColor = (v) => {
+    const vis = v ?? 1;
+    if (vis >= 0.8) return '#22c55e';
+    if (vis >= 0.6) return '#eab308';
+    return '#ef4444';
+  };
 
   // Línea muslo
   ctx.lineWidth   = 5;
@@ -124,11 +165,15 @@ function drawOverlay(ctx, lm, ids, angle, W, H) {
     ctx.stroke();
   }
 
-  // Puntos en articulaciones
-  [[hx, hy, '#38bdf8'], [kx, ky, col], [ax, ay, col]].forEach(([x, y, fill]) => {
+  // Puntos con color según visibilidad de cada landmark
+  [
+    [hx, hy, visColor(hip.visibility)],
+    [kx, ky, visColor(knee.visibility)],
+    [ax, ay, visColor(ankle.visibility)],
+  ].forEach(([x, y, fill]) => {
     ctx.beginPath();
-    ctx.arc(x, y, 8, 0, 2 * Math.PI);
-    ctx.fillStyle  = fill;
+    ctx.arc(x, y, 9, 0, 2 * Math.PI);
+    ctx.fillStyle   = fill;
     ctx.fill();
     ctx.strokeStyle = 'rgba(15,23,42,0.9)';
     ctx.lineWidth   = 2;
@@ -153,18 +198,20 @@ export function useLungePhoto({ side, sport = 'default' }) {
   const rafRef     = useRef(null);
   const runningRef = useRef(false);
 
-  const [mpLoading,     setMpLoading]     = useState(true);
-  const [mpError,       setMpError]       = useState(null);
-  const [cameraError,   setCameraError]   = useState(null);
-  const [isStreaming,   setIsStreaming]    = useState(false);
-  const [capturedAngle, setCapturedAngle] = useState(null);
-  const [capturedImage, setCapturedImage] = useState(null); // dataURL
-  const [landmarks,     setLandmarks]     = useState(null);
-  const [liveAngle,     setLiveAngle]     = useState(null);
+  const [mpLoading,      setMpLoading]      = useState(true);
+  const [mpError,        setMpError]        = useState(null);
+  const [cameraError,    setCameraError]    = useState(null);
+  const [isStreaming,    setIsStreaming]     = useState(false);
+  const [capturedAngle,  setCapturedAngle]  = useState(null);
+  const [capturedImage,  setCapturedImage]  = useState(null); // dataURL
+  const [landmarks,      setLandmarks]      = useState(null);
+  const [liveAngle,      setLiveAngle]      = useState(null);
+  const [detectionError, setDetectionError] = useState(null);
 
   const ids = SIDES[side] ?? SIDES.left;
 
   // onResults para video en vivo (preview)
+  // Aplica validación de visibilidad + rango para no mostrar ángulos no confiables
   const onLiveResults = useCallback((results) => {
     const canvas = canvasRef.current;
     const video  = videoRef.current;
@@ -176,10 +223,24 @@ export function useLungePhoto({ side, sport = 'default' }) {
     const lm = results.poseLandmarks ?? null;
     setLandmarks(lm);
     if (!lm) { setLiveAngle(null); return; }
-    const knee  = lm[ids.knee];
-    const ankle = lm[ids.ankle];
-    if (!knee || !ankle) { setLiveAngle(null); return; }
-    const ang = calcDorsiflexion(knee, ankle);
+
+    const err = validateLandmarks(lm, ids);
+    if (err) {
+      // En live no mostramos mensaje de error para no saturar la UI,
+      // pero sí dibujamos los puntos para dar feedback visual de posición
+      const hip   = lm[ids.hip];
+      const knee  = lm[ids.knee];
+      const ankle = lm[ids.ankle];
+      if (hip && knee && ankle) {
+        // Dibujar puntos tenues para indicar que el cuerpo fue detectado
+        // pero la confianza es insuficiente
+        drawOverlay(ctx, lm, ids, 0, canvas.width, canvas.height);
+      }
+      setLiveAngle(null);
+      return;
+    }
+
+    const ang = calcDorsiflexion(lm[ids.knee], lm[ids.ankle]);
     setLiveAngle(ang);
     drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
   }, [ids]);  // ids is stable per hook instance
@@ -234,6 +295,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
     setCameraError(null);
     setCapturedAngle(null);
     setCapturedImage(null);
+    setDetectionError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -283,6 +345,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
     // Pausar el loop de video
     runningRef.current = false;
     cancelAnimationFrame(rafRef.current);
+    setDetectionError(null);
 
     // Capturar frame como imagen
     const snap    = document.createElement('canvas');
@@ -307,20 +370,29 @@ export function useLungePhoto({ side, sport = 'default' }) {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if (lm) {
+      if (!lm) {
+        setCapturedAngle(null);
+        setDetectionError('No se detectó ninguna persona. ' +
+          'Asegurate de que el cuerpo completo esté en cuadro.');
+        return;
+      }
+
+      const err = validateLandmarks(lm, ids);
+      if (err) {
+        // Dibujar igual para mostrar dónde están los puntos detectados
         const knee  = lm[ids.knee];
         const ankle = lm[ids.ankle];
-        if (knee && ankle) {
-          const ang = calcDorsiflexion(knee, ankle);
-          setCapturedAngle(ang);
-          setLandmarks(lm);
-          drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
-        } else {
-          setCapturedAngle(null);
-        }
-      } else {
+        if (knee && ankle) drawOverlay(ctx, lm, ids, 0, canvas.width, canvas.height);
         setCapturedAngle(null);
+        setDetectionError(err);
+        return;
       }
+
+      const ang = calcDorsiflexion(lm[ids.knee], lm[ids.ankle]);
+      setCapturedAngle(ang);
+      setLandmarks(lm);
+      setDetectionError(null);
+      drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
     };
 
     poseRef.current.onResults(staticHandler);
@@ -338,6 +410,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
     if (!poseRef.current) return;
     setCapturedAngle(null);
     setCapturedImage(null);
+    setDetectionError(null);
 
     const dataURL = await new Promise((res, rej) => {
       const reader    = new FileReader();
@@ -363,22 +436,31 @@ export function useLungePhoto({ side, sport = 'default' }) {
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (lm) {
+
+      if (!lm) {
+        setCapturedAngle(null);
+        setDetectionError('No se detectó ninguna persona. ' +
+          'Asegurate de que el cuerpo completo esté en cuadro.');
+        return;
+      }
+
+      const err = validateLandmarks(lm, ids);
+      if (err) {
         const knee  = lm[ids.knee];
         const ankle = lm[ids.ankle];
-        if (knee && ankle) {
-          const ang = calcDorsiflexion(knee, ankle);
-          setCapturedAngle(ang);
-          setLandmarks(lm);
-          drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
-        } else {
-          // Pose detectada pero landmarks del lado requerido fuera de cuadro
-          setCapturedAngle(null);
-        }
-      } else {
+        if (knee && ankle) drawOverlay(ctx, lm, ids, 0, canvas.width, canvas.height);
         setCapturedAngle(null);
+        setDetectionError(err);
+        return;
       }
+
+      const ang = calcDorsiflexion(lm[ids.knee], lm[ids.ankle]);
+      setCapturedAngle(ang);
+      setLandmarks(lm);
+      setDetectionError(null);
+      drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
     };
+
     poseRef.current.onResults(handler);
     try {
       await poseRef.current.send({ image: img });
@@ -404,6 +486,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
   const retake = useCallback(() => {
     setCapturedAngle(null);
     setCapturedImage(null);
+    setDetectionError(null);
     // Limpiar canvas
     const canvas = canvasRef.current;
     if (canvas) {
@@ -434,6 +517,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
     setLiveAngle(null);
     setLandmarks(null);
     setCameraError(null);
+    setDetectionError(null);
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -465,6 +549,7 @@ export function useLungePhoto({ side, sport = 'default' }) {
     capturedAngle,
     capturedImage,
     landmarks,
+    detectionError,
     startCamera,
     stopCamera,
     capturePhoto,

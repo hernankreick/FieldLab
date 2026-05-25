@@ -11,7 +11,8 @@ const LM = {
 
 const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose';
+// Versión 0.5.1675469404 — última compatible con iOS Safari
+const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404';
 
 const CALIB_FRAMES         = 60;   // frames to average for baseline (~2 s @ 30 fps)
 const CALIB_RESET_MS       = 2000; // restart calib buffer if no good frame in this window
@@ -441,7 +442,8 @@ export function usePoseEstimation({ mode }) {
         await loadScript(`${CDN_BASE}/pose.js`);
         // eslint-disable-next-line no-undef
         pose = new window.Pose({
-          locateFile: (file) => `${CDN_BASE}/${file}`,
+          locateFile: (file) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`,
         });
         pose.setOptions({
           modelComplexity:        IS_MOBILE ? 0 : 1,

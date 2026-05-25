@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 
-const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose';
+// Versión 0.5.1675469404 — última compatible con iOS Safari
+const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404';
 
 // Landmarks por lado
 const SIDES = {
@@ -181,14 +182,17 @@ export function useLungePhoto({ side, sport = 'default' }) {
       try {
         await loadScript(`${CDN}/pose.js`);
         // eslint-disable-next-line no-undef
-        pose = new window.Pose({ locateFile: (f) => `${CDN}/${f}` });
+        pose = new window.Pose({
+          locateFile: (f) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`,
+        });
         pose.setOptions({
-          modelComplexity:        0,
+          modelComplexity:        0,    // modelo liviano — carga más rápido en iOS
           smoothLandmarks:        true,
           enableSegmentation:     false,
           smoothSegmentation:     false,
-          minDetectionConfidence: 0.6,
-          minTrackingConfidence:  0.6,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence:  0.5,
         });
         pose.onResults(onLiveResults);
         let timeoutId;

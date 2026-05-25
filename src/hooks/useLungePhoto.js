@@ -3,6 +3,16 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 // Versión 0.5.1675469404 — última compatible con iOS Safari
 const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404';
 
+// Serializa initialize() entre instancias concurrentes para evitar
+// corrupción del WASM compartido cuando hookIzq y hookDer montan al mismo tiempo.
+let _mpInitChain = Promise.resolve();
+function serializedMpInit(fn) {
+  const p = _mpInitChain.then(fn);
+  // No propagar fallos al siguiente en la cadena — cada hook maneja su propio error
+  _mpInitChain = p.catch(() => {});
+  return p;
+}
+
 // Landmarks por lado
 const SIDES = {
   left:  { hip: 23, knee: 25, ankle: 27 },
@@ -174,34 +184,36 @@ export function useLungePhoto({ side, sport = 'default' }) {
     drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
   }, [ids]);  // ids is stable per hook instance
 
-  // Cargar MediaPipe al montar
+  // Cargar MediaPipe al montar — serializado para evitar concurrent WASM init
   useEffect(() => {
     let pose;
     let cancelled = false;
     (async () => {
       try {
-        await loadScript(`${CDN}/pose.js`);
-        // eslint-disable-next-line no-undef
-        pose = new window.Pose({
-          locateFile: (f) =>
-            `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`,
+        await serializedMpInit(async () => {
+          await loadScript(`${CDN}/pose.js`);
+          // eslint-disable-next-line no-undef
+          pose = new window.Pose({
+            locateFile: (f) =>
+              `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`,
+          });
+          pose.setOptions({
+            modelComplexity:        0,    // modelo liviano — carga más rápido en iOS
+            smoothLandmarks:        true,
+            enableSegmentation:     false,
+            smoothSegmentation:     false,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence:  0.5,
+          });
+          pose.onResults(onLiveResults);
+          let timeoutId;
+          await Promise.race([
+            pose.initialize().finally(() => clearTimeout(timeoutId)),
+            new Promise((_, rej) => {
+              timeoutId = setTimeout(() => rej(new Error('Timeout >15s')), 15000);
+            }),
+          ]);
         });
-        pose.setOptions({
-          modelComplexity:        0,    // modelo liviano — carga más rápido en iOS
-          smoothLandmarks:        true,
-          enableSegmentation:     false,
-          smoothSegmentation:     false,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence:  0.5,
-        });
-        pose.onResults(onLiveResults);
-        let timeoutId;
-        await Promise.race([
-          pose.initialize().finally(() => clearTimeout(timeoutId)),
-          new Promise((_, rej) => {
-            timeoutId = setTimeout(() => rej(new Error('Timeout >15s')), 15000);
-          }),
-        ]);
         if (!cancelled) { poseRef.current = pose; setMpLoading(false); }
       } catch (err) {
         if (!cancelled) {
@@ -312,9 +324,13 @@ export function useLungePhoto({ side, sport = 'default' }) {
     };
 
     poseRef.current.onResults(staticHandler);
-    await poseRef.current.send({ image: img });
-    // Restaurar handler de live
-    if (poseRef.current) poseRef.current.onResults(onLiveResults);
+    try {
+      await poseRef.current.send({ image: img });
+    } catch { /* ignorar errores de análisis de imagen estática */ }
+    finally {
+      // Restaurar handler de live siempre, incluso si send() lanza
+      if (poseRef.current) poseRef.current.onResults(onLiveResults);
+    }
   }, [ids, onLiveResults]);
 
   // ANALIZAR FOTO CARGADA DESDE GALERÍA
@@ -355,12 +371,21 @@ export function useLungePhoto({ side, sport = 'default' }) {
           setCapturedAngle(ang);
           setLandmarks(lm);
           drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
+        } else {
+          // Pose detectada pero landmarks del lado requerido fuera de cuadro
+          setCapturedAngle(null);
         }
+      } else {
+        setCapturedAngle(null);
       }
     };
     poseRef.current.onResults(handler);
-    await poseRef.current.send({ image: img });
-    if (poseRef.current) poseRef.current.onResults(onLiveResults);
+    try {
+      await poseRef.current.send({ image: img });
+    } catch { /* ignorar errores de análisis */ }
+    finally {
+      if (poseRef.current) poseRef.current.onResults(onLiveResults);
+    }
   }, [ids, onLiveResults]);
 
   const stopCamera = useCallback(() => {
@@ -385,6 +410,9 @@ export function useLungePhoto({ side, sport = 'default' }) {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
+    // Cancelar cualquier rAF pendiente antes de iniciar el nuevo loop
+    // (evita dos loops concurrentes si capturePhoto tenía un frame in-flight)
+    cancelAnimationFrame(rafRef.current);
     runningRef.current = true;
     if (poseRef.current) poseRef.current.onResults(onLiveResults);
     const loop = async () => {
@@ -422,6 +450,9 @@ export function useLungePhoto({ side, sport = 'default' }) {
         streamRef.current.getTracks().forEach(t => t.stop());
         streamRef.current = null;
       }
+      // Limpiar srcObject para evitar que React reutilice el nodo <video>
+      // con un stream muerto al remontar el componente
+      if (videoRef.current) videoRef.current.srcObject = null;
     };
   }, []);
 

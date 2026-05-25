@@ -107,14 +107,18 @@ function SideCard({ label, angle }) {
 }
 
 // ── Pantalla de resumen final ─────────────────────────────────────────────────
-function SummaryScreen({ izq, der, mode, coachId, initialId, onNavigate, onRestart }) {
+function SummaryScreen({ izq, der, mode, sport, coachId, initialId, onNavigate, onRestart }) {
   const [saved, setSaved] = useState(false);
   const [selAthlete, setSelAthlete] = useState(initialId ? String(initialId) : '');
 
-  const asimetria   = izq && der
+  const asimetria = (izq != null && der != null && izq > 0 && der > 0)
     ? Math.round(Math.abs(izq - der) / Math.max(izq, der) * 100)
     : null;
-  const asimSt  = asimetria >= 15 ? 'danger' : asimetria >= 10 ? 'warning' : 'ok';
+  // Calcular sólo cuando asimetria está disponible para evitar null >= n → false
+  const asimSt  = asimetria == null ? null
+    : asimetria >= 15 ? 'danger'
+    : asimetria >= 10 ? 'warning'
+    : 'ok';
   const asimCol = asimSt === 'danger' ? C.red : asimSt === 'warning' ? C.yellow : C.green;
   const asimBg  = asimSt === 'danger'
     ? 'rgba(239,68,68,0.12)'
@@ -129,6 +133,7 @@ function SummaryScreen({ izq, der, mode, coachId, initialId, onNavigate, onResta
       izq, der,
       asimetria,
       mode,
+      sport,
       timestamp: new Date().toISOString(),
       athleteId: aid,
     };
@@ -299,7 +304,9 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
       hook.stopCamera();
       hookDer.resetForNewSide();
       setStep('capturando_der');
-      hookDer.startCamera(mode === 'front' ? 'user' : 'environment');
+      // Pequeño delay para que el SO libere el hardware de la cámara
+      // antes de abrir un nuevo stream (evita NotReadableError en iOS)
+      setTimeout(() => hookDer.startCamera(mode === 'front' ? 'user' : 'environment'), 150);
     } else {
       setResultDer(ang);
       hook.stopCamera();
@@ -322,6 +329,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
   }
 
   const athlete = PLAYERS.find(p => p.id === Number(initialId)) ?? null;
+  const sport   = (athlete?.sport ?? 'default').toLowerCase();
   const coachId = coach?.id ?? 'anon';
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -866,6 +874,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
         izq={resultIzq}
         der={resultDer}
         mode={mode}
+        sport={sport}
         coachId={coachId}
         initialId={initialId}
         onNavigate={onNavigate}

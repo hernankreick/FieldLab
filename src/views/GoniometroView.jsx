@@ -113,6 +113,23 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     }
   }, [step, captureMode]);
 
+  // Stop camera stream on unmount (e.g. user switches tabs mid-capture)
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  // Revoke blob URL when imageSrc changes to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (imageSrc?.startsWith('blob:')) URL.revokeObjectURL(imageSrc);
+    };
+  }, [imageSrc]);
+
   const stopStream = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -417,7 +434,6 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           <button
             onClick={() => {
               gonio.reset();
-              setImageSrc(null);
               setStep('marcando');
             }}
             disabled={!imageSrc}

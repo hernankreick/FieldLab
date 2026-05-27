@@ -14,6 +14,7 @@ export function calcAngle(A, B, C) {
 export function useGoniometer({ pointCount = 3 } = {}) {
   const [points, setPoints] = useState([]);
   const [draggingIdx, setDraggingIdx] = useState(null);
+  const draggingIdxRef = useRef(null);
   const imageRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -58,24 +59,28 @@ export function useGoniometer({ pointCount = 3 } = {}) {
   }, [screenToImage, pointCount]);
 
   const startDrag = useCallback((idx) => {
+    draggingIdxRef.current = idx;
     setDraggingIdx(idx);
   }, []);
 
   const onDragMove = useCallback((screenX, screenY) => {
-    if (draggingIdx === null) return;
+    const idx = draggingIdxRef.current;
+    if (idx === null) return;
     const imgPt = screenToImage(screenX, screenY);
     setPoints(prev => {
       const next = [...prev];
-      next[draggingIdx] = imgPt;
+      next[idx] = imgPt;
       return next;
     });
-  }, [draggingIdx, screenToImage]);
+  }, [screenToImage]);
 
   const endDrag = useCallback(() => {
+    draggingIdxRef.current = null;
     setDraggingIdx(null);
   }, []);
 
   const reset = useCallback(() => {
+    draggingIdxRef.current = null;
     setPoints([]);
     setDraggingIdx(null);
   }, []);

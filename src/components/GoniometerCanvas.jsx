@@ -24,39 +24,14 @@ function findNear(pts, sx, sy, imageSize, displaySize) {
   return -1;
 }
 
-function buildArc(screenPts, r = 28) {
-  if (screenPts.length < 3) return null;
-  const [A, B, C] = screenPts;
-  const v1 = { x: A.x - B.x, y: A.y - B.y };
-  const v2 = { x: C.x - B.x, y: C.y - B.y };
-  const m1 = Math.hypot(v1.x, v1.y);
-  const m2 = Math.hypot(v2.x, v2.y);
-  if (m1 === 0 || m2 === 0) return null;
-  const u1 = { x: v1.x / m1, y: v1.y / m1 };
-  const u2 = { x: v2.x / m2, y: v2.y / m2 };
-  const cross = v1.x * v2.y - v1.y * v2.x;
-  const sweep = cross < 0 ? 1 : 0;
-  return `M ${B.x + u1.x * r} ${B.y + u1.y * r} A ${r} ${r} 0 0 ${sweep} ${B.x + u2.x * r} ${B.y + u2.y * r}`;
-}
-
-function calcMidPt(screenPts, dist = 52) {
-  if (screenPts.length < 3) return null;
-  const [A, B, C] = screenPts;
-  const v1 = { x: A.x - B.x, y: A.y - B.y };
-  const v2 = { x: C.x - B.x, y: C.y - B.y };
-  const m1 = Math.hypot(v1.x, v1.y) || 1;
-  const m2 = Math.hypot(v2.x, v2.y) || 1;
-  const mid = { x: v1.x / m1 + v2.x / m2, y: v1.y / m1 + v2.y / m2 };
-  const midM = Math.hypot(mid.x, mid.y) || 1;
-  return { x: B.x + (mid.x / midM) * dist, y: B.y + (mid.y / midM) * dist };
-}
-
 export default function GoniometerCanvas({
   points,
   angle,
   imageSize,
   displaySize,
   pointLabels,
+  vertexIndex = 1,
+  angleColor = '#facc15',
   onTap,
   onDragPoint,
   onDragStart,
@@ -140,8 +115,6 @@ export default function GoniometerCanvas({
   }, []); // stable — all values accessed via refs
 
   const screenPts = points.map(p => toScreen(p, imageSize, displaySize));
-  const arcPath   = buildArc(screenPts);
-  const midPt     = calcMidPt(screenPts);
   const labels    = pointLabels?.length >= 3 ? pointLabels : null;
 
   return (
@@ -159,36 +132,57 @@ export default function GoniometerCanvas({
         transition: 'opacity 0.2s',
       }}
     >
-      {screenPts.length >= 2 && (
+      {screenPts.length === 2 && (
         <line x1={screenPts[0].x} y1={screenPts[0].y}
               x2={screenPts[1].x} y2={screenPts[1].y}
+          stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeDasharray="6 4" />
+      )}
+      {screenPts.length === 3 && [0, 1, 2].filter(i => i !== vertexIndex).map(i => (
+        <line key={i}
+          x1={screenPts[vertexIndex].x} y1={screenPts[vertexIndex].y}
+          x2={screenPts[i].x} y2={screenPts[i].y}
           stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeDasharray="6 4" />
-      )}
-      {screenPts.length === 3 && (
-        <line x1={screenPts[1].x} y1={screenPts[1].y}
-              x2={screenPts[2].x} y2={screenPts[2].y}
-          stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeDasharray="6 4" />
-      )}
+      ))}
 
-      {arcPath && (
-        <path d={arcPath} fill="none" stroke="#facc15" strokeWidth="2.5" />
-      )}
-
-      {angle != null && midPt && (
-        <>
-          <rect x={midPt.x - 22} y={midPt.y - 12} width={44} height={22}
-            rx={6} fill="rgba(0,0,0,0.65)" />
-          <text x={midPt.x} y={midPt.y + 5} textAnchor="middle"
-            fill="#facc15" fontSize="13" fontWeight="bold">
-            {angle}°
-          </text>
-        </>
-      )}
+      {screenPts.length === 3 && angle != null && (() => {
+        const V    = screenPts[vertexIndex];
+        const arms = [0, 1, 2].filter(i => i !== vertexIndex);
+        const P1   = screenPts[arms[0]];
+        const P2   = screenPts[arms[1]];
+        const r    = 40;
+        const ang1 = Math.atan2(P1.y - V.y, P1.x - V.x);
+        const ang2 = Math.atan2(P2.y - V.y, P2.x - V.x);
+        const x1   = V.x + r * Math.cos(ang1);
+        const y1   = V.y + r * Math.sin(ang1);
+        const x2   = V.x + r * Math.cos(ang2);
+        const y2   = V.y + r * Math.sin(ang2);
+        const cross = (P1.x - V.x) * (P2.y - V.y) - (P1.y - V.y) * (P2.x - V.x);
+        const sweep = cross > 0 ? 1 : 0;
+        return (
+          <g>
+            <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 ${sweep} ${x2} ${y2}`}
+              fill="none" stroke={angleColor} strokeWidth="2.5" opacity="0.8" />
+            <rect x={V.x + 14} y={V.y - 30} width="68" height="26" rx="6"
+              fill="rgba(15,23,42,0.88)" />
+            <text x={V.x + 48} y={V.y - 12} textAnchor="middle"
+              fill={angleColor} fontSize="15" fontWeight="bold"
+              fontFamily="'JetBrains Mono', monospace">
+              {angle}°
+            </text>
+          </g>
+        );
+      })()}
 
       {screenPts.map((sp, i) => (
         <g key={i}>
           {/* Touch-target zone */}
           <circle cx={sp.x} cy={sp.y} r={22} fill="rgba(255,255,255,0.08)" />
+          {/* Dashed ring marks the vertex */}
+          {i === vertexIndex && (
+            <circle cx={sp.x} cy={sp.y} r={18}
+              fill="none" stroke={POINT_COLORS[i]}
+              strokeWidth="1.5" strokeDasharray="4 3" opacity="0.6" />
+          )}
           {/* Shadow backing */}
           <circle cx={sp.x} cy={sp.y} r={14} fill="rgba(15,23,42,0.7)" />
           {/* Coloured point */}

@@ -7,57 +7,75 @@ import GoniometerCanvas from '../components/GoniometerCanvas';
 const TEST_CONFIGS = [
   {
     id: 'dorsiflex_izq',
-    label: 'Dorsiflexión Izq',
+    label: 'Dorsiflexión Tobillo Izquierdo',
     description: 'Prueba de lunge — tobillo izquierdo',
-    points: ['Cadera', 'Rodilla', 'Tobillo'],
-    side: 'left',
+    points: ['Maléolo lateral', 'Cabeza del peroné', '5to metatarsiano'],
+    pointCount: 3,
+    vertexIndex: 0,
     normalMin: 35,
-    unit: '°',
+    icon: '🦵',
+    instruction: 'Vista lateral. Tocá en orden:\n1️⃣ Maléolo lateral (hueso del tobillo)\n2️⃣ Cabeza del peroné (rodilla lateral)\n3️⃣ 5to metatarsiano (borde externo del pie)',
+    protocol: 'Goniómetro: eje en maléolo lateral, barra fija → cabeza del peroné, barra móvil → 5to metatarsiano.',
   },
   {
     id: 'dorsiflex_der',
-    label: 'Dorsiflexión Der',
+    label: 'Dorsiflexión Tobillo Derecho',
     description: 'Prueba de lunge — tobillo derecho',
-    points: ['Cadera', 'Rodilla', 'Tobillo'],
-    side: 'right',
+    points: ['Maléolo lateral', 'Cabeza del peroné', '5to metatarsiano'],
+    pointCount: 3,
+    vertexIndex: 0,
     normalMin: 35,
-    unit: '°',
+    icon: '🦵',
+    instruction: 'Vista lateral. Tocá en orden:\n1️⃣ Maléolo lateral (hueso del tobillo)\n2️⃣ Cabeza del peroné (rodilla lateral)\n3️⃣ 5to metatarsiano (borde externo del pie)',
+    protocol: 'Goniómetro: eje en maléolo lateral, barra fija → cabeza del peroné, barra móvil → 5to metatarsiano.',
   },
   {
     id: 'flex_cadera',
-    label: 'Flex. Cadera',
+    label: 'Flexión de Cadera',
     description: 'Flexión de cadera en decúbito',
-    points: ['Hombro', 'Cadera', 'Rodilla'],
-    side: null,
+    points: ['Trocánter mayor', 'EIAS', 'Cóndilo lateral rodilla'],
+    pointCount: 3,
+    vertexIndex: 0,
     normalMin: 90,
-    unit: '°',
+    icon: '🫁',
+    instruction: 'Vista lateral. Tocá:\n1️⃣ Trocánter mayor (cadera)\n2️⃣ EIAS (cresta ilíaca anterior)\n3️⃣ Cóndilo lateral de la rodilla',
+    protocol: 'Goniómetro: eje en trocánter mayor, barra fija → EIAS, barra móvil → cóndilo lateral rodilla.',
   },
   {
     id: 'flex_hombro',
-    label: 'Flex. Hombro',
+    label: 'Flexión de Hombro',
     description: 'Flexión de hombro — rango sagital',
-    points: ['Codo', 'Hombro', 'Tronco'],
-    side: null,
+    points: ['Acromion', 'Epicóndilo lateral', 'Línea media tronco'],
+    pointCount: 3,
+    vertexIndex: 0,
     normalMin: 160,
-    unit: '°',
+    icon: '💪',
+    instruction: 'Vista lateral. Tocá:\n1️⃣ Acromion (punta del hombro)\n2️⃣ Epicóndilo lateral (codo)\n3️⃣ Punto en la línea media del tronco (referencia)',
+    protocol: 'Goniómetro: eje en acromion, barra fija → línea media tronco, barra móvil → epicóndilo lateral.',
   },
   {
     id: 'rot_cadera',
-    label: 'Rot. Cadera',
+    label: 'Rotación Interna Cadera',
     description: 'Rotación interna/externa de cadera',
-    points: ['Rodilla', 'Cadera', 'Referencia'],
-    side: null,
+    points: ['Rótula', 'Tobillo', 'Vertical (suelo)'],
+    pointCount: 3,
+    vertexIndex: 0,
     normalMin: 40,
-    unit: '°',
+    icon: '🔄',
+    instruction: 'Atleta sentado al borde de la camilla, rodilla 90°. Tocá:\n1️⃣ Rótula (centro de la rodilla)\n2️⃣ Tobillo (maléolo)\n3️⃣ Punto vertical hacia abajo (referencia suelo)',
+    protocol: 'Goniómetro: eje en rótula, barra fija → vertical, barra móvil → tobillo.',
   },
   {
     id: 'overhead_squat',
     label: 'Overhead Squat',
     description: 'Inclinación de tronco en squat overhead',
-    points: ['Hombro', 'Cadera', 'Tobillo'],
-    side: null,
+    points: ['Maléolo', 'Rodilla', 'Cadera'],
+    pointCount: 3,
+    vertexIndex: 1,
     normalMin: null,
-    unit: '°',
+    icon: '🏋️',
+    instruction: 'Vista lateral en posición de squat. Tocá:\n1️⃣ Maléolo lateral\n2️⃣ Cóndilo lateral rodilla\n3️⃣ Trocánter mayor (cadera)',
+    protocol: 'Mide el ángulo de flexión de rodilla.',
   },
 ];
 
@@ -103,7 +121,18 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
   const readyTimerRef      = useRef(null);
   const countdownIntervalRef = useRef(null);
 
-  const gonio = useGoniometer({ pointCount: 3 });
+  const gonio = useGoniometer({
+    pointCount: selectedTest?.pointCount ?? 3,
+    vertexIndex: selectedTest?.vertexIndex ?? 1,
+  });
+
+  const angleColor = gonio.angle == null
+    ? '#facc15'
+    : selectedTest?.normalMin == null
+      ? '#facc15'
+      : gonio.angle >= selectedTest.normalMin
+        ? '#22c55e'
+        : '#ef4444';
 
   const isCapturing = step === 'captura';
 
@@ -289,6 +318,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
               onClick={() => selectTest(test)}
               className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 text-left transition-colors"
             >
+              {test.icon && <p className="text-xl mb-1">{test.icon}</p>}
               <p className="font-semibold text-white text-sm">{test.label}</p>
               <p className="text-slate-400 text-xs mt-1">{test.description}</p>
               {test.normalMin != null && (
@@ -362,12 +392,23 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
             onChange={handleUpload}
           />
         </div>
+        {selectedTest?.instruction && (
+          <div className="bg-slate-800/60 rounded-xl p-4 text-slate-300 text-sm">
+            <p style={{ whiteSpace: 'pre-line', lineHeight: 1.7 }}>{selectedTest.instruction}</p>
+          </div>
+        )}
         <div className="bg-slate-800/60 rounded-xl p-4 text-slate-400 text-sm space-y-1">
           <p className="font-semibold text-slate-300 mb-2">Puntos a marcar:</p>
           {selectedTest?.points.map((pt, i) => (
-            <p key={i}><span className="font-bold" style={{ color: ['#38bdf8', '#f472b6', '#4ade80'][i] }}>● {['A', 'B', 'C'][i]}</span> — {pt}</p>
+            <p key={i}>
+              <span className="font-bold" style={{ color: ['#38bdf8', '#f472b6', '#4ade80'][i] }}>● {['A', 'B', 'C'][i]}</span>
+              {i === (selectedTest?.vertexIndex ?? 1) && <span className="text-xs text-slate-500 ml-1">(eje)</span>}
+              {' '}— {pt}
+            </p>
           ))}
-          <p className="text-slate-500 text-xs mt-2">El ángulo se calcula en el punto B (central).</p>
+          <p className="text-slate-500 text-xs mt-2">
+            El ángulo se calcula en el punto {['A', 'B', 'C'][selectedTest?.vertexIndex ?? 1]} (eje del goniómetro).
+          </p>
         </div>
       </div>
     );
@@ -476,6 +517,18 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
             Arrastrar los puntos para ajustar
           </p>
         )}
+        {selectedTest?.protocol && (
+          <div style={{
+            padding: '8px 16px',
+            background: 'rgba(56,189,248,0.06)',
+            borderRadius: 10,
+            border: '1px solid #1e293b',
+          }}>
+            <p style={{ color: '#64748b', fontSize: 11, margin: 0, fontStyle: 'italic' }}>
+              📐 {selectedTest.protocol}
+            </p>
+          </div>
+        )}
 
         <div
           ref={gonio.containerRef}
@@ -497,6 +550,8 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
             imageSize={imageSize}
             displaySize={displaySize}
             pointLabels={pointLabels}
+            vertexIndex={selectedTest?.vertexIndex ?? 1}
+            angleColor={angleColor}
             onTap={onTap}
             onDragPoint={onDragPoint}
             onDragStart={gonio.startDrag}

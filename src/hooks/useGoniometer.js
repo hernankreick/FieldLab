@@ -11,7 +11,18 @@ export function calcAngle(A, B, C) {
   return Math.round(Math.acos(cos) * (180 / Math.PI));
 }
 
-export function useGoniometer({ pointCount = 3 } = {}) {
+export function calcAngleAtVertex(vertex, armB, armC) {
+  const v1 = { x: armB.x - vertex.x, y: armB.y - vertex.y };
+  const v2 = { x: armC.x - vertex.x, y: armC.y - vertex.y };
+  const dot = v1.x * v2.x + v1.y * v2.y;
+  const mag1 = Math.hypot(v1.x, v1.y);
+  const mag2 = Math.hypot(v2.x, v2.y);
+  if (mag1 === 0 || mag2 === 0) return null;
+  const cos = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+  return Math.round(Math.acos(cos) * (180 / Math.PI));
+}
+
+export function useGoniometer({ pointCount = 3, vertexIndex = 1 } = {}) {
   const [points, setPoints] = useState([]);
   const [draggingIdx, setDraggingIdx] = useState(null);
   const draggingIdxRef = useRef(null);
@@ -85,7 +96,10 @@ export function useGoniometer({ pointCount = 3 } = {}) {
     setDraggingIdx(null);
   }, []);
 
-  const angle = points.length === 3 ? calcAngle(points[0], points[1], points[2]) : null;
+  const arms = [0, 1, 2].filter(i => i !== vertexIndex);
+  const angle = points.length === pointCount
+    ? calcAngleAtVertex(points[vertexIndex], points[arms[0]], points[arms[1]])
+    : null;
 
   return {
     points,

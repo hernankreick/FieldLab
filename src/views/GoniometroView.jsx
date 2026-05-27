@@ -92,9 +92,14 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     }
   });
 
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const [imageReady,  setImageReady]  = useState(false);
+  const [imageSize,   setImageSize]   = useState(null);
+  const [displaySize, setDisplaySize] = useState(null);
+
+  const videoRef      = useRef(null);
+  const streamRef     = useRef(null);
+  const fileInputRef  = useRef(null);
+  const readyTimerRef = useRef(null);
 
   const gonio = useGoniometer({ pointCount: 3 });
 
@@ -104,6 +109,34 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     onFullscreen?.(isCapturing);
     return () => onFullscreen?.(false);
   }, [isCapturing, onFullscreen]);
+
+  // Reset image state whenever a new photo is set (clears any pending ready timer)
+  useEffect(() => {
+    clearTimeout(readyTimerRef.current);
+    setImageReady(false);
+    setImageSize(null);
+    setDisplaySize(null);
+  }, [imageSrc]);
+
+  // Cancel timer on unmount
+  useEffect(() => () => clearTimeout(readyTimerRef.current), []);
+
+  const onImgLoad = useCallback((e) => {
+    const el = e.target;
+    setImageSize({ w: el.naturalWidth, h: el.naturalHeight });
+    setDisplaySize({ w: el.clientWidth, h: el.clientHeight });
+    clearTimeout(readyTimerRef.current);
+    // Delay prevents residual touches from the previous tap registering as points
+    readyTimerRef.current = setTimeout(() => setImageReady(true), 400);
+  }, []);
+
+  const onTap = useCallback((sx, sy) => {
+    gonio.addOrMovePoint(sx, sy);
+  }, [gonio.addOrMovePoint]);
+
+  const onDragPoint = useCallback((_idx, sx, sy) => {
+    gonio.onDragMove(sx, sy);
+  }, [gonio.onDragMove]);
 
   // Attach stream to video when in capture step
   useEffect(() => {
@@ -377,20 +410,34 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           </p>
         )}
 
-        <GoniometerCanvas
-          imageSrc={imageSrc}
-          points={gonio.points}
-          angle={gonio.angle}
-          isFull={gonio.isFull}
-          imageRef={gonio.imageRef}
-          containerRef={gonio.containerRef}
-          imageToScreen={gonio.imageToScreen}
-          addOrMovePoint={gonio.addOrMovePoint}
-          startDrag={gonio.startDrag}
-          onDragMove={gonio.onDragMove}
-          endDrag={gonio.endDrag}
-          draggingIdx={gonio.draggingIdx}
-        />
+        <div
+          ref={gonio.containerRef}
+          className="relative w-full select-none"
+          style={{ touchAction: 'none' }}
+        >
+          <img
+            ref={gonio.imageRef}
+            src={imageSrc}
+            alt="Captura"
+            className="w-full object-contain rounded-xl block"
+            draggable={false}
+            onLoad={onImgLoad}
+            style={{ userSelect: 'none' }}
+          />
+          <GoniometerCanvas
+            points={gonio.points}
+            angle={gonio.angle}
+            imageSize={imageSize}
+            displaySize={displaySize}
+            pointLabels={pointLabels}
+            onTap={onTap}
+            onDragPoint={onDragPoint}
+            onDragStart={gonio.startDrag}
+            onDragEnd={gonio.endDrag}
+            dragging={gonio.draggingIdx}
+            disabled={!imageReady}
+          />
+        </div>
 
         <div className="flex gap-3">
           <button

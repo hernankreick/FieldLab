@@ -1,4 +1,4 @@
-import { Activity, BarChart2, Zap, Heart, Eye, Timer, Shuffle, ClipboardList, Dumbbell, Footprints } from 'lucide-react';
+import { Activity, BarChart2, Zap, Heart, Eye, Timer, Shuffle, ClipboardList, Dumbbell, Footprints, Ruler } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const tabs = [
@@ -12,6 +12,7 @@ const tabs = [
   { id: 'wellness',         label: 'Wellness',  Icon: Heart         },
   { id: 'vbt',              label: 'VBT',       Icon: Eye           },
   { id: 'movilidadTobillo', label: 'Tobillo',   Icon: Footprints    },
+  { id: 'goniometro',      label: 'Gonióm.',   Icon: Ruler         },
 ];
 
 export default function NavBar({ active, onChange }) {

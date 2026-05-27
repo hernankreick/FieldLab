@@ -107,18 +107,14 @@ function SideCard({ label, angle }) {
 }
 
 // ── Pantalla de resumen final ─────────────────────────────────────────────────
-function SummaryScreen({ izq, der, mode, sport, coachId, initialId, onNavigate, onRestart }) {
+function SummaryScreen({ izq, der, mode, coachId, initialId, onNavigate, onRestart }) {
   const [saved, setSaved] = useState(false);
   const [selAthlete, setSelAthlete] = useState(initialId ? String(initialId) : '');
 
-  const asimetria = (izq != null && der != null && izq > 0 && der > 0)
+  const asimetria   = izq && der
     ? Math.round(Math.abs(izq - der) / Math.max(izq, der) * 100)
     : null;
-  // Calcular sólo cuando asimetria está disponible para evitar null >= n → false
-  const asimSt  = asimetria == null ? null
-    : asimetria >= 15 ? 'danger'
-    : asimetria >= 10 ? 'warning'
-    : 'ok';
+  const asimSt  = asimetria >= 15 ? 'danger' : asimetria >= 10 ? 'warning' : 'ok';
   const asimCol = asimSt === 'danger' ? C.red : asimSt === 'warning' ? C.yellow : C.green;
   const asimBg  = asimSt === 'danger'
     ? 'rgba(239,68,68,0.12)'
@@ -133,7 +129,6 @@ function SummaryScreen({ izq, der, mode, sport, coachId, initialId, onNavigate, 
       izq, der,
       asimetria,
       mode,
-      sport,
       timestamp: new Date().toISOString(),
       athleteId: aid,
     };
@@ -304,9 +299,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
       hook.stopCamera();
       hookDer.resetForNewSide();
       setStep('capturando_der');
-      // Pequeño delay para que el SO libere el hardware de la cámara
-      // antes de abrir un nuevo stream (evita NotReadableError en iOS)
-      setTimeout(() => hookDer.startCamera(mode === 'front' ? 'user' : 'environment'), 150);
+      hookDer.startCamera(mode === 'front' ? 'user' : 'environment');
     } else {
       setResultDer(ang);
       hook.stopCamera();
@@ -329,7 +322,6 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
   }
 
   const athlete = PLAYERS.find(p => p.id === Number(initialId)) ?? null;
-  const sport   = (athlete?.sport ?? 'default').toLowerCase();
   const coachId = coach?.id ?? 'anon';
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -583,8 +575,8 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
             </button>
           </div>
 
-          {/* Barra inferior — sin foto capturada todavía */}
-          {!hook.capturedImage && (
+          {/* Barra inferior */}
+          {!hook.capturedAngle && (
             <div style={{
               padding: '16px 20px 36px',
               background: 'rgba(15,23,42,0.9)',
@@ -607,43 +599,6 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
                 }}
               >
                 📸 Capturar foto
-              </button>
-            </div>
-          )}
-
-          {/* Foto capturada pero detección falló */}
-          {hook.capturedImage && hook.capturedAngle == null && (
-            <div style={{
-              padding: '16px 20px 36px',
-              background: 'rgba(15,23,42,0.95)',
-              backdropFilter: 'blur(12px)',
-              display: 'flex', flexDirection: 'column', gap: 10,
-            }}>
-              {hook.detectionError ? (
-                <div style={{
-                  borderRadius: 12, padding: '12px 14px',
-                  background: 'rgba(239,68,68,0.12)',
-                  border: '1px solid rgba(239,68,68,0.35)',
-                }}>
-                  <p style={{ color: C.red, fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                    ⚠ {hook.detectionError}
-                  </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <Spinner />
-                </div>
-              )}
-              <button
-                onClick={hook.retake}
-                style={{
-                  width: '100%', padding: '13px 0', borderRadius: 14,
-                  border: `1px solid ${C.border}`,
-                  background: 'transparent', color: C.muted,
-                  cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                }}
-              >
-                ↺ Repetir foto
               </button>
             </div>
           )}
@@ -711,7 +666,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
   // ══════════════════════════════════════════════════════════════════════════
   if (step === 'upload_izq' || step === 'upload_der') {
     const inputId = `upload-input-${isIzq ? 'izq' : 'der'}`;
-    // analyzing viene del hook (true mientras poseRef.current.send() está en vuelo)
+    const analyzing = hook.capturedImage && hook.capturedAngle == null;
 
     return (
       <>
@@ -746,22 +701,20 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
             </p>
           </div>
 
-          {/* Guía de foto correcta — siempre visible */}
-          <div style={{
-            borderRadius: 14, padding: '14px 16px',
-            background: C.card, border: `1px solid ${C.border}`,
-          }}>
-            <p style={{ fontSize: 12, color: C.muted, fontWeight: 600, margin: '0 0 6px' }}>
-              La foto debe mostrar:
-            </p>
-            <ul style={{ fontSize: 12, color: C.muted, margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
-              <li>Vista lateral estricta (90° de perfil)</li>
-              <li>Cuerpo completo: cadera, rodilla y tobillo visibles</li>
-              <li>Talón apoyado en el suelo</li>
-              <li>Rodilla en el punto máximo de flexión</li>
-              <li>Buena iluminación, sin ropa suelta que tape las articulaciones</li>
-            </ul>
-          </div>
+          {/* Instrucción de foto ideal */}
+          {!hook.capturedImage && (
+            <div style={{
+              borderRadius: 14, padding: '14px 16px',
+              background: C.card, border: `1px solid ${C.border}`,
+            }}>
+              <p style={{ fontSize: 12, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+                📐 La foto debe mostrar:<br />
+                • Vista lateral del atleta en posición lunge<br />
+                • Tobillo, rodilla y cadera visibles<br />
+                • Talón apoyado en el suelo
+              </p>
+            </div>
+          )}
 
           {/* Botón seleccionar foto */}
           <input
@@ -825,7 +778,7 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
                 }}
               />
               {/* Spinner de análisis encima de la foto */}
-              {hook.analyzing && (
+              {analyzing && (
                 <div style={{
                   position: 'absolute', inset: 0, borderRadius: 14,
                   display: 'flex', flexDirection: 'column',
@@ -877,15 +830,10 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
 
               <button
                 onClick={confirmUpload}
-                disabled={!!hook.detectionError}
                 style={{
                   width: '100%', padding: '14px 0', borderRadius: 14,
-                  border: 'none',
-                  background: hook.detectionError ? C.border : C.accent,
-                  color: hook.detectionError ? C.muted : '#0f172a',
-                  fontWeight: 700, fontSize: 15,
-                  cursor: hook.detectionError ? 'not-allowed' : 'pointer',
-                  opacity: hook.detectionError ? 0.5 : 1,
+                  border: 'none', background: C.accent,
+                  color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer',
                 }}
               >
                 {step === 'upload_izq' ? 'Continuar con Derecho →' : 'Ver Resumen →'}
@@ -893,26 +841,14 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
             </>
           )}
 
-          {/* Error de detección específico */}
-          {hook.detectionError && (
-            <div style={{
-              padding: '12px 16px', borderRadius: 14,
-              background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)`,
-            }}>
-              <p style={{ fontSize: 13, color: C.red, margin: 0, lineHeight: 1.5 }}>
-                ⚠ {hook.detectionError}
-              </p>
-            </div>
-          )}
-
-          {/* Sin pose detectada (ningún landmarks) */}
-          {hook.capturedImage && hook.capturedAngle == null && !hook.analyzing && !hook.detectionError && !hook.mpLoading && (
+          {/* Sin poses detectadas */}
+          {hook.capturedImage && hook.capturedAngle == null && !analyzing && !hook.mpLoading && (
             <div style={{
               padding: '14px 16px', borderRadius: 14,
               background: 'rgba(234,179,8,0.1)', border: `1px solid ${C.yellow}`,
             }}>
               <p style={{ fontSize: 13, color: C.yellow, margin: 0 }}>
-                ⚠ No se detectó ninguna persona. Probá con una foto más clara o en mejor posición lateral.
+                ⚠ No se detectó la pose. Probá con una foto más clara o en mejor posición lateral.
               </p>
             </div>
           )}
@@ -930,7 +866,6 @@ export default function MovilidadTobillo({ onNavigate, initialId, onFullscreen }
         izq={resultIzq}
         der={resultDer}
         mode={mode}
-        sport={sport}
         coachId={coachId}
         initialId={initialId}
         onNavigate={onNavigate}

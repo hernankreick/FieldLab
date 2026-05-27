@@ -1,29 +1,12 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 
-// Versión 0.5.1675469404 — última compatible con iOS Safari
-const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404';
-
-// Serializa initialize() entre instancias concurrentes para evitar
-// corrupción del WASM compartido cuando hookIzq y hookDer montan al mismo tiempo.
-let _mpInitChain = Promise.resolve();
-function serializedMpInit(fn) {
-  const p = _mpInitChain.then(fn);
-  // No propagar fallos al siguiente en la cadena — cada hook maneja su propio error
-  _mpInitChain = p.catch(() => {});
-  return p;
-}
+const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose';
 
 // Landmarks por lado
 const SIDES = {
   left:  { hip: 23, knee: 25, ankle: 27 },
   right: { hip: 24, knee: 26, ankle: 28 },
 };
-
-// Visibilidad mínima aceptable para cada landmark
-const MIN_VISIBILITY = 0.6;
-// Rango fisiológicamente válido de dorsiflexión de tobillo
-const ANG_MIN = 5;
-const ANG_MAX = 55;
 
 // ── Valores normativos por deporte (re-exportados para PlayerProfile) ─────────
 export const NORMAS = {
@@ -69,46 +52,6 @@ function calcDorsiflexion(knee, ankle) {
   return Math.round(rad * (180 / Math.PI));
 }
 
-// ── Validación de visibilidad y rango antes de usar los landmarks ─────────────
-// Devuelve null si válido, o un string de error si hay problema.
-function validateLandmarks(lm, ids) {
-  const hip   = lm[ids.hip];
-  const knee  = lm[ids.knee];
-  const ankle = lm[ids.ankle];
-
-  const allVisible =
-    hip   && (hip.visibility   ?? 1) >= MIN_VISIBILITY &&
-    knee  && (knee.visibility  ?? 1) >= MIN_VISIBILITY &&
-    ankle && (ankle.visibility ?? 1) >= MIN_VISIBILITY;
-
-  if (!allVisible) {
-    return 'No se pudieron detectar los puntos correctamente. ' +
-      'Asegurate de que cadera, rodilla y tobillo estén visibles.';
-  }
-
-  const ang = calcDorsiflexion(knee, ankle);
-  if (ang < ANG_MIN || ang > ANG_MAX) {
-    return `El ángulo detectado (${ang}°) está fuera del rango esperado. ` +
-      'Verificá que la foto sea vista lateral estricta.';
-  }
-
-  return null; // sin error
-}
-
-// ── Redimensiona imagen a maxWidth px manteniendo aspect ratio ────────────────
-// Las fotos de iPhone llegan a 4032x3024 — demasiado grandes para WASM en el browser.
-// MediaPipe funciona bien con imágenes de hasta 640px de ancho.
-function resizeImage(img, maxWidth = 640) {
-  const scale     = Math.min(1, maxWidth / img.naturalWidth);
-  const w         = Math.round(img.naturalWidth  * scale);
-  const h         = Math.round(img.naturalHeight * scale);
-  const offscreen = document.createElement('canvas');
-  offscreen.width  = w;
-  offscreen.height = h;
-  offscreen.getContext('2d').drawImage(img, 0, 0, w, h);
-  return offscreen; // canvas es aceptado por poseRef.current.send({ image })
-}
-
 // ── Cargar script CDN, esperando si ya está en el DOM pero no ha cargado ─────
 function loadScript(src) {
   return new Promise((res, rej) => {
@@ -128,7 +71,6 @@ function loadScript(src) {
 }
 
 // ── Dibujar overlay en canvas sobre la foto analizada ────────────────────────
-// Puntos coloreados según la confianza (visibilidad) de cada landmark.
 function drawOverlay(ctx, lm, ids, angle, W, H) {
   if (!lm || lm.length < 33) return;
   const hip   = lm[ids.hip];
@@ -141,14 +83,6 @@ function drawOverlay(ctx, lm, ids, angle, W, H) {
   const ax = ankle.x * W, ay = ankle.y * H;
 
   const col = angle >= 35 ? '#22c55e' : angle >= 25 ? '#eab308' : '#ef4444';
-
-  // Color de cada punto según su visibilidad
-  const visColor = (v) => {
-    const vis = v ?? 1;
-    if (vis >= 0.8) return '#22c55e';
-    if (vis >= 0.6) return '#eab308';
-    return '#ef4444';
-  };
 
   // Línea muslo
   ctx.lineWidth   = 5;
@@ -179,15 +113,11 @@ function drawOverlay(ctx, lm, ids, angle, W, H) {
     ctx.stroke();
   }
 
-  // Puntos con color según visibilidad de cada landmark
-  [
-    [hx, hy, visColor(hip.visibility)],
-    [kx, ky, visColor(knee.visibility)],
-    [ax, ay, visColor(ankle.visibility)],
-  ].forEach(([x, y, fill]) => {
+  // Puntos en articulaciones
+  [[hx, hy, '#38bdf8'], [kx, ky, col], [ax, ay, col]].forEach(([x, y, fill]) => {
     ctx.beginPath();
-    ctx.arc(x, y, 9, 0, 2 * Math.PI);
-    ctx.fillStyle   = fill;
+    ctx.arc(x, y, 8, 0, 2 * Math.PI);
+    ctx.fillStyle  = fill;
     ctx.fill();
     ctx.strokeStyle = 'rgba(15,23,42,0.9)';
     ctx.lineWidth   = 2;
@@ -212,21 +142,18 @@ export function useLungePhoto({ side, sport = 'default' }) {
   const rafRef     = useRef(null);
   const runningRef = useRef(false);
 
-  const [mpLoading,      setMpLoading]      = useState(true);
-  const [mpError,        setMpError]        = useState(null);
-  const [cameraError,    setCameraError]    = useState(null);
-  const [isStreaming,    setIsStreaming]     = useState(false);
-  const [capturedAngle,  setCapturedAngle]  = useState(null);
-  const [capturedImage,  setCapturedImage]  = useState(null); // dataURL
-  const [landmarks,      setLandmarks]      = useState(null);
-  const [liveAngle,      setLiveAngle]      = useState(null);
-  const [detectionError, setDetectionError] = useState(null);
-  const [analyzing,      setAnalyzing]      = useState(false);
+  const [mpLoading,     setMpLoading]     = useState(true);
+  const [mpError,       setMpError]       = useState(null);
+  const [cameraError,   setCameraError]   = useState(null);
+  const [isStreaming,   setIsStreaming]    = useState(false);
+  const [capturedAngle, setCapturedAngle] = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null); // dataURL
+  const [landmarks,     setLandmarks]     = useState(null);
+  const [liveAngle,     setLiveAngle]     = useState(null);
 
   const ids = SIDES[side] ?? SIDES.left;
 
   // onResults para video en vivo (preview)
-  // Aplica validación de visibilidad + rango para no mostrar ángulos no confiables
   const onLiveResults = useCallback((results) => {
     const canvas = canvasRef.current;
     const video  = videoRef.current;
@@ -238,58 +165,39 @@ export function useLungePhoto({ side, sport = 'default' }) {
     const lm = results.poseLandmarks ?? null;
     setLandmarks(lm);
     if (!lm) { setLiveAngle(null); return; }
-
-    const err = validateLandmarks(lm, ids);
-    if (err) {
-      // En live no mostramos mensaje de error para no saturar la UI,
-      // pero sí dibujamos los puntos para dar feedback visual de posición
-      const hip   = lm[ids.hip];
-      const knee  = lm[ids.knee];
-      const ankle = lm[ids.ankle];
-      if (hip && knee && ankle) {
-        // Dibujar puntos tenues para indicar que el cuerpo fue detectado
-        // pero la confianza es insuficiente
-        drawOverlay(ctx, lm, ids, 0, canvas.width, canvas.height);
-      }
-      setLiveAngle(null);
-      return;
-    }
-
-    const ang = calcDorsiflexion(lm[ids.knee], lm[ids.ankle]);
+    const knee  = lm[ids.knee];
+    const ankle = lm[ids.ankle];
+    if (!knee || !ankle) { setLiveAngle(null); return; }
+    const ang = calcDorsiflexion(knee, ankle);
     setLiveAngle(ang);
     drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
   }, [ids]);  // ids is stable per hook instance
 
-  // Cargar MediaPipe al montar — serializado para evitar concurrent WASM init
+  // Cargar MediaPipe al montar
   useEffect(() => {
     let pose;
     let cancelled = false;
     (async () => {
       try {
-        await serializedMpInit(async () => {
-          await loadScript(`${CDN}/pose.js`);
-          // eslint-disable-next-line no-undef
-          pose = new window.Pose({
-            locateFile: (f) =>
-              `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`,
-          });
-          pose.setOptions({
-            modelComplexity:        0,    // modelo liviano — carga más rápido en iOS
-            smoothLandmarks:        true,
-            enableSegmentation:     false,
-            smoothSegmentation:     false,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence:  0.5,
-          });
-          pose.onResults(onLiveResults);
-          let timeoutId;
-          await Promise.race([
-            pose.initialize().finally(() => clearTimeout(timeoutId)),
-            new Promise((_, rej) => {
-              timeoutId = setTimeout(() => rej(new Error('Timeout >15s')), 15000);
-            }),
-          ]);
+        await loadScript(`${CDN}/pose.js`);
+        // eslint-disable-next-line no-undef
+        pose = new window.Pose({ locateFile: (f) => `${CDN}/${f}` });
+        pose.setOptions({
+          modelComplexity:        0,
+          smoothLandmarks:        true,
+          enableSegmentation:     false,
+          smoothSegmentation:     false,
+          minDetectionConfidence: 0.6,
+          minTrackingConfidence:  0.6,
         });
+        pose.onResults(onLiveResults);
+        let timeoutId;
+        await Promise.race([
+          pose.initialize().finally(() => clearTimeout(timeoutId)),
+          new Promise((_, rej) => {
+            timeoutId = setTimeout(() => rej(new Error('Timeout >15s')), 15000);
+          }),
+        ]);
         if (!cancelled) { poseRef.current = pose; setMpLoading(false); }
       } catch (err) {
         if (!cancelled) {
@@ -310,7 +218,6 @@ export function useLungePhoto({ side, sport = 'default' }) {
     setCameraError(null);
     setCapturedAngle(null);
     setCapturedImage(null);
-    setDetectionError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -360,7 +267,6 @@ export function useLungePhoto({ side, sport = 'default' }) {
     // Pausar el loop de video
     runningRef.current = false;
     cancelAnimationFrame(rafRef.current);
-    setDetectionError(null);
 
     // Capturar frame como imagen
     const snap    = document.createElement('canvas');
@@ -385,52 +291,34 @@ export function useLungePhoto({ side, sport = 'default' }) {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if (!lm) {
-        setCapturedAngle(null);
-        setDetectionError('No se detectó ninguna persona. ' +
-          'Asegurate de que el cuerpo completo esté en cuadro.');
-        return;
-      }
-
-      const err = validateLandmarks(lm, ids);
-      if (err) {
-        // Dibujar igual para mostrar dónde están los puntos detectados
+      if (lm) {
         const knee  = lm[ids.knee];
         const ankle = lm[ids.ankle];
-        if (knee && ankle) drawOverlay(ctx, lm, ids, 0, canvas.width, canvas.height);
+        if (knee && ankle) {
+          const ang = calcDorsiflexion(knee, ankle);
+          setCapturedAngle(ang);
+          setLandmarks(lm);
+          drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
+        } else {
+          setCapturedAngle(null);
+        }
+      } else {
         setCapturedAngle(null);
-        setDetectionError(err);
-        return;
       }
-
-      const ang = calcDorsiflexion(lm[ids.knee], lm[ids.ankle]);
-      setCapturedAngle(ang);
-      setLandmarks(lm);
-      setDetectionError(null);
-      drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
     };
 
     poseRef.current.onResults(staticHandler);
-    try {
-      await poseRef.current.send({ image: img });
-    } catch { /* ignorar errores de análisis de imagen estática */ }
-    finally {
-      // Restaurar handler de live siempre, incluso si send() lanza
-      if (poseRef.current) poseRef.current.onResults(onLiveResults);
-    }
+    await poseRef.current.send({ image: img });
+    // Restaurar handler de live
+    if (poseRef.current) poseRef.current.onResults(onLiveResults);
   }, [ids, onLiveResults]);
 
   // ANALIZAR FOTO CARGADA DESDE GALERÍA
-  // — Redimensiona a 640px max antes de enviar (fotos iPhone = 4032px → WASM lento)
-  // — Timeout de 10s: si MediaPipe no responde, muestra error en lugar de spinner eterno
   const analyzeUpload = useCallback(async (file) => {
     if (!poseRef.current) return;
     setCapturedAngle(null);
     setCapturedImage(null);
-    setDetectionError(null);
-    setAnalyzing(true);
 
-    // Leer archivo como dataURL
     const dataURL = await new Promise((res, rej) => {
       const reader    = new FileReader();
       reader.onload   = e => res(e.target.result);
@@ -439,85 +327,36 @@ export function useLungePhoto({ side, sport = 'default' }) {
     });
     setCapturedImage(dataURL);
 
-    // Cargar imagen en un elemento <img>
     const img = new Image();
     img.src   = dataURL;
     await new Promise(res => { img.onload = res; });
 
-    // Redimensionar a máx 640px para que WASM no se cuelgue con fotos 4K
-    const resized = resizeImage(img, 640);
-
     const canvas = canvasRef.current;
-    if (!canvas) { setAnalyzing(false); return; }
-
-    // Helper: restaurar handler de live y limpiar analyzing
-    const restoreLive = () => {
-      if (poseRef.current) poseRef.current.onResults(onLiveResults);
-      setAnalyzing(false);
-    };
+    if (!canvas) return;
 
     let resolved = false;
-
-    // Timeout de 10s — MediaPipe a veces nunca llama al handler con imágenes grandes
-    const timeoutId = setTimeout(() => {
-      if (resolved) return;
-      resolved = true;
-      restoreLive();
-      setDetectionError(
-        'El análisis tardó demasiado. Intentá con una foto más pequeña o mejor iluminada.'
-      );
-    }, 10000);
-
     const handler = (results) => {
       if (resolved) return;
-      resolved = true;
-      clearTimeout(timeoutId);
-
-      const lm = results.poseLandmarks ?? null;
-
-      // Escalar canvas al tamaño ORIGINAL de la imagen para el overlay
+      resolved  = true;
+      const lm  = results.poseLandmarks ?? null;
       canvas.width  = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      if (!lm) {
-        setDetectionError('No se detectó ninguna persona. ' +
-          'Asegurate de que el cuerpo completo esté en cuadro.');
-        restoreLive();
-        return;
-      }
-
-      const err = validateLandmarks(lm, ids);
-      if (err) {
+      if (lm) {
         const knee  = lm[ids.knee];
         const ankle = lm[ids.ankle];
-        if (knee && ankle) drawOverlay(ctx, lm, ids, 0, canvas.width, canvas.height);
-        setDetectionError(err);
-        restoreLive();
-        return;
+        if (knee && ankle) {
+          const ang = calcDorsiflexion(knee, ankle);
+          setCapturedAngle(ang);
+          setLandmarks(lm);
+          drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
+        }
       }
-
-      const ang = calcDorsiflexion(lm[ids.knee], lm[ids.ankle]);
-      setCapturedAngle(ang);
-      setLandmarks(lm);
-      setDetectionError(null);
-      drawOverlay(ctx, lm, ids, ang, canvas.width, canvas.height);
-      restoreLive();
     };
-
     poseRef.current.onResults(handler);
-    try {
-      // Enviar imagen REDIMENSIONADA (canvas) — MediaPipe acepta HTMLCanvasElement
-      await poseRef.current.send({ image: resized });
-    } catch (err) {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeoutId);
-        setDetectionError(`Error al procesar la imagen: ${err.message}`);
-        restoreLive();
-      }
-    }
+    await poseRef.current.send({ image: img });
+    if (poseRef.current) poseRef.current.onResults(onLiveResults);
   }, [ids, onLiveResults]);
 
   const stopCamera = useCallback(() => {
@@ -536,16 +375,12 @@ export function useLungePhoto({ side, sport = 'default' }) {
   const retake = useCallback(() => {
     setCapturedAngle(null);
     setCapturedImage(null);
-    setDetectionError(null);
     // Limpiar canvas
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-    // Cancelar cualquier rAF pendiente antes de iniciar el nuevo loop
-    // (evita dos loops concurrentes si capturePhoto tenía un frame in-flight)
-    cancelAnimationFrame(rafRef.current);
     runningRef.current = true;
     if (poseRef.current) poseRef.current.onResults(onLiveResults);
     const loop = async () => {
@@ -567,8 +402,6 @@ export function useLungePhoto({ side, sport = 'default' }) {
     setLiveAngle(null);
     setLandmarks(null);
     setCameraError(null);
-    setDetectionError(null);
-    setAnalyzing(false);
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -585,9 +418,6 @@ export function useLungePhoto({ side, sport = 'default' }) {
         streamRef.current.getTracks().forEach(t => t.stop());
         streamRef.current = null;
       }
-      // Limpiar srcObject para evitar que React reutilice el nodo <video>
-      // con un stream muerto al remontar el componente
-      if (videoRef.current) videoRef.current.srcObject = null;
     };
   }, []);
 
@@ -600,8 +430,6 @@ export function useLungePhoto({ side, sport = 'default' }) {
     capturedAngle,
     capturedImage,
     landmarks,
-    detectionError,
-    analyzing,
     startCamera,
     stopCamera,
     capturePhoto,

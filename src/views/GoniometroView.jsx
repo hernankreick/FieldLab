@@ -95,11 +95,13 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
   const [imageReady,  setImageReady]  = useState(false);
   const [imageSize,   setImageSize]   = useState(null);
   const [displaySize, setDisplaySize] = useState(null);
+  const [countdown,   setCountdown]   = useState(null); // null | 3 | 2 | 1
 
-  const videoRef      = useRef(null);
-  const streamRef     = useRef(null);
-  const fileInputRef  = useRef(null);
-  const readyTimerRef = useRef(null);
+  const videoRef           = useRef(null);
+  const streamRef          = useRef(null);
+  const fileInputRef       = useRef(null);
+  const readyTimerRef      = useRef(null);
+  const countdownIntervalRef = useRef(null);
 
   const gonio = useGoniometer({ pointCount: 3 });
 
@@ -118,8 +120,11 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     setDisplaySize(null);
   }, [imageSrc]);
 
-  // Cancel timer on unmount
-  useEffect(() => () => clearTimeout(readyTimerRef.current), []);
+  // Cancel timers on unmount
+  useEffect(() => () => {
+    clearTimeout(readyTimerRef.current);
+    clearInterval(countdownIntervalRef.current);
+  }, []);
 
   const onImgLoad = useCallback((e) => {
     const el = e.target;
@@ -210,6 +215,21 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     gonio.reset();
     setStep('marcando');
   }, [stopStream, gonio]);
+
+  const startCountdown = useCallback(() => {
+    setCountdown(3);
+    let count = 3;
+    countdownIntervalRef.current = setInterval(() => {
+      count -= 1;
+      if (count <= 0) {
+        clearInterval(countdownIntervalRef.current);
+        setCountdown(null);
+        takePhoto();
+      } else {
+        setCountdown(count);
+      }
+    }, 1000);
+  }, [takePhoto]);
 
   const retakePhoto = useCallback(() => {
     setImageSrc(null);
@@ -359,15 +379,23 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
         className="fixed inset-0 bg-black flex flex-col"
         style={{ zIndex: 999 }}
       >
+        {/* Header */}
         <div className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
           <button
-            onClick={handleBack}
+            onClick={() => {
+              clearInterval(countdownIntervalRef.current);
+              setCountdown(null);
+              stopStream();
+              setStep('captura_modo');
+            }}
             className="bg-black/50 text-white rounded-full px-4 py-2 text-sm font-semibold"
           >
             ✕ Cancelar
           </button>
           <p className="text-white/80 text-sm font-semibold">{selectedTest?.label}</p>
         </div>
+
+        {/* Video feed */}
         <video
           ref={videoRef}
           autoPlay
@@ -375,11 +403,50 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           muted
           className="flex-1 w-full object-cover"
         />
-        <div className="absolute bottom-8 left-0 right-0 flex justify-center">
+
+        {/* Countdown overlay */}
+        {countdown !== null && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 20, pointerEvents: 'none',
+          }}>
+            <div style={{
+              width: 120, height: 120, borderRadius: '50%',
+              background: 'rgba(15,23,42,0.75)',
+              border: '3px solid #38bdf8',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backdropFilter: 'blur(8px)',
+            }}>
+              <span style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 64, fontWeight: 700, lineHeight: 1,
+                color: countdown === 1 ? '#ef4444' : countdown === 2 ? '#eab308' : '#22c55e',
+              }}>
+                {countdown}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Capture button */}
+        <div className="absolute bottom-8 left-4 right-4 flex justify-center">
           <button
-            onClick={takePhoto}
-            className="w-16 h-16 rounded-full bg-white border-4 border-slate-400 active:scale-95 transition-transform"
-          />
+            onClick={captureMode === 'front' ? startCountdown : takePhoto}
+            disabled={countdown !== null}
+            style={{
+              width: '100%', padding: '16px', borderRadius: 14,
+              border: 'none',
+              background: countdown !== null ? '#334155' : '#38bdf8',
+              color: countdown !== null ? '#94a3b8' : '#0f172a',
+              fontWeight: 700, fontSize: 16,
+              cursor: countdown !== null ? 'not-allowed' : 'pointer',
+              boxShadow: countdown === null ? '0 4px 24px rgba(56,189,248,0.3)' : 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            {countdown !== null ? `Capturando en ${countdown}…` : '📸 Capturar'}
+          </button>
         </div>
       </div>
     );

@@ -149,6 +149,11 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     setDisplaySize(null);
   }, [imageSrc]);
 
+  // Reset points whenever the test changes so stale landmarks never bleed into a new test
+  useEffect(() => {
+    gonio.reset();
+  }, [selectedTest?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cancel timers on unmount
   useEffect(() => () => {
     clearTimeout(readyTimerRef.current);
@@ -229,7 +234,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     setCaptureMode('upload');
     gonio.reset();
     setStep('marcando');
-  }, [gonio]);
+  }, [gonio.reset]);
 
   const takePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -243,7 +248,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     setImageSrc(url);
     gonio.reset();
     setStep('marcando');
-  }, [stopStream, gonio]);
+  }, [stopStream, gonio.reset]);
 
   const startCountdown = useCallback(() => {
     setCountdown(3);
@@ -269,7 +274,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     } else {
       startCamera(captureMode);
     }
-  }, [captureMode, gonio, startCamera]);
+  }, [captureMode, gonio.reset, startCamera]);
 
   const saveResult = useCallback(() => {
     if (gonio.angle == null || !selectedTest) return;
@@ -296,7 +301,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     setSelectedTest(null);
     setCaptureMode(null);
     setStep('selector');
-  }, [stopStream, gonio]);
+  }, [stopStream, gonio.reset]);
 
   const selectTest = useCallback((test) => {
     setSelectedTest(test);

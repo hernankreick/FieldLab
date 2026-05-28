@@ -1,14 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 
 export function calcAngle(A, B, C) {
-  const v1 = { x: A.x - B.x, y: A.y - B.y };
-  const v2 = { x: C.x - B.x, y: C.y - B.y };
-  const dot = v1.x * v2.x + v1.y * v2.y;
-  const mag1 = Math.hypot(v1.x, v1.y);
-  const mag2 = Math.hypot(v2.x, v2.y);
-  if (mag1 === 0 || mag2 === 0) return null;
-  const cos = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
-  return Math.round(Math.acos(cos) * (180 / Math.PI));
+  return calcAngleAtVertex(B, A, C);
 }
 
 export function calcAngleAtVertex(vertex, armB, armC) {

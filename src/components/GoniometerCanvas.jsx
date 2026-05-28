@@ -29,7 +29,6 @@ export default function GoniometerCanvas({
   angle,
   imageSize,
   displaySize,
-  pointLabels,
   vertexIndex = 1,
   angleColor = '#facc15',
   onTap,
@@ -115,7 +114,7 @@ export default function GoniometerCanvas({
   }, []); // stable — all values accessed via refs
 
   const screenPts = points.map(p => toScreen(p, imageSize, displaySize));
-  const labels    = pointLabels?.length >= 3 ? pointLabels : null;
+  const arms      = screenPts.length === 3 ? [0, 1, 2].filter(i => i !== vertexIndex) : [];
 
   return (
     <svg
@@ -137,16 +136,15 @@ export default function GoniometerCanvas({
               x2={screenPts[1].x} y2={screenPts[1].y}
           stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeDasharray="6 4" />
       )}
-      {screenPts.length === 3 && [0, 1, 2].filter(i => i !== vertexIndex).map(i => (
+      {arms.map(i => (
         <line key={i}
           x1={screenPts[vertexIndex].x} y1={screenPts[vertexIndex].y}
           x2={screenPts[i].x} y2={screenPts[i].y}
           stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeDasharray="6 4" />
       ))}
 
-      {screenPts.length === 3 && angle != null && (() => {
+      {arms.length === 2 && angle != null && (() => {
         const V    = screenPts[vertexIndex];
-        const arms = [0, 1, 2].filter(i => i !== vertexIndex);
         const P1   = screenPts[arms[0]];
         const P2   = screenPts[arms[1]];
         const r    = 40;
@@ -158,13 +156,16 @@ export default function GoniometerCanvas({
         const y2   = V.y + r * Math.sin(ang2);
         const cross = (P1.x - V.x) * (P2.y - V.y) - (P1.y - V.y) * (P2.x - V.x);
         const sweep = cross > 0 ? 1 : 0;
+        // Clamp label so it never renders outside the SVG viewport
+        const lblX = Math.min(V.x + 14, (displaySize?.w ?? 400) - 82);
+        const lblY = Math.max(V.y - 30, 4);
         return (
           <g>
             <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 ${sweep} ${x2} ${y2}`}
               fill="none" stroke={angleColor} strokeWidth="2.5" opacity="0.8" />
-            <rect x={V.x + 14} y={V.y - 30} width="68" height="26" rx="6"
+            <rect x={lblX} y={lblY} width="68" height="26" rx="6"
               fill="rgba(15,23,42,0.88)" />
-            <text x={V.x + 48} y={V.y - 12} textAnchor="middle"
+            <text x={lblX + 34} y={lblY + 18} textAnchor="middle"
               fill={angleColor} fontSize="15" fontWeight="bold"
               fontFamily="'JetBrains Mono', monospace">
               {angle}°
@@ -193,7 +194,7 @@ export default function GoniometerCanvas({
           />
           <text x={sp.x} y={sp.y + 5} textAnchor="middle"
             fill="white" fontSize="11" fontWeight="bold">
-            {labels ? labels[i][0] : LABELS[i]}
+            {LABELS[i]}
           </text>
         </g>
       ))}

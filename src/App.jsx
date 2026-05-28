@@ -17,6 +17,7 @@ import PlayerProfile from './views/PlayerProfile';
 import JumpAnalysis from './views/JumpAnalysis';
 import MovilidadTobillo from './views/MovilidadTobillo';
 import GoniometroView from './views/GoniometroView';
+import HipShoulderGoniometer from './components/evaluations/HipShoulderGoniometer';
 
 // Detectar ruta /hooper/:teamId y /rpe/:teamId sin React Router (módulo-level, no cambia en runtime)
 const HOOPER_MATCH = window.location.pathname.match(/^\/hooper\/([^/]+)/);
@@ -36,6 +37,7 @@ const views = {
   jumpAnalysis:    JumpAnalysis,
   movilidadTobillo: MovilidadTobillo,
   goniometro:       GoniometroView,
+  hipShoulder:      HipShoulderGoniometer,
 };
 
 function AppContent() {

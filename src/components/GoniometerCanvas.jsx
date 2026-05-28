@@ -61,7 +61,8 @@ export default function GoniometerCanvas({
   useEffect(() => { displaySizeRef.current = displaySize; }, [displaySize]);
 
   // Synchronous drag index — avoids stale-state issues on first touchmove
-  const localDragIdx = useRef(null);
+  const localDragIdx   = useRef(null);
+  const touchStartRef  = useRef(null);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -69,15 +70,17 @@ export default function GoniometerCanvas({
 
     const handleStart = (e) => {
       if (disabledRef.current) return;
-      e.preventDefault();
-      e.stopPropagation();
       const { sx, sy } = getCoords(e, svg);
       const near = findNear(pointsRef.current, sx, sy, imageSizeRef.current, displaySizeRef.current);
       if (near >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
         localDragIdx.current = near;
         onDragStartRef.current(near);
-      } else if (pointsRef.current.length < 3) {
-        onTapRef.current(sx, sy);
+        touchStartRef.current = { sx, sy, isDrag: true };
+      } else {
+        // No preventDefault — let vertical scroll work naturally
+        touchStartRef.current = { sx, sy, isDrag: false };
       }
     };
 
@@ -90,10 +93,23 @@ export default function GoniometerCanvas({
     };
 
     const handleEnd = (e) => {
-      if (localDragIdx.current === null) return;
-      e.preventDefault();
-      localDragIdx.current = null;
+      const start = touchStartRef.current;
+      if (localDragIdx.current !== null) {
+        e.preventDefault();
+        localDragIdx.current = null;
+        onDragEndRef.current();
+        touchStartRef.current = null;
+        return;
+      }
+      if (start && !start.isDrag) {
+        const { sx, sy } = getCoords(e, svg);
+        const dist = Math.hypot(sx - start.sx, sy - start.sy);
+        if (dist < 10 && pointsRef.current.length < 3) {
+          onTapRef.current(start.sx, start.sy);
+        }
+      }
       onDragEndRef.current();
+      touchStartRef.current = null;
     };
 
     // { passive: false } required on iOS to call preventDefault in touchstart/touchmove
@@ -125,7 +141,7 @@ export default function GoniometerCanvas({
         inset: 0,
         width: '100%',
         height: '100%',
-        touchAction: 'none',
+        touchAction: 'pan-y',
         userSelect: 'none',
         cursor: disabled ? 'default' : points.length >= 3 ? 'grab' : 'crosshair',
         opacity: disabled ? 0 : 1,

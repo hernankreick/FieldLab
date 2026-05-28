@@ -159,12 +159,11 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           ? '#22c55e'
           : '#ef4444';
 
-  const isCapturing = step === 'captura';
-
   useEffect(() => {
-    onFullscreen?.(isCapturing);
+    const isFs = step === 'marcando' || step === 'captura';
+    onFullscreen?.(isFs);
     return () => onFullscreen?.(false);
-  }, [isCapturing, onFullscreen]);
+  }, [step, onFullscreen]);
 
   // Reset image state whenever a new photo is set (clears any pending ready timer)
   useEffect(() => {
@@ -532,112 +531,150 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     const currentInstruction = Array.isArray(selectedTest?.instruction)
       ? selectedTest.instruction[gonio.points.length]
       : selectedTest?.instruction;
+    const angStatus = gonio.angle == null ? ''
+      : selectedTest?.normal
+        ? gonio.angle >= selectedTest.normal.optimo ? 'Normal'
+          : gonio.angle >= selectedTest.normal.precaucion ? 'Límite' : 'Reducido'
+        : selectedTest?.normalMin == null ? 'Sin norma'
+          : gonio.angle >= selectedTest.normalMin ? 'Normal' : 'Reducido';
 
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <button onClick={handleBack} className="text-slate-400 hover:text-white">
-            <ChevronLeft size={20} />
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 999,
+        background: '#0f172a',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Fixed header */}
+        <div style={{
+          flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 14px',
+          background: 'rgba(15,23,42,0.97)',
+          borderBottom: '1px solid #1e293b',
+        }}>
+          <button
+            onClick={handleBack}
+            style={{ color: '#94a3b8', background: 'none', border: 'none', padding: 4, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+          >
+            <ChevronLeft size={22} />
           </button>
-          <h2 className="text-white font-bold">{selectedTest?.label}</h2>
+          <span style={{ flex: 1, color: '#f1f5f9', fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedTest?.label}
+          </span>
+          {gonio.isFull && gonio.angle != null && (
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: angleColor }}>
+              {gonio.angle}°
+            </span>
+          )}
         </div>
 
-        {!gonio.isFull && (
-          <div style={{
-            padding: '10px 16px',
-            background: 'rgba(56,189,248,0.08)',
-            borderRadius: 10,
-            border: '1px solid #1e3a5f',
-          }}>
-            <p style={{ color: '#e2e8f0', fontSize: 13, margin: 0, textAlign: 'center', whiteSpace: 'pre-line' }}>
-              <span style={{ color: ['#38bdf8', '#ec4899', '#22c55e'][gonio.points.length], fontWeight: 700 }}>
-                Punto {gonio.points.length + 1}:
-              </span>{' '}
-              {currentInstruction}
-            </p>
+        {/* Scrollable image zone */}
+        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <div
+            ref={gonio.containerRef}
+            style={{ position: 'relative', width: '100%' }}
+          >
+            <img
+              ref={gonio.imageRef}
+              src={imageSrc}
+              alt="Captura"
+              style={{ width: '100%', display: 'block', userSelect: 'none' }}
+              draggable={false}
+              onLoad={onImgLoad}
+            />
+            <GoniometerCanvas
+              points={gonio.points}
+              angle={gonio.angle}
+              imageSize={imageSize}
+              displaySize={displaySize}
+              pointLabels={pointLabels}
+              vertexIndex={selectedTest?.vertexIndex ?? 1}
+              angleColor={angleColor}
+              onTap={onTap}
+              onDragPoint={onDragPoint}
+              onDragStart={gonio.startDrag}
+              onDragEnd={gonio.endDrag}
+              dragging={gonio.draggingIdx}
+              disabled={!imageReady}
+            />
           </div>
-        )}
-        {selectedTest?.tip && gonio.points.length === 2 && !gonio.isFull && (
-          <div style={{
-            padding: '8px 16px',
-            background: 'rgba(234,179,8,0.10)',
-            borderRadius: 10,
-            border: '1px solid rgba(234,179,8,0.2)',
-          }}>
-            <p style={{ color: '#eab308', fontSize: 12, margin: 0, textAlign: 'center' }}>
-              ⚠ {selectedTest.tip}
-            </p>
-          </div>
-        )}
-        {gonio.isFull && gonio.angle != null && (
-          <p className="text-center text-slate-400 text-sm">
-            Arrastrar los puntos para ajustar
-          </p>
-        )}
-        {selectedTest?.protocol && (
-          <div style={{
-            padding: '8px 16px',
-            background: 'rgba(56,189,248,0.06)',
-            borderRadius: 10,
-            border: '1px solid #1e293b',
-          }}>
-            <p style={{ color: '#64748b', fontSize: 11, margin: 0, fontStyle: 'italic' }}>
-              📐 {selectedTest.protocol}
-            </p>
-          </div>
-        )}
-
-        <div
-          ref={gonio.containerRef}
-          className="relative w-full select-none"
-          style={{ touchAction: 'none' }}
-        >
-          <img
-            ref={gonio.imageRef}
-            src={imageSrc}
-            alt="Captura"
-            className="w-full object-contain rounded-xl block"
-            draggable={false}
-            onLoad={onImgLoad}
-            style={{ userSelect: 'none' }}
-          />
-          <GoniometerCanvas
-            points={gonio.points}
-            angle={gonio.angle}
-            imageSize={imageSize}
-            displaySize={displaySize}
-            pointLabels={pointLabels}
-            vertexIndex={selectedTest?.vertexIndex ?? 1}
-            angleColor={angleColor}
-            onTap={onTap}
-            onDragPoint={onDragPoint}
-            onDragStart={gonio.startDrag}
-            onDragEnd={gonio.endDrag}
-            dragging={gonio.draggingIdx}
-            disabled={!imageReady}
-          />
         </div>
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => { gonio.reset(); }}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl py-3 font-semibold transition-colors"
-          >
-            <RotateCcw size={16} /> Limpiar
-          </button>
-          <button
-            onClick={retakePhoto}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl py-3 font-semibold transition-colors"
-          >
-            <Camera size={16} /> Nueva foto
-          </button>
-          <button
-            onClick={saveResult}
-            disabled={gonio.angle == null}
-            className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl py-3 font-semibold transition-colors"
-          >
-            <CheckCircle size={16} /> Guardar
-          </button>
+        {/* Fixed bottom panel */}
+        <div style={{
+          flexShrink: 0,
+          background: 'rgba(15,23,42,0.97)',
+          borderTop: '1px solid #1e293b',
+          padding: '10px 14px 18px',
+        }}>
+          {!gonio.isFull ? (
+            <div style={{
+              padding: '8px 14px',
+              background: 'rgba(56,189,248,0.08)',
+              borderRadius: 10,
+              border: '1px solid #1e3a5f',
+              marginBottom: 10,
+            }}>
+              <p style={{ color: '#e2e8f0', fontSize: 13, margin: 0, textAlign: 'center' }}>
+                <span style={{ color: ['#38bdf8', '#ec4899', '#22c55e'][gonio.points.length], fontWeight: 700 }}>
+                  Punto {gonio.points.length + 1}:
+                </span>{' '}
+                {currentInstruction}
+              </p>
+              {selectedTest?.tip && gonio.points.length === 2 && (
+                <p style={{ color: '#eab308', fontSize: 11, margin: '6px 0 0', textAlign: 'center' }}>
+                  ⚠ {selectedTest.tip}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, paddingBottom: 10 }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 38, fontWeight: 700, color: angleColor }}>
+                {gonio.angle}°
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <StatusPill angle={gonio.angle} normalMin={selectedTest?.normalMin} normal={selectedTest?.normal} />
+                <span style={{ fontSize: 11, color: '#64748b' }}>Arrastrar para ajustar</span>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => gonio.reset()}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: '#334155', color: '#f1f5f9', border: 'none', borderRadius: 12,
+                padding: '12px 0', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              <RotateCcw size={15} /> Limpiar
+            </button>
+            <button
+              onClick={retakePhoto}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: '#334155', color: '#f1f5f9', border: 'none', borderRadius: 12,
+                padding: '12px 0', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              <Camera size={15} /> Nueva foto
+            </button>
+            <button
+              onClick={saveResult}
+              disabled={gonio.angle == null}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: gonio.angle == null ? '#1e293b' : '#059669',
+                color: gonio.angle == null ? '#475569' : '#fff',
+                border: 'none', borderRadius: 12,
+                padding: '12px 0', fontWeight: 600, fontSize: 14,
+                cursor: gonio.angle == null ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <CheckCircle size={15} /> Guardar
+            </button>
+          </div>
         </div>
       </div>
     );

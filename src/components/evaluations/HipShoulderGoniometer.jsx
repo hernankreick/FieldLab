@@ -463,11 +463,15 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
         return;
       }
       if (!touchStart) return;
-      const { x, y } = coords(e);
-      if (Math.hypot(x - touchStart.x, y - touchStart.y) < 10) {
-        setPoints(prev => prev.length >= 3 ? prev : [...prev, { x: touchStart.x, y: touchStart.y }]);
-      }
+      // Capture value in a local const before nullifying — the setPoints updater
+      // runs in React's render phase (after this handler returns), so touching
+      // the mutable `touchStart` closure variable would read null by then.
+      const start = touchStart;
       touchStart = null;
+      const { x, y } = coords(e);
+      if (Math.hypot(x - start.x, y - start.y) < 10) {
+        setPoints(prev => prev.length >= 3 ? prev : [...prev, { x: start.x, y: start.y }]);
+      }
     }
 
     canvas.addEventListener('touchstart', onStart, { passive: false });

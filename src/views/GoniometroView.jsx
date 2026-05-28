@@ -9,37 +9,35 @@ const TEST_CONFIGS = [
     id: 'dorsiflex_izq',
     label: 'Dorsiflexión Tobillo Izquierdo',
     description: 'Prueba de lunge — tobillo izquierdo',
-    points: ['Maléolo lateral', 'Cabeza del peroné', 'Suelo (vertical)'],
-    pointCount: 3,
+    points: ['Maléolo lateral', 'Cabeza del peroné'],
+    pointCount: 2,
+    autoVertical: true,
     vertexIndex: 0,
     normalMin: 35,
     normal: { optimo: 35, precaucion: 25 },
     icon: '🦵',
     instruction: [
       '1️⃣ Maléolo lateral — hueso prominente del tobillo externo',
-      '2️⃣ Cabeza del peroné — bulto óseo lateral bajo la rodilla',
-      '3️⃣ Suelo — tocá el piso directamente debajo del maléolo',
+      '2️⃣ Cabeza del peroné — bulto óseo lateral justo debajo de la rodilla',
     ],
-    protocol: 'Eje en maléolo lateral. Barra fija → cabeza del peroné. Barra móvil → suelo (vertical).',
-    tip: 'El punto 3 es el SUELO, no el pie. Tocá el piso justo debajo del tobillo.',
+    protocol: 'Eje en maléolo lateral. Barra → cabeza del peroné. Vertical automática.',
   },
   {
     id: 'dorsiflex_der',
     label: 'Dorsiflexión Tobillo Derecho',
     description: 'Prueba de lunge — tobillo derecho',
-    points: ['Maléolo lateral', 'Cabeza del peroné', 'Suelo (vertical)'],
-    pointCount: 3,
+    points: ['Maléolo lateral', 'Cabeza del peroné'],
+    pointCount: 2,
+    autoVertical: true,
     vertexIndex: 0,
     normalMin: 35,
     normal: { optimo: 35, precaucion: 25 },
     icon: '🦵',
     instruction: [
       '1️⃣ Maléolo lateral — hueso prominente del tobillo externo',
-      '2️⃣ Cabeza del peroné — bulto óseo lateral bajo la rodilla',
-      '3️⃣ Suelo — tocá el piso directamente debajo del maléolo',
+      '2️⃣ Cabeza del peroné — bulto óseo lateral justo debajo de la rodilla',
     ],
-    protocol: 'Eje en maléolo lateral. Barra fija → cabeza del peroné. Barra móvil → suelo (vertical).',
-    tip: 'El punto 3 es el SUELO, no el pie. Tocá el piso justo debajo del tobillo.',
+    protocol: 'Eje en maléolo lateral. Barra → cabeza del peroné. Vertical automática.',
   },
   {
     id: 'flex_cadera',
@@ -141,8 +139,9 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
   const countdownIntervalRef = useRef(null);
 
   const gonio = useGoniometer({
-    pointCount: selectedTest?.pointCount ?? 3,
-    vertexIndex: selectedTest?.vertexIndex ?? 1,
+    pointCount:   selectedTest?.pointCount   ?? 3,
+    vertexIndex:  selectedTest?.vertexIndex  ?? 1,
+    autoVertical: selectedTest?.autoVertical ?? false,
   });
 
   const angleColor = gonio.angle == null
@@ -590,6 +589,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
               pointLabels={pointLabels}
               vertexIndex={selectedTest?.vertexIndex ?? 1}
               angleColor={angleColor}
+              autoVertical={selectedTest?.autoVertical ?? false}
               onTap={onTap}
               onDragPoint={onDragPoint}
               onDragStart={gonio.startDrag}

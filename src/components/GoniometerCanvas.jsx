@@ -32,6 +32,7 @@ export default function GoniometerCanvas({
   pointLabels,
   vertexIndex = 1,
   angleColor = '#facc15',
+  autoVertical = false,
   onTap,
   onDragPoint,
   onDragStart,
@@ -46,19 +47,21 @@ export default function GoniometerCanvas({
   const onDragPointRef = useRef(onDragPoint);
   const onDragStartRef = useRef(onDragStart);
   const onDragEndRef   = useRef(onDragEnd);
-  const disabledRef    = useRef(disabled);
-  const pointsRef      = useRef(points);
-  const imageSizeRef   = useRef(imageSize);
-  const displaySizeRef = useRef(displaySize);
+  const disabledRef     = useRef(disabled);
+  const pointsRef       = useRef(points);
+  const imageSizeRef    = useRef(imageSize);
+  const displaySizeRef  = useRef(displaySize);
+  const autoVerticalRef = useRef(autoVertical);
 
-  useEffect(() => { onTapRef.current       = onTap;       }, [onTap]);
-  useEffect(() => { onDragPointRef.current = onDragPoint; }, [onDragPoint]);
-  useEffect(() => { onDragStartRef.current = onDragStart; }, [onDragStart]);
-  useEffect(() => { onDragEndRef.current   = onDragEnd;   }, [onDragEnd]);
-  useEffect(() => { disabledRef.current    = disabled;    }, [disabled]);
-  useEffect(() => { pointsRef.current      = points;      }, [points]);
-  useEffect(() => { imageSizeRef.current   = imageSize;   }, [imageSize]);
-  useEffect(() => { displaySizeRef.current = displaySize; }, [displaySize]);
+  useEffect(() => { onTapRef.current        = onTap;        }, [onTap]);
+  useEffect(() => { onDragPointRef.current  = onDragPoint;  }, [onDragPoint]);
+  useEffect(() => { onDragStartRef.current  = onDragStart;  }, [onDragStart]);
+  useEffect(() => { onDragEndRef.current    = onDragEnd;    }, [onDragEnd]);
+  useEffect(() => { disabledRef.current     = disabled;     }, [disabled]);
+  useEffect(() => { pointsRef.current       = points;       }, [points]);
+  useEffect(() => { imageSizeRef.current    = imageSize;    }, [imageSize]);
+  useEffect(() => { displaySizeRef.current  = displaySize;  }, [displaySize]);
+  useEffect(() => { autoVerticalRef.current = autoVertical; }, [autoVertical]);
 
   // Synchronous drag index — avoids stale-state issues on first touchmove
   const localDragIdx   = useRef(null);
@@ -104,7 +107,7 @@ export default function GoniometerCanvas({
       if (start && !start.isDrag) {
         const { sx, sy } = getCoords(e, svg);
         const dist = Math.hypot(sx - start.sx, sy - start.sy);
-        if (dist < 10 && pointsRef.current.length < 3) {
+        if (dist < 10 && pointsRef.current.length < (autoVerticalRef.current ? 2 : 3)) {
           onTapRef.current(start.sx, start.sy);
         }
       }
@@ -143,7 +146,7 @@ export default function GoniometerCanvas({
         height: '100%',
         touchAction: 'pan-y',
         userSelect: 'none',
-        cursor: disabled ? 'default' : points.length >= 3 ? 'grab' : 'crosshair',
+        cursor: disabled ? 'default' : points.length >= (autoVertical ? 2 : 3) ? 'grab' : 'crosshair',
         opacity: disabled ? 0 : 1,
         transition: 'opacity 0.2s',
       }}
@@ -159,19 +162,19 @@ export default function GoniometerCanvas({
         />
       )}
 
-      {screenPts.length === 2 && (
+      {!autoVertical && screenPts.length === 2 && (
         <line x1={screenPts[0].x} y1={screenPts[0].y}
               x2={screenPts[1].x} y2={screenPts[1].y}
           stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeDasharray="6 4" />
       )}
-      {arms.map(i => (
+      {!autoVertical && arms.map(i => (
         <line key={i}
           x1={screenPts[vertexIndex].x} y1={screenPts[vertexIndex].y}
           x2={screenPts[i].x} y2={screenPts[i].y}
           stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeDasharray="6 4" />
       ))}
 
-      {arms.length === 2 && angle != null && (() => {
+      {!autoVertical && arms.length === 2 && angle != null && (() => {
         const V    = screenPts[vertexIndex];
         const P1   = screenPts[arms[0]];
         const P2   = screenPts[arms[1]];
@@ -191,6 +194,59 @@ export default function GoniometerCanvas({
           <g>
             <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 ${sweep} ${x2} ${y2}`}
               fill="none" stroke={angleColor} strokeWidth="2.5" opacity="0.8" />
+            <rect x={lblX} y={lblY} width="68" height="26" rx="6"
+              fill="rgba(15,23,42,0.88)" />
+            <text x={lblX + 34} y={lblY + 18} textAnchor="middle"
+              fill={angleColor} fontSize="15" fontWeight="bold"
+              fontFamily="'JetBrains Mono', monospace">
+              {angle}°
+            </text>
+          </g>
+        );
+      })()}
+
+      {/* autoVertical mode: vertical reference + tibia line + arc */}
+      {autoVertical && screenPts.length >= 1 && (
+        <>
+          <line
+            x1={screenPts[0].x} y1={screenPts[0].y}
+            x2={screenPts[0].x} y2={screenPts[0].y + 100}
+            stroke="rgba(148,163,184,0.55)" strokeWidth="2" strokeDasharray="5 4"
+          />
+          <text
+            x={screenPts[0].x + 7} y={screenPts[0].y + 88}
+            fill="rgba(148,163,184,0.65)" fontSize="10" fontFamily="system-ui"
+            style={{ pointerEvents: 'none', userSelect: 'none' }}
+          >
+            vertical
+          </text>
+        </>
+      )}
+      {autoVertical && screenPts.length === 2 && (
+        <line
+          x1={screenPts[0].x} y1={screenPts[0].y}
+          x2={screenPts[1].x} y2={screenPts[1].y}
+          stroke={angleColor} strokeWidth="3" strokeDasharray="6 3" opacity="0.8"
+        />
+      )}
+      {autoVertical && screenPts.length === 2 && angle != null && (() => {
+        const A = screenPts[0];
+        const B = screenPts[1];
+        const r = 44;
+        const tibiaAng = Math.atan2(B.y - A.y, B.x - A.x);
+        const vertAng  = -Math.PI / 2; // straight up in screen coords
+        const x1 = A.x + r * Math.cos(tibiaAng);
+        const y1 = A.y + r * Math.sin(tibiaAng);
+        const x2 = A.x;      // cos(-π/2) = 0
+        const y2 = A.y - r;  // sin(-π/2) = -1
+        const cross = Math.sin(tibiaAng - vertAng);
+        const sweep = cross > 0 ? 0 : 1;
+        const lblX = Math.min(A.x + 18, (displaySize?.w ?? 400) - 82);
+        const lblY = Math.max(A.y - 38, 4);
+        return (
+          <g>
+            <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 ${sweep} ${x2} ${y2}`}
+              fill="none" stroke={angleColor} strokeWidth="2.5" opacity="0.85" />
             <rect x={lblX} y={lblY} width="68" height="26" rx="6"
               fill="rgba(15,23,42,0.88)" />
             <text x={lblX + 34} y={lblY + 18} textAnchor="middle"

@@ -15,12 +15,25 @@ export function calcAngleAtVertex(vertex, armB, armC) {
   return Math.round(Math.acos(cos) * (180 / Math.PI));
 }
 
-export function useGoniometer({ pointCount = 3, vertexIndex = 1 } = {}) {
+export function calcAngleFromVertical(A, B) {
+  const vx = B.x - A.x;
+  const vy = B.y - A.y;
+  const mag = Math.sqrt(vx * vx + vy * vy);
+  if (mag === 0) return 0;
+  // Compare A→B against vertical UP (0,-1) — y increases downward in screen coords,
+  // so a tibia pointing straight up has vy<0, giving cos=1 and angle=0°.
+  const cos = Math.min(1, Math.max(-1, -vy / mag));
+  return Math.round(Math.acos(cos) * (180 / Math.PI));
+}
+
+export function useGoniometer({ pointCount = 3, vertexIndex = 1, autoVertical = false } = {}) {
   const [points, setPoints] = useState([]);
   const [draggingIdx, setDraggingIdx] = useState(null);
   const draggingIdxRef = useRef(null);
   const imageRef = useRef(null);
   const containerRef = useRef(null);
+
+  const effectivePointCount = autoVertical ? 2 : pointCount;
 
   const imageToScreen = useCallback((pt) => {
     const img = imageRef.current;
@@ -55,12 +68,12 @@ export function useGoniometer({ pointCount = 3, vertexIndex = 1 } = {}) {
   const addOrMovePoint = useCallback((screenX, screenY) => {
     const imgPt = screenToImage(screenX, screenY);
     setPoints(prev => {
-      if (prev.length < pointCount) {
+      if (prev.length < effectivePointCount) {
         return [...prev, imgPt];
       }
       return prev;
     });
-  }, [screenToImage, pointCount]);
+  }, [screenToImage, effectivePointCount]);
 
   const startDrag = useCallback((idx) => {
     draggingIdxRef.current = idx;
@@ -90,9 +103,11 @@ export function useGoniometer({ pointCount = 3, vertexIndex = 1 } = {}) {
   }, []);
 
   const arms = [0, 1, 2].filter(i => i !== vertexIndex);
-  const angle = points.length === pointCount
-    ? calcAngleAtVertex(points[vertexIndex], points[arms[0]], points[arms[1]])
-    : null;
+  const angle = autoVertical && points.length === 2
+    ? calcAngleFromVertical(points[0], points[1])
+    : !autoVertical && points.length === pointCount
+      ? calcAngleAtVertex(points[vertexIndex], points[arms[0]], points[arms[1]])
+      : null;
 
   return {
     points,
@@ -106,6 +121,6 @@ export function useGoniometer({ pointCount = 3, vertexIndex = 1 } = {}) {
     onDragMove,
     endDrag,
     reset,
-    isFull: points.length >= pointCount,
+    isFull: points.length >= effectivePointCount,
   };
 }

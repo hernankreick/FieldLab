@@ -127,16 +127,20 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     }
   });
 
-  const [imageReady,  setImageReady]  = useState(false);
-  const [imageSize,   setImageSize]   = useState(null);
-  const [displaySize, setDisplaySize] = useState(null);
-  const [countdown,   setCountdown]   = useState(null); // null | 3 | 2 | 1
+  const [imageReady,       setImageReady]       = useState(false);
+  const [imageSize,        setImageSize]        = useState(null);
+  const [displaySize,      setDisplaySize]      = useState(null);
+  const [countdown,        setCountdown]        = useState(null);
+  const [bilateralResults, setBilateralResults] = useState({});
+  const [transitionMsg,    setTransitionMsg]    = useState(null);
+  const [selectedAthlete,  setSelectedAthlete]  = useState('');
 
-  const videoRef           = useRef(null);
-  const streamRef          = useRef(null);
-  const fileInputRef       = useRef(null);
-  const readyTimerRef      = useRef(null);
+  const videoRef             = useRef(null);
+  const streamRef            = useRef(null);
+  const fileInputRef         = useRef(null);
+  const readyTimerRef        = useRef(null);
   const countdownIntervalRef = useRef(null);
+  const transitionTimerRef   = useRef(null);
 
   const gonio = useGoniometer({
     pointCount:   selectedTest?.pointCount   ?? 3,
@@ -181,6 +185,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
   useEffect(() => () => {
     clearTimeout(readyTimerRef.current);
     clearInterval(countdownIntervalRef.current);
+    clearTimeout(transitionTimerRef.current);
   }, []);
 
   const onImgLoad = useCallback((e) => {
@@ -315,8 +320,26 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     try {
       localStorage.setItem(`fieldlab_${coach?.id}_goniometro`, JSON.stringify(next));
     } catch {}
+
+    if (selectedTest.id === 'dorsiflex_izq') {
+      setBilateralResults(prev => ({ ...prev, dorsiflex_izq: gonio.angle }));
+      clearTimeout(transitionTimerRef.current);
+      setTransitionMsg('✓ Tobillo izquierdo guardado — ahora el derecho');
+      transitionTimerRef.current = setTimeout(() => setTransitionMsg(null), 2500);
+      setSelectedTest(TEST_CONFIGS.find(t => t.id === 'dorsiflex_der'));
+      setImageSrc(null);
+      setStep('captura_modo');
+      return;
+    }
+
+    if (selectedTest.id === 'dorsiflex_der' && bilateralResults.dorsiflex_izq != null) {
+      setBilateralResults(prev => ({ ...prev, dorsiflex_der: gonio.angle }));
+      setStep('resumen_bilateral');
+      return;
+    }
+
     setStep('resultado');
-  }, [gonio.angle, selectedTest, savedResults, coach]);
+  }, [gonio.angle, selectedTest, savedResults, coach, bilateralResults]);
 
   const handleBack = useCallback(() => {
     stopStream();
@@ -324,6 +347,9 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     gonio.reset();
     setSelectedTest(null);
     setCaptureMode(null);
+    setBilateralResults({});
+    clearTimeout(transitionTimerRef.current);
+    setTransitionMsg(null);
     setStep('selector');
   }, [stopStream, gonio.reset]);
 
@@ -382,8 +408,23 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
 
   if (step === 'captura_modo') {
     return (
-      <div className="space-y-6">
-        <button onClick={handleBack} className="flex items-center gap-1 text-slate-400 hover:text-white text-sm">
+      <>
+        {transitionMsg && (
+          <div style={{
+            position: 'fixed', top: 60, left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            background: 'rgba(34,197,94,0.95)',
+            color: '#0f172a', fontWeight: 700,
+            fontSize: 13, padding: '10px 20px',
+            borderRadius: 99, whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          }}>
+            {transitionMsg}
+          </div>
+        )}
+        <div className="space-y-6">
+          <button onClick={handleBack} className="flex items-center gap-1 text-slate-400 hover:text-white text-sm">
           <ChevronLeft size={16} /> Volver
         </button>
         <div>
@@ -443,6 +484,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           </p>
         </div>
       </div>
+      </>
     );
   }
 
@@ -675,6 +717,124 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
               <CheckCircle size={15} /> Guardar
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'resumen_bilateral') {
+    const izq = bilateralResults.dorsiflex_izq ?? 0;
+    const der = bilateralResults.dorsiflex_der ?? 0;
+    const asimetria = Math.round(Math.abs(izq - der) / Math.max(izq, der, 1) * 100);
+    const izqColor = izq >= 35 ? '#22c55e' : izq >= 25 ? '#eab308' : '#ef4444';
+    const derColor = der >= 35 ? '#22c55e' : der >= 25 ? '#eab308' : '#ef4444';
+    const symColor = asimetria >= 15 ? '#ef4444' : asimetria >= 10 ? '#eab308' : '#22c55e';
+    const symLabel = asimetria >= 15 ? 'Asimetría significativa' : asimetria >= 10 ? 'Asimetría moderada' : 'Simetría normal';
+    const symBg    = asimetria >= 15 ? 'rgba(239,68,68,0.12)' : asimetria >= 10 ? 'rgba(234,179,8,0.12)' : 'rgba(34,197,94,0.12)';
+    const clinical = asimetria >= 15
+      ? `Asimetría significativa de ${asimetria}%. Una diferencia >15% entre tobillos se asocia a mayor riesgo de lesión de tobillo y rodilla. Evaluar restricción en tobillo ${izq < der ? 'izquierdo' : 'derecho'}.`
+      : asimetria >= 10
+      ? `Asimetría moderada de ${asimetria}%. Monitorear en próximas evaluaciones. Trabajar movilidad bilateral.`
+      : Math.min(izq, der) < 25
+      ? 'Ambos tobillos con restricción significativa (<25°). Riesgo aumentado de lesión. Priorizar trabajo de movilidad de tobillo.'
+      : Math.min(izq, der) < 35
+      ? 'Uno o ambos tobillos en rango límite (25–34°). Incluir trabajo de dorsiflexión en el calentamiento.'
+      : 'Excelente movilidad bilateral. Mantener con trabajo preventivo.';
+
+    const resetBilateral = () => {
+      setBilateralResults({});
+      setSelectedAthlete('');
+      gonio.reset();
+      setImageSrc(null);
+      setSelectedTest(null);
+      setCaptureMode(null);
+      setStep('selector');
+    };
+
+    return (
+      <div className="pb-8 space-y-3">
+        <div>
+          <h2 style={{ color: '#e2e8f0', fontWeight: 700, fontSize: 18, margin: '0 0 4px' }}>
+            Dorsiflexión Bilateral
+          </h2>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>Lunge Test — comparación bilateral</p>
+        </div>
+
+        {/* Side-by-side ankle cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[{ label: 'IZQUIERDO', value: izq, color: izqColor }, { label: 'DERECHO', value: der, color: derColor }].map(({ label, value, color }) => (
+            <div key={label} style={{ background: '#1e293b', border: `1px solid ${color}33`, borderRadius: 14, padding: '14px 10px', textAlign: 'center' }}>
+              <div style={{ color: '#64748b', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6 }}>{label}</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 44, fontWeight: 700, color, lineHeight: 1 }}>{value}°</div>
+              <div style={{ display: 'inline-block', marginTop: 8, background: color + '20', border: `1px solid ${color}44`, borderRadius: 99, padding: '3px 10px', color, fontSize: 10, fontWeight: 700 }}>
+                {value >= 35 ? 'Normal' : value >= 25 ? 'Límite' : 'Reducido'}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Asymmetry bar */}
+        <div style={{ background: symBg, border: `1px solid ${symColor}33`, borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600 }}>Asimetría</div>
+            <div style={{ color: symColor, fontSize: 12, marginTop: 2 }}>{symLabel}</div>
+          </div>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 28, fontWeight: 700, color: symColor }}>{asimetria}%</div>
+        </div>
+
+        {/* Stats */}
+        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ color: '#94a3b8', fontSize: 12 }}>Diferencia absoluta</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>{Math.abs(izq - der)}°</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#94a3b8', fontSize: 12 }}>Lado dominante</span>
+            <span style={{ color: '#38bdf8', fontSize: 12, fontWeight: 600 }}>
+              {izq > der ? 'Izquierdo' : izq < der ? 'Derecho' : 'Simétrico'}
+            </span>
+          </div>
+        </div>
+
+        {/* Clinical interpretation */}
+        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', marginBottom: 8 }}>INTERPRETACIÓN CLÍNICA</div>
+          <p style={{ color: '#cbd5e1', fontSize: 12, margin: 0, lineHeight: 1.6 }}>{clinical}</p>
+        </div>
+
+        {/* Athlete label */}
+        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '12px 14px' }}>
+          <label style={{ color: '#94a3b8', fontSize: 11, display: 'block', marginBottom: 6, fontWeight: 600 }}>ATLETA (OPCIONAL)</label>
+          <input
+            type="text"
+            placeholder="Nombre del atleta"
+            value={selectedAthlete}
+            onChange={e => setSelectedAthlete(e.target.value)}
+            style={{ width: '100%', background: '#273347', border: '1px solid #334155', borderRadius: 8, padding: '8px 10px', color: '#e2e8f0', fontSize: 13, boxSizing: 'border-box' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            onClick={() => {
+              try {
+                localStorage.setItem(
+                  `fieldlab_${coach?.id ?? 'guest'}_gonio_bilateral_tobillo_${Date.now()}`,
+                  JSON.stringify({ izq, der, asimetria, athlete: selectedAthlete, fecha: new Date().toISOString().slice(0, 10) })
+                );
+              } catch {}
+              resetBilateral();
+            }}
+            style={{ padding: '14px', borderRadius: 12, border: 'none', background: '#38bdf8', color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+          >
+            💾 Guardar resultado bilateral
+          </button>
+          <button
+            onClick={resetBilateral}
+            style={{ padding: '13px', borderRadius: 12, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 14, cursor: 'pointer' }}
+          >
+            Nueva evaluación
+          </button>
         </div>
       </div>
     );

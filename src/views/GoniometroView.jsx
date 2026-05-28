@@ -9,25 +9,37 @@ const TEST_CONFIGS = [
     id: 'dorsiflex_izq',
     label: 'Dorsiflexión Tobillo Izquierdo',
     description: 'Prueba de lunge — tobillo izquierdo',
-    points: ['Maléolo lateral', 'Cabeza del peroné', '5to metatarsiano'],
+    points: ['Maléolo lateral', 'Cabeza del peroné', 'Suelo (vertical)'],
     pointCount: 3,
     vertexIndex: 0,
     normalMin: 35,
+    normal: { optimo: 35, precaucion: 25 },
     icon: '🦵',
-    instruction: 'Vista lateral. Tocá en orden:\n1️⃣ Maléolo lateral (hueso del tobillo)\n2️⃣ Cabeza del peroné (rodilla lateral)\n3️⃣ 5to metatarsiano (borde externo del pie)',
-    protocol: 'Goniómetro: eje en maléolo lateral, barra fija → cabeza del peroné, barra móvil → 5to metatarsiano.',
+    instruction: [
+      '1️⃣ Maléolo lateral — hueso prominente del tobillo externo',
+      '2️⃣ Cabeza del peroné — bulto óseo lateral bajo la rodilla',
+      '3️⃣ Suelo — tocá el piso directamente debajo del maléolo',
+    ],
+    protocol: 'Eje en maléolo lateral. Barra fija → cabeza del peroné. Barra móvil → suelo (vertical).',
+    tip: 'El punto 3 es el SUELO, no el pie. Tocá el piso justo debajo del tobillo.',
   },
   {
     id: 'dorsiflex_der',
     label: 'Dorsiflexión Tobillo Derecho',
     description: 'Prueba de lunge — tobillo derecho',
-    points: ['Maléolo lateral', 'Cabeza del peroné', '5to metatarsiano'],
+    points: ['Maléolo lateral', 'Cabeza del peroné', 'Suelo (vertical)'],
     pointCount: 3,
     vertexIndex: 0,
     normalMin: 35,
+    normal: { optimo: 35, precaucion: 25 },
     icon: '🦵',
-    instruction: 'Vista lateral. Tocá en orden:\n1️⃣ Maléolo lateral (hueso del tobillo)\n2️⃣ Cabeza del peroné (rodilla lateral)\n3️⃣ 5to metatarsiano (borde externo del pie)',
-    protocol: 'Goniómetro: eje en maléolo lateral, barra fija → cabeza del peroné, barra móvil → 5to metatarsiano.',
+    instruction: [
+      '1️⃣ Maléolo lateral — hueso prominente del tobillo externo',
+      '2️⃣ Cabeza del peroné — bulto óseo lateral bajo la rodilla',
+      '3️⃣ Suelo — tocá el piso directamente debajo del maléolo',
+    ],
+    protocol: 'Eje en maléolo lateral. Barra fija → cabeza del peroné. Barra móvil → suelo (vertical).',
+    tip: 'El punto 3 es el SUELO, no el pie. Tocá el piso justo debajo del tobillo.',
   },
   {
     id: 'flex_cadera',
@@ -79,8 +91,15 @@ const TEST_CONFIGS = [
   },
 ];
 
-function StatusPill({ angle, normalMin }) {
+function StatusPill({ angle, normalMin, normal }) {
   if (angle == null) return null;
+  if (normal) {
+    if (angle >= normal.optimo)
+      return <span className="px-3 py-1 rounded-full text-sm font-semibold bg-emerald-900/60 text-emerald-300">Normal</span>;
+    if (angle >= normal.precaucion)
+      return <span className="px-3 py-1 rounded-full text-sm font-semibold bg-yellow-900/60 text-yellow-300">Límite</span>;
+    return <span className="px-3 py-1 rounded-full text-sm font-semibold bg-red-900/60 text-red-300">Reducido</span>;
+  }
   if (normalMin == null) {
     return (
       <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-700 text-slate-300">
@@ -128,11 +147,17 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
 
   const angleColor = gonio.angle == null
     ? '#facc15'
-    : selectedTest?.normalMin == null
-      ? '#facc15'
-      : gonio.angle >= selectedTest.normalMin
+    : selectedTest?.normal
+      ? gonio.angle >= selectedTest.normal.optimo
         ? '#22c55e'
-        : '#ef4444';
+        : gonio.angle >= selectedTest.normal.precaucion
+          ? '#eab308'
+          : '#ef4444'
+      : selectedTest?.normalMin == null
+        ? '#facc15'
+        : gonio.angle >= selectedTest.normalMin
+          ? '#22c55e'
+          : '#ef4444';
 
   const isCapturing = step === 'captura';
 
@@ -284,6 +309,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
       testLabel: selectedTest.label,
       angle: gonio.angle,
       normalMin: selectedTest.normalMin,
+      normal: selectedTest.normal ?? null,
       date: new Date().toISOString(),
     };
     const next = [entry, ...savedResults].slice(0, 50);
@@ -345,7 +371,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
                   </div>
                   <div className="text-right">
                     <p className="text-sky-400 font-bold text-lg">{r.angle}°</p>
-                    <StatusPill angle={r.angle} normalMin={r.normalMin} />
+                    <StatusPill angle={r.angle} normalMin={r.normalMin} normal={r.normal} />
                   </div>
                 </div>
               ))}
@@ -399,7 +425,10 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
         </div>
         {selectedTest?.instruction && (
           <div className="bg-slate-800/60 rounded-xl p-4 text-slate-300 text-sm">
-            <p style={{ whiteSpace: 'pre-line', lineHeight: 1.7 }}>{selectedTest.instruction}</p>
+            {Array.isArray(selectedTest.instruction)
+              ? <ul className="space-y-1">{selectedTest.instruction.map((line, i) => <li key={i} style={{ lineHeight: 1.7 }}>{line}</li>)}</ul>
+              : <p style={{ whiteSpace: 'pre-line', lineHeight: 1.7 }}>{selectedTest.instruction}</p>
+            }
           </div>
         )}
         <div className="bg-slate-800/60 rounded-xl p-4 text-slate-400 text-sm space-y-1">
@@ -500,8 +529,9 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
 
   if (step === 'marcando') {
     const pointLabels = selectedTest?.points ?? ['A', 'B', 'C'];
-    const nextPointIdx = gonio.points.length;
-    const nextLabel = nextPointIdx < 3 ? `${['A', 'B', 'C'][nextPointIdx]} — ${pointLabels[nextPointIdx]}` : null;
+    const currentInstruction = Array.isArray(selectedTest?.instruction)
+      ? selectedTest.instruction[gonio.points.length]
+      : selectedTest?.instruction;
 
     return (
       <div className="space-y-4">
@@ -512,10 +542,32 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           <h2 className="text-white font-bold">{selectedTest?.label}</h2>
         </div>
 
-        {nextLabel && (
-          <p className="text-center text-sky-400 font-semibold text-sm bg-sky-900/30 rounded-xl py-2 px-4">
-            Tocá para marcar el punto <strong>{nextLabel}</strong>
-          </p>
+        {!gonio.isFull && (
+          <div style={{
+            padding: '10px 16px',
+            background: 'rgba(56,189,248,0.08)',
+            borderRadius: 10,
+            border: '1px solid #1e3a5f',
+          }}>
+            <p style={{ color: '#e2e8f0', fontSize: 13, margin: 0, textAlign: 'center' }}>
+              <span style={{ color: ['#38bdf8', '#ec4899', '#22c55e'][gonio.points.length], fontWeight: 700 }}>
+                Punto {gonio.points.length + 1}:
+              </span>{' '}
+              {currentInstruction}
+            </p>
+          </div>
+        )}
+        {selectedTest?.tip && gonio.points.length === 2 && !gonio.isFull && (
+          <div style={{
+            padding: '8px 16px',
+            background: 'rgba(234,179,8,0.10)',
+            borderRadius: 10,
+            border: '1px solid rgba(234,179,8,0.2)',
+          }}>
+            <p style={{ color: '#eab308', fontSize: 12, margin: 0, textAlign: 'center' }}>
+              ⚠ {selectedTest.tip}
+            </p>
+          </div>
         )}
         {gonio.isFull && gonio.angle != null && (
           <p className="text-center text-slate-400 text-sm">
@@ -598,7 +650,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
         <div className="bg-slate-800 rounded-2xl p-6 text-center space-y-3">
           <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider">{last?.testLabel}</p>
           <p className="text-5xl font-bold text-sky-400">{last?.angle}°</p>
-          <StatusPill angle={last?.angle} normalMin={last?.normalMin} />
+          <StatusPill angle={last?.angle} normalMin={last?.normalMin} normal={last?.normal} />
           {last?.normalMin != null && (
             <p className="text-slate-500 text-xs">Normal: ≥{last.normalMin}°</p>
           )}

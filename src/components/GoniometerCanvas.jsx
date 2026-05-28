@@ -29,6 +29,7 @@ export default function GoniometerCanvas({
   angle,
   imageSize,
   displaySize,
+  pointLabels,
   vertexIndex = 1,
   angleColor = '#facc15',
   onTap,
@@ -131,6 +132,15 @@ export default function GoniometerCanvas({
         transition: 'opacity 0.2s',
       }}
     >
+      {/* Vertical reference line from the vertex downward — guides ground-point placement */}
+      {vertexIndex === 0 && screenPts.length >= 1 && (
+        <line
+          x1={screenPts[0].x} y1={screenPts[0].y}
+          x2={screenPts[0].x} y2={screenPts[0].y + 80}
+          stroke="rgba(148,163,184,0.5)" strokeWidth="1.5" strokeDasharray="4 3"
+        />
+      )}
+
       {screenPts.length === 2 && (
         <line x1={screenPts[0].x} y1={screenPts[0].y}
               x2={screenPts[1].x} y2={screenPts[1].y}
@@ -196,6 +206,13 @@ export default function GoniometerCanvas({
             fill="white" fontSize="11" fontWeight="bold">
             {LABELS[i]}
           </text>
+          {pointLabels?.[i]?.toLowerCase().includes('suelo') && (
+            <text x={sp.x + 16} y={sp.y - 12}
+              fill="#94a3b8" fontSize="11" fontWeight="600"
+              style={{ pointerEvents: 'none', userSelect: 'none' }}>
+              ↓ Suelo
+            </text>
+          )}
         </g>
       ))}
     </svg>

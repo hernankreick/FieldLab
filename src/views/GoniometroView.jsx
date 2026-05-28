@@ -307,6 +307,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     setImageSrc(null);
     gonio.reset();
     if (captureMode === 'upload') {
+      setBilateralResults({});
       setStep('selector');
       setSelectedTest(null);
     } else {

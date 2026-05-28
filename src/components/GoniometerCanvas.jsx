@@ -132,11 +132,13 @@ export default function GoniometerCanvas({
         transition: 'opacity 0.2s',
       }}
     >
-      {/* Vertical reference line from the vertex downward — guides ground-point placement */}
-      {vertexIndex === 0 && screenPts.length >= 1 && (
+      {/* Vertical reference line — only shown when the test has a ground reference point */}
+      {screenPts.length >= 1 && pointLabels?.some(l => l?.toLowerCase().includes('suelo')) && (
         <line
-          x1={screenPts[0].x} y1={screenPts[0].y}
-          x2={screenPts[0].x} y2={screenPts[0].y + 80}
+          x1={screenPts[vertexIndex]?.x ?? screenPts[0].x}
+          y1={screenPts[vertexIndex]?.y ?? screenPts[0].y}
+          x2={screenPts[vertexIndex]?.x ?? screenPts[0].x}
+          y2={(screenPts[vertexIndex]?.y ?? screenPts[0].y) + 80}
           stroke="rgba(148,163,184,0.5)" strokeWidth="1.5" strokeDasharray="4 3"
         />
       )}

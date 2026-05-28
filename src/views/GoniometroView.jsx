@@ -549,7 +549,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
             borderRadius: 10,
             border: '1px solid #1e3a5f',
           }}>
-            <p style={{ color: '#e2e8f0', fontSize: 13, margin: 0, textAlign: 'center' }}>
+            <p style={{ color: '#e2e8f0', fontSize: 13, margin: 0, textAlign: 'center', whiteSpace: 'pre-line' }}>
               <span style={{ color: ['#38bdf8', '#ec4899', '#22c55e'][gonio.points.length], fontWeight: 700 }}>
                 Punto {gonio.points.length + 1}:
               </span>{' '}
@@ -651,9 +651,10 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider">{last?.testLabel}</p>
           <p className="text-5xl font-bold text-sky-400">{last?.angle}°</p>
           <StatusPill angle={last?.angle} normalMin={last?.normalMin} normal={last?.normal} />
-          {last?.normalMin != null && (
-            <p className="text-slate-500 text-xs">Normal: ≥{last.normalMin}°</p>
-          )}
+          {last?.normal
+            ? <p className="text-slate-500 text-xs">Normal ≥{last.normal.optimo}° · Límite {last.normal.precaucion}–{last.normal.optimo - 1}° · Reducido &lt;{last.normal.precaucion}°</p>
+            : last?.normalMin != null && <p className="text-slate-500 text-xs">Normal: ≥{last.normalMin}°</p>
+          }
         </div>
 
         <div className="flex gap-3">

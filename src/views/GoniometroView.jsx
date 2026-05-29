@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, Upload, RotateCcw, CheckCircle, ChevronLeft, Ruler } from 'lucide-react';
+import { Camera, Upload, RotateCcw, CheckCircle, ChevronLeft, Ruler, Activity, PersonStanding, Zap, LayoutGrid } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useGoniometer } from '../hooks/useGoniometer';
 import GoniometerCanvas from '../components/GoniometerCanvas';
@@ -16,10 +16,9 @@ const TEST_CONFIGS = [
     vertexIndex: 0,
     normalMin: 35,
     normal: { optimo: 35, precaucion: 25 },
-    icon: '🦵',
     instruction: [
-      '1️⃣ Maléolo lateral — hueso prominente del tobillo externo',
-      '2️⃣ Cabeza del peroné — bulto óseo lateral justo debajo de la rodilla',
+      '1. Maléolo lateral — hueso prominente del tobillo externo',
+      '2. Cabeza del peroné — bulto óseo lateral justo debajo de la rodilla',
     ],
     protocol: 'Eje en maléolo lateral. Barra → cabeza del peroné. Vertical automática.',
   },
@@ -33,10 +32,9 @@ const TEST_CONFIGS = [
     vertexIndex: 0,
     normalMin: 35,
     normal: { optimo: 35, precaucion: 25 },
-    icon: '🦵',
     instruction: [
-      '1️⃣ Maléolo lateral — hueso prominente del tobillo externo',
-      '2️⃣ Cabeza del peroné — bulto óseo lateral justo debajo de la rodilla',
+      '1. Maléolo lateral — hueso prominente del tobillo externo',
+      '2. Cabeza del peroné — bulto óseo lateral justo debajo de la rodilla',
     ],
     protocol: 'Eje en maléolo lateral. Barra → cabeza del peroné. Vertical automática.',
   },
@@ -48,8 +46,7 @@ const TEST_CONFIGS = [
     pointCount: 3,
     vertexIndex: 0,
     normalMin: 90,
-    icon: '🫁',
-    instruction: 'Vista lateral. Tocá:\n1️⃣ Trocánter mayor (cadera)\n2️⃣ EIAS (cresta ilíaca anterior)\n3️⃣ Cóndilo lateral de la rodilla',
+    instruction: 'Vista lateral. Tocá:\n1. Trocánter mayor (cadera)\n2. EIAS (cresta ilíaca anterior)\n3. Cóndilo lateral de la rodilla',
     protocol: 'Goniómetro: eje en trocánter mayor, barra fija → EIAS, barra móvil → cóndilo lateral rodilla.',
   },
   {
@@ -60,8 +57,7 @@ const TEST_CONFIGS = [
     pointCount: 3,
     vertexIndex: 0,
     normalMin: 160,
-    icon: '💪',
-    instruction: 'Vista lateral. Tocá:\n1️⃣ Acromion (punta del hombro)\n2️⃣ Epicóndilo lateral (codo)\n3️⃣ Punto en la línea media del tronco (referencia)',
+    instruction: 'Vista lateral. Tocá:\n1. Acromion (punta del hombro)\n2. Epicóndilo lateral (codo)\n3. Punto en la línea media del tronco (referencia)',
     protocol: 'Goniómetro: eje en acromion, barra fija → línea media tronco, barra móvil → epicóndilo lateral.',
   },
   {
@@ -72,8 +68,7 @@ const TEST_CONFIGS = [
     pointCount: 3,
     vertexIndex: 0,
     normalMin: 40,
-    icon: '🔄',
-    instruction: 'Atleta sentado al borde de la camilla, rodilla 90°. Tocá:\n1️⃣ Rótula (centro de la rodilla)\n2️⃣ Tobillo (maléolo)\n3️⃣ Punto vertical hacia abajo (referencia suelo)',
+    instruction: 'Atleta sentado al borde de la camilla, rodilla 90°. Tocá:\n1. Rótula (centro de la rodilla)\n2. Tobillo (maléolo)\n3. Punto vertical hacia abajo (referencia suelo)',
     protocol: 'Goniómetro: eje en rótula, barra fija → vertical, barra móvil → tobillo.',
   },
   {
@@ -84,11 +79,24 @@ const TEST_CONFIGS = [
     pointCount: 3,
     vertexIndex: 1,
     normalMin: null,
-    icon: '🏋️',
-    instruction: 'Vista lateral en posición de squat. Tocá:\n1️⃣ Maléolo lateral\n2️⃣ Cóndilo lateral rodilla\n3️⃣ Trocánter mayor (cadera)',
+    instruction: 'Vista lateral en posición de squat. Tocá:\n1. Maléolo lateral\n2. Cóndilo lateral rodilla\n3. Trocánter mayor (cadera)',
     protocol: 'Mide el ángulo de flexión de rodilla.',
   },
 ];
+
+const TEST_ICON_MAP = {
+  dorsiflex_izq:  Activity,
+  dorsiflex_der:  Activity,
+  flex_cadera:    PersonStanding,
+  flex_hombro:    Zap,
+  rot_cadera:     RotateCcw,
+  overhead_squat: LayoutGrid,
+};
+
+function TestIcon({ id }) {
+  const Icon = TEST_ICON_MAP[id];
+  return Icon ? <Icon size={28} strokeWidth={1.5} color="#38bdf8" style={{ marginBottom: 8 }} /> : null;
+}
 
 function StatusPill({ angle, normalMin, normal }) {
   if (angle == null) return null;
@@ -383,17 +391,17 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           <p className="text-slate-400 text-sm">Seleccioná la articulación a evaluar:</p>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { id: 'tobillo',   label: 'Tobillo',   icon: '🦶', desc: 'Dorsiflexión bilateral' },
-              { id: 'cadera',    label: 'Cadera',    icon: '🦁', desc: '6 movimientos + ASI' },
-              { id: 'hombro',    label: 'Hombro',    icon: '💪', desc: '5 movimientos + ASI' },
-              { id: 'funcional', label: 'Funcional', icon: '🏋️', desc: 'Squat y movimientos' },
+              { id: 'tobillo',   label: 'Tobillo',   Icon: Activity,       desc: 'Dorsiflexión bilateral' },
+              { id: 'cadera',    label: 'Cadera',    Icon: PersonStanding, desc: '6 movimientos + ASI' },
+              { id: 'hombro',    label: 'Hombro',    Icon: Zap,            desc: '5 movimientos + ASI' },
+              { id: 'funcional', label: 'Funcional', Icon: LayoutGrid,     desc: 'Squat y movimientos' },
             ].map(f => (
               <button
                 key={f.id}
                 onClick={() => setSelectedFamily(f.id)}
                 className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 text-left transition-colors"
               >
-                <p className="text-2xl mb-1">{f.icon}</p>
+                <f.Icon size={28} strokeWidth={1.5} color="#38bdf8" style={{ marginBottom: 8 }} />
                 <p className="font-semibold text-white text-sm">{f.label}</p>
                 <p className="text-slate-400 text-xs mt-1">{f.desc}</p>
               </button>
@@ -429,7 +437,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
               onClick={() => selectTest(test)}
               className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 text-left transition-colors"
             >
-              {test.icon && <p className="text-xl mb-1">{test.icon}</p>}
+              <TestIcon id={test.id} />
               <p className="font-semibold text-white text-sm">{test.label}</p>
               <p className="text-slate-400 text-xs mt-1">{test.description}</p>
               {test.normalMin != null && (
@@ -616,7 +624,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
               transition: 'all 0.2s',
             }}
           >
-            {countdown !== null ? `Capturando en ${countdown}…` : '📸 Capturar'}
+            {countdown !== null ? `Capturando en ${countdown}…` : 'Capturar'}
           </button>
         </div>
       </div>
@@ -883,7 +891,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
             }}
             style={{ padding: '14px', borderRadius: 12, border: 'none', background: '#38bdf8', color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
           >
-            💾 Guardar resultado bilateral
+            Guardar resultado bilateral
           </button>
           <button
             onClick={resetBilateral}

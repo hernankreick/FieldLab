@@ -183,6 +183,65 @@ export function getPlayerEvals(playerId, coachId = null) {
   return readKey(`${prefix(coachId, 'eval')}_${playerId}`);
 }
 
+// ─── Mobility Athletes ─────────────────────────────────────────────────────────
+// Supabase-ready: maps to table `athletes`
+// Row schema: { id TEXT PK, coach_id TEXT, name TEXT, created_at TIMESTAMPTZ }
+//
+// Migration notes:
+//   1. CREATE TABLE athletes (id text primary key, coach_id text, name text, created_at timestamptz)
+//      with RLS: coach_id = auth.uid()
+//   2. Replace readKey(key) with supabase.from('athletes').select('*').eq('coach_id', coachId)
+//   3. Replace localStorage.setItem with supabase.from('athletes').upsert(athlete)
+
+export function getAthletes(coachId = null) {
+  return readKey(prefix(coachId, 'athletes'));
+}
+
+export function saveAthlete(athlete, coachId = null) {
+  try {
+    const key  = prefix(coachId, 'athletes');
+    const list = readKey(key);
+    const idx  = list.findIndex(a => a.id === athlete.id);
+    if (idx >= 0) list[idx] = athlete; else list.push(athlete);
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch { /* ignore */ }
+}
+
+export function deleteAthlete(athleteId, coachId = null) {
+  try {
+    const key  = prefix(coachId, 'athletes');
+    const list = readKey(key).filter(a => a.id !== athleteId);
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch { /* ignore */ }
+}
+
+// ─── Mobility Assessments ──────────────────────────────────────────────────────
+// Supabase-ready: maps to table `mobility_assessments`
+// Row schema: { id TEXT PK, athlete_id TEXT FK, coach_id TEXT, date TIMESTAMPTZ,
+//               joint TEXT, movement TEXT, side TEXT, angle INT, status TEXT, asi_pct REAL,
+//               optimo INT }
+//
+// Migration notes:
+//   1. CREATE TABLE mobility_assessments (...) with RLS: coach_id = auth.uid()
+//   2. Replace readKey with supabase.from('mobility_assessments').select('*')
+//        .eq('athlete_id', athleteId).order('date', { ascending: false })
+//   3. Replace localStorage.setItem with supabase.from('mobility_assessments').insert(record)
+
+export function saveMobilityAssessment(record, coachId = null) {
+  try {
+    const key  = `${prefix(coachId, 'mobility')}_${record.athleteId}`;
+    const list = readKey(key);
+    list.unshift(record);
+    localStorage.setItem(key, JSON.stringify(list.slice(0, 500)));
+  } catch { /* ignore */ }
+}
+
+export function getMobilityAssessments(athleteId, coachId = null) {
+  return readKey(`${prefix(coachId, 'mobility')}_${athleteId}`);
+}
+
+// ─── Session helpers (existing) ────────────────────────────────────────────────
+
 // Retorna las sesiones de los últimos `days` días, ordenadas de más antigua a más reciente
 export function getRecentSessions(days = 28, coachId = null) {
   const result = [];

@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ChevronLeft, Camera, Upload, RotateCcw, CheckCircle, Ruler } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { getAthletes, saveAthlete, saveMobilityAssessment } from '../../utils/storage';
+import MobilityHistory from './MobilityHistory';
 
 // ── Joint / movement configuration ────────────────────────────────────────────
 const JOINT_CONFIG = {
@@ -373,6 +375,45 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
   const countdownInterval = useRef(null);
   const pointsRef = useRef([]);
   const draggingIdxRef = useRef(null);
+  const toastTimerRef  = useRef(null);
+
+  const [athletes,          setAthletes]          = useState(() => getAthletes(coach?.id));
+  const [selectedAthleteId, setSelectedAthleteId] = useState(null);
+  const [showNewForm,       setShowNewForm]        = useState(false);
+  const [newAthleteName,    setNewAthleteName]     = useState('');
+  const [savedToastName,    setSavedToastName]     = useState(null);
+  const [resultsTab,        setResultsTab]         = useState('sesion');
+
+  const selectedAthlete = useMemo(
+    () => athletes.find(a => a.id === selectedAthleteId) ?? null,
+    [athletes, selectedAthleteId]
+  );
+
+  function handleSelectAthlete(value) {
+    if (value === '__new__') {
+      setShowNewForm(true);
+      setSelectedAthleteId(null);
+    } else {
+      setShowNewForm(false);
+      setSelectedAthleteId(value || null);
+      setNewAthleteName('');
+    }
+  }
+
+  function handleCreateAthlete() {
+    if (!newAthleteName.trim()) return;
+    const athlete = {
+      id: crypto.randomUUID(),
+      coachId: coach?.id,
+      name: newAthleteName.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    saveAthlete(athlete, coach?.id);
+    setAthletes(prev => [...prev, athlete]);
+    setSelectedAthleteId(athlete.id);
+    setShowNewForm(false);
+    setNewAthleteName('');
+  }
 
   // Keep points ref in sync
   useEffect(() => { pointsRef.current = points; }, [points]);
@@ -489,6 +530,7 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
   // Cleanup on unmount
   useEffect(() => () => {
     clearTimeout(imageReadyTimer.current);
+    clearTimeout(toastTimerRef.current);
     clearInterval(countdownInterval.current);
     stopStream();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -574,23 +616,58 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
 
   const saveResult = useCallback(() => {
     if (angle == null || !selectedJoint || !selectedMovement) return;
+
+    const st = getStatus(angle, movCfg?.optimo);
+
+    const oppSide = selectedSide === 'der' ? 'izq' : 'der';
+    const oppR = sessionResults.find(r =>
+      r.athleteId === selectedAthleteId &&
+      r.joint === selectedJoint &&
+      r.movement === selectedMovement &&
+      r.side === oppSide
+    );
+    let asiPct = null;
+    if (oppR) {
+      const dom = Math.max(angle, oppR.angle);
+      const def = Math.min(angle, oppR.angle);
+      asiPct = dom > 0 ? Math.round(((dom - def) / dom) * 100) : 0;
+    }
+
     const entry = {
-      id: Date.now(),
+      id: crypto.randomUUID(),
+      athleteId: selectedAthleteId,
+      coachId: coach?.id,
+      date: new Date().toISOString(),
       joint: selectedJoint,
       movement: selectedMovement,
       side: selectedSide,
       angle,
       optimo: movCfg?.optimo,
-      date: new Date().toISOString(),
+      status: st.label,
+      asiPct,
     };
+
     const next = [entry, ...sessionResults].slice(0, 100);
     setSessionResults(next);
+
+    if (selectedAthleteId) {
+      saveMobilityAssessment(entry, coach?.id);
+    }
+
     try { localStorage.setItem(STORAGE_KEY_FN(coach?.id), JSON.stringify(next)); } catch {}
+
+    const athleteForToast = athletes.find(a => a.id === selectedAthleteId) ?? null;
+    if (athleteForToast) {
+      setSavedToastName(athleteForToast.name);
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setSavedToastName(null), 2000);
+    }
+
     resetCanvas();
     setImageSrc(null);
     setImageReady(false);
     setStep('results');
-  }, [angle, selectedJoint, selectedMovement, selectedSide, movCfg, sessionResults, coach, resetCanvas]);
+  }, [angle, selectedJoint, selectedMovement, selectedSide, movCfg, sessionResults, selectedAthleteId, athletes, coach, resetCanvas]);
 
   const handleBack = useCallback(() => {
     stopStream();
@@ -611,6 +688,64 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <Ruler size={20} style={{ color: '#38bdf8' }} />
           <h1 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 18, margin: 0 }}>Goniómetro Cadera & Hombro</h1>
+        </div>
+
+        {/* Athlete selector */}
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 8 }}>ATLETA</p>
+          <div style={{ position: 'relative' }}>
+            <select
+              value={showNewForm ? '__new__' : (selectedAthleteId || '')}
+              onChange={e => handleSelectAthlete(e.target.value)}
+              style={{
+                width: '100%', padding: '10px 12px', borderRadius: 10,
+                background: '#1e293b',
+                border: `1px solid ${selectedAthleteId ? '#38bdf8' : '#334155'}`,
+                color: '#e2e8f0', fontSize: 14,
+                appearance: 'none', WebkitAppearance: 'none',
+                outline: 'none', cursor: 'pointer',
+              }}
+            >
+              <option value="">Sin atleta / evaluación rápida</option>
+              {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              <option value="__new__">+ Nuevo atleta...</option>
+            </select>
+            <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none', fontSize: 10 }}>▼</span>
+          </div>
+          {showNewForm && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <input
+                placeholder="Nombre del atleta"
+                value={newAthleteName}
+                onChange={e => setNewAthleteName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateAthlete()}
+                style={{
+                  flex: 1, padding: '9px 12px', borderRadius: 10,
+                  background: '#1e293b', border: '1px solid #38bdf8',
+                  color: '#e2e8f0', fontSize: 14, outline: 'none',
+                }}
+                autoFocus
+              />
+              <button
+                onClick={handleCreateAthlete}
+                disabled={!newAthleteName.trim()}
+                style={{
+                  padding: '9px 16px', borderRadius: 10, border: 'none',
+                  background: newAthleteName.trim() ? '#38bdf8' : '#334155',
+                  color: newAthleteName.trim() ? '#0f172a' : '#475569',
+                  fontWeight: 700, fontSize: 13,
+                  cursor: newAthleteName.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+          )}
+          {selectedAthlete && !showNewForm && (
+            <div style={{ marginTop: 6, color: '#38bdf8', fontSize: 12, fontWeight: 600 }}>
+              Evaluando a {selectedAthlete.name}
+            </div>
+          )}
         </div>
 
         {/* Side selector */}
@@ -709,14 +844,21 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
           <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 16, margin: '0 0 4px' }}>
             {joint?.label} — {mov?.label}
           </h2>
-          <span style={{
-            display: 'inline-block',
-            background: selectedSide === 'der' ? 'rgba(56,189,248,0.15)' : 'rgba(167,139,250,0.15)',
-            color: selectedSide === 'der' ? '#38bdf8' : '#a78bfa',
-            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-          }}>
-            {sideLabel}
-          </span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+            <span style={{
+              display: 'inline-block',
+              background: selectedSide === 'der' ? 'rgba(56,189,248,0.15)' : 'rgba(167,139,250,0.15)',
+              color: selectedSide === 'der' ? '#38bdf8' : '#a78bfa',
+              fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+            }}>
+              {sideLabel}
+            </span>
+            {selectedAthlete && (
+              <span style={{ display: 'inline-block', background: 'rgba(148,163,184,0.1)', color: '#94a3b8', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 99 }}>
+                {selectedAthlete.name}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Side selector inline */}
@@ -837,9 +979,14 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
           <button onClick={handleBack} style={{ color: '#94a3b8', background: 'none', border: 'none', padding: 4, cursor: 'pointer', display: 'flex' }}>
             <ChevronLeft size={22} />
           </button>
-          <span style={{ flex: 1, color: '#f1f5f9', fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {JOINT_CONFIG[selectedJoint]?.label} · {movCfg?.label} · {sideLabel}
-          </span>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {JOINT_CONFIG[selectedJoint]?.label} · {movCfg?.label} · {sideLabel}
+            </div>
+            {selectedAthlete && (
+              <div style={{ color: '#64748b', fontSize: 11, fontWeight: 600, marginTop: 1 }}>{selectedAthlete.name}</div>
+            )}
+          </div>
           {isFull && angle !== null && (
             <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: angleStatus?.color ?? '#fbbf24' }}>
               {angle}°
@@ -939,21 +1086,36 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
 
   // ── Step: results ─────────────────────────────────────────────────────────
   if (step === 'results') {
-    // Group by joint
     const cadResults = sessionResults.filter(r => r.joint === 'cadera');
     const homResults = sessionResults.filter(r => r.joint === 'hombro');
-
-    // Collect bilateral pairs already rendered
     const bilateralRendered = new Set();
+    const showSession = resultsTab === 'sesion' || !selectedAthleteId;
 
     return (
       <div style={{ paddingBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        {/* Saved toast */}
+        {savedToastName && (
+          <div style={{
+            position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+            background: '#059669', color: '#fff', borderRadius: 10,
+            padding: '10px 20px', fontWeight: 700, fontSize: 14,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)', zIndex: 1000, whiteSpace: 'nowrap',
+          }}>
+            Guardado para {savedToastName} ✓
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button onClick={() => setStep('selector')} style={{ color: '#94a3b8', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex' }}>
               <ChevronLeft size={20} />
             </button>
-            <h1 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 16, margin: 0 }}>Resultados de sesión</h1>
+            <div>
+              <h1 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 16, margin: 0 }}>Resultados de sesión</h1>
+              {selectedAthlete && (
+                <div style={{ color: '#38bdf8', fontSize: 12, fontWeight: 600, marginTop: 2 }}>{selectedAthlete.name}</div>
+              )}
+            </div>
           </div>
           <button
             onClick={() => setStep('selector')}
@@ -963,62 +1125,92 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
           </button>
         </div>
 
-        {sessionResults.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#475569', paddingTop: 48 }}>
-            <Ruler size={40} style={{ opacity: 0.3, margin: '0 auto 12px' }} />
-            <p>Sin mediciones guardadas en esta sesión.</p>
+        {/* Tabs — only when athlete is selected */}
+        {selectedAthleteId && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {[{ id: 'sesion', label: 'Sesión actual' }, { id: 'historial', label: 'Historial' }].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setResultsTab(tab.id)}
+                style={{
+                  flex: 1, padding: '9px', borderRadius: 10, border: 'none',
+                  background: resultsTab === tab.id ? '#38bdf8' : '#1e293b',
+                  color: resultsTab === tab.id ? '#0f172a' : '#94a3b8',
+                  fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         )}
 
-        {/* Global ASI */}
-        <GlobalASI results={sessionResults} />
+        {/* Historial tab */}
+        {!showSession && selectedAthleteId && (
+          <MobilityHistory
+            athleteId={selectedAthleteId}
+            coachId={coach?.id}
+            jointConfig={JOINT_CONFIG}
+            athleteName={selectedAthlete?.name ?? ''}
+          />
+        )}
 
-        {/* Per-joint sections */}
-        {[['cadera', cadResults], ['hombro', homResults]].map(([jointKey, jResults]) => {
-          if (!jResults.length) return null;
-          return (
-            <div key={jointKey} style={{ marginTop: 20 }}>
-              <p style={{ color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 10 }}>
-                {JOINT_CONFIG[jointKey].label.toUpperCase()}
-              </p>
+        {/* Session tab */}
+        {showSession && (
+          <>
+            {sessionResults.length === 0 && (
+              <div style={{ textAlign: 'center', color: '#475569', paddingTop: 48 }}>
+                <Ruler size={40} style={{ opacity: 0.3, margin: '0 auto 12px' }} />
+                <p>Sin mediciones guardadas en esta sesión.</p>
+              </div>
+            )}
 
-              {/* Individual measurement cards */}
-              {jResults.map(r => {
-                const st = getStatus(r.angle, r.optimo ?? JOINT_CONFIG[r.joint]?.movements[r.movement]?.optimo);
-                return (
-                  <div key={r.id} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600 }}>
-                        {JOINT_CONFIG[r.joint]?.movements[r.movement]?.label}
+            <GlobalASI results={sessionResults} />
+
+            {[['cadera', cadResults], ['hombro', homResults]].map(([jointKey, jResults]) => {
+              if (!jResults.length) return null;
+              return (
+                <div key={jointKey} style={{ marginTop: 20 }}>
+                  <p style={{ color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 10 }}>
+                    {JOINT_CONFIG[jointKey].label.toUpperCase()}
+                  </p>
+
+                  {jResults.map(r => {
+                    const st = getStatus(r.angle, r.optimo ?? JOINT_CONFIG[r.joint]?.movements[r.movement]?.optimo);
+                    return (
+                      <div key={r.id} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600 }}>
+                            {JOINT_CONFIG[r.joint]?.movements[r.movement]?.label}
+                          </div>
+                          <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                            {r.side === 'der' ? 'Derecho' : 'Izquierdo'} · {new Date(r.date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 24, fontWeight: 700, color: st.color }}>{r.angle}°</div>
+                          <div style={{ display: 'inline-block', background: st.bg, color: st.color, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{st.label}</div>
+                        </div>
                       </div>
-                      <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
-                        {r.side === 'der' ? 'Derecho' : 'Izquierdo'} · {new Date(r.date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 24, fontWeight: 700, color: st.color }}>{r.angle}°</div>
-                      <div style={{ display: 'inline-block', background: st.bg, color: st.color, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>{st.label}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
 
-              {/* Bilateral panels for each movement pair */}
-              {Object.keys(JOINT_CONFIG[jointKey].movements).map(movKey => {
-                const key = `${jointKey}|${movKey}`;
-                if (bilateralRendered.has(key)) return null;
-                const der = jResults.find(r => r.movement === movKey && r.side === 'der');
-                const izq = jResults.find(r => r.movement === movKey && r.side === 'izq');
-                if (!der || !izq) return null;
-                bilateralRendered.add(key);
-                return <BilateralPanel key={key} jointKey={jointKey} movKey={movKey} results={sessionResults} />;
-              })}
+                  {Object.keys(JOINT_CONFIG[jointKey].movements).map(movKey => {
+                    const key = `${jointKey}|${movKey}`;
+                    if (bilateralRendered.has(key)) return null;
+                    const der = jResults.find(r => r.movement === movKey && r.side === 'der');
+                    const izq = jResults.find(r => r.movement === movKey && r.side === 'izq');
+                    if (!der || !izq) return null;
+                    bilateralRendered.add(key);
+                    return <BilateralPanel key={key} jointKey={jointKey} movKey={movKey} results={sessionResults} />;
+                  })}
 
-              {/* Quick reference table */}
-              <QuickRefTable jointKey={jointKey} results={sessionResults} />
-            </div>
-          );
-        })}
+                  <QuickRefTable jointKey={jointKey} results={sessionResults} />
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     );
   }

@@ -101,6 +101,9 @@ export default function VBTModule() {
               placeholder="Nombre"
               value={athleteName}
               onChange={e => setAthleteName(e.target.value)}
+              autoComplete="off"
+              autoCorrect="off"
+              style={{ touchAction: 'manipulation' }}
               className="w-full bg-background border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
             />
           </div>
@@ -110,8 +113,10 @@ export default function VBTModule() {
               type="number"
               placeholder="0"
               min="0"
+              inputMode="decimal"
               value={loadKg}
               onChange={e => setLoadKg(e.target.value)}
+              style={{ touchAction: 'manipulation' }}
               className="w-full bg-background border border-white/10 rounded-lg px-3 py-2 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
             />
           </div>
@@ -123,7 +128,9 @@ export default function VBTModule() {
             {EXERCISES.map(ex => (
               <button
                 key={ex}
-                onClick={() => setExercise(ex)}
+                type="button"
+                onClick={e => { e.stopPropagation(); setExercise(ex); }}
+                style={{ touchAction: 'manipulation' }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   exercise === ex
                     ? 'bg-accent text-background'
@@ -157,8 +164,10 @@ export default function VBTModule() {
 
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={isTracking ? stopTracking : startTracking}
               disabled={!cvReady}
+              style={{ touchAction: 'manipulation' }}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 ${
                 isTracking
                   ? 'bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30'
@@ -170,8 +179,10 @@ export default function VBTModule() {
                 : <><Play size={14} /> Iniciar</>}
             </button>
             <button
+              type="button"
               onClick={resetSession}
               title="Nueva sesión"
+              style={{ touchAction: 'manipulation' }}
               className="px-3 py-2 bg-background border border-white/10 rounded-lg text-slate-400 hover:text-slate-200 transition-colors"
             >
               <RotateCcw size={14} />

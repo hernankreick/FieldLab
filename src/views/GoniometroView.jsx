@@ -43,7 +43,7 @@ const TEST_CONFIGS = [
   {
     id: 'flex_cadera',
     label: 'Flexión de Cadera',
-    description: 'Flexión de cadera en decúbito',
+    description: 'Cribado rápido — flexión de cadera (decúbito)',
     points: ['Trocánter mayor', 'EIAS', 'Cóndilo lateral rodilla'],
     pointCount: 3,
     vertexIndex: 0,
@@ -55,7 +55,7 @@ const TEST_CONFIGS = [
   {
     id: 'flex_hombro',
     label: 'Flexión de Hombro',
-    description: 'Flexión de hombro — rango sagital',
+    description: 'Cribado rápido — flexión de hombro (sagital)',
     points: ['Acromion', 'Epicóndilo lateral', 'Línea media tronco'],
     pointCount: 3,
     vertexIndex: 0,
@@ -67,7 +67,7 @@ const TEST_CONFIGS = [
   {
     id: 'rot_cadera',
     label: 'Rotación Interna Cadera',
-    description: 'Rotación interna/externa de cadera',
+    description: 'Cribado rápido — rotación de cadera (sentado)',
     points: ['Rótula', 'Tobillo', 'Vertical (suelo)'],
     pointCount: 3,
     vertexIndex: 0,
@@ -407,7 +407,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     const filteredTests = selectedFamily === 'tobillo'
       ? TEST_CONFIGS.filter(t => t.id.startsWith('dorsiflex'))
       : TEST_CONFIGS.filter(t => !t.id.startsWith('dorsiflex'));
-    const familyLabel = selectedFamily === 'tobillo' ? 'Tobillo' : 'Funcional';
+    const familyLabel = { tobillo: 'Tobillo', funcional: 'Funcional' }[selectedFamily] ?? selectedFamily;
     const familyResults = selectedFamily === 'tobillo'
       ? savedResults.filter(r => r.testId?.startsWith('dorsiflex'))
       : savedResults.filter(r => !r.testId?.startsWith('dorsiflex'));

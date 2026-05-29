@@ -668,7 +668,7 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen, defaul
     setImageReady(false);
     setResultsTab('sesion');
     setStep('results');
-  }, [angle, selectedJoint, selectedMovement, selectedSide, movCfg, sessionResults, selectedAthleteId, selectedAthlete, coach, resetCanvas]);
+  }, [angle, selectedJoint, selectedMovement, selectedSide, movCfg, sessionResults, selectedAthleteId, selectedAthlete, coach, resetCanvas, defaultJoint]);
 
   const handleBack = useCallback(() => {
     stopStream();

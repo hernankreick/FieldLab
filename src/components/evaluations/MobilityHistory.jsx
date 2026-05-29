@@ -8,7 +8,8 @@ import { getMobilityAssessments } from '../../utils/storage';
 function statusColor(status) {
   if (status === 'NORMAL') return '#22c55e';
   if (status === 'LIMITADO') return '#eab308';
-  return '#ef4444';
+  if (status === 'RESTRINGIDO') return '#ef4444';
+  return '#64748b'; // fallback for legacy records without status field
 }
 
 function DotDer({ cx, cy, payload }) {
@@ -23,7 +24,7 @@ function DotIzq({ cx, cy, payload }) {
   return <circle cx={cx} cy={cy} r={5} fill={c} stroke="#0f172a" strokeWidth={1.5} />;
 }
 
-export default function MobilityHistory({ athleteId, coachId, jointConfig, athleteName }) {
+export default function MobilityHistory({ athleteId, coachId, jointConfig, athleteName, refreshKey }) {
   const jointKeys = Object.keys(jointConfig);
   const [selJoint, setSelJoint] = useState(jointKeys[0]);
   const [selMovement, setSelMovement] = useState(
@@ -32,7 +33,9 @@ export default function MobilityHistory({ athleteId, coachId, jointConfig, athle
 
   const allRecs = useMemo(
     () => getMobilityAssessments(athleteId, coachId),
-    [athleteId, coachId]
+    // refreshKey included so the memo re-runs whenever a new assessment is saved
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [athleteId, coachId, refreshKey]
   );
 
   const sessionDates = useMemo(() => {

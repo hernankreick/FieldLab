@@ -205,7 +205,7 @@ function BilateralPanel({ jointKey, movKey, results }) {
   const izq = izqR.angle;
   const dominant = Math.max(der, izq);
   const deficit = Math.min(der, izq);
-  const asi = Math.round(((dominant - deficit) / dominant) * 100);
+  const asi = dominant > 0 ? Math.round(((dominant - deficit) / dominant) * 100) : 0;
   const hasAlert = asi >= 10;
   const defSide = der < izq ? 'Derecho' : 'Izquierdo';
   const barMax = Math.max(der, izq, movCfg.optimo) * 1.15;
@@ -656,9 +656,8 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
 
     try { localStorage.setItem(STORAGE_KEY_FN(coach?.id), JSON.stringify(next)); } catch {}
 
-    const athleteForToast = athletes.find(a => a.id === selectedAthleteId) ?? null;
-    if (athleteForToast) {
-      setSavedToastName(athleteForToast.name);
+    if (selectedAthlete) {
+      setSavedToastName(selectedAthlete.name);
       clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => setSavedToastName(null), 2000);
     }
@@ -666,8 +665,9 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
     resetCanvas();
     setImageSrc(null);
     setImageReady(false);
+    setResultsTab('sesion');
     setStep('results');
-  }, [angle, selectedJoint, selectedMovement, selectedSide, movCfg, sessionResults, selectedAthleteId, athletes, coach, resetCanvas]);
+  }, [angle, selectedJoint, selectedMovement, selectedSide, movCfg, sessionResults, selectedAthleteId, selectedAthlete, coach, resetCanvas]);
 
   const handleBack = useCallback(() => {
     stopStream();
@@ -1152,6 +1152,7 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
             coachId={coach?.id}
             jointConfig={JOINT_CONFIG}
             athleteName={selectedAthlete?.name ?? ''}
+            refreshKey={sessionResults.length}
           />
         )}
 

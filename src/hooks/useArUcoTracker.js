@@ -1,35 +1,28 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { calcMPV, calcPeakVelocity } from '../utils/vbtCalculations';
 
-const OPENCV_CDN    = 'https://docs.opencv.org/4.8.0/opencv.js';
 const MARKER_SIZE_M = 0.08;  // physical side of printed ArUco marker in metres
 const VEL_THRESHOLD = 0.1;   // m/s — velocity gate for rep start / end
 const SMOOTH_N      = 4;     // frames used for velocity smoothing
 
-function loadScript(src, timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = src; s.async = true;
-    const t = setTimeout(() => reject(new Error('OpenCV script load timeout')), timeoutMs);
-    s.onload  = () => { clearTimeout(t); resolve(); };
-    s.onerror = () => { clearTimeout(t); reject(new Error(`Script load failed: ${src}`)); };
-    document.head.appendChild(s);
-  });
-}
-
-// Poll until window.cv is fully initialised (has Mat constructor)
-function waitForCV(timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
-    const tick = () => {
-      if (window.cv?.Mat) { resolve(window.cv); return; }
-      if (Date.now() > deadline) { reject(new Error('OpenCV initialisation timeout')); return; }
-      setTimeout(tick, 250);
-    };
-    tick();
-  });
-}
+const loadOpenCV = () => new Promise((resolve, reject) => {
+  if (window.cv && window.cv.Mat) return resolve(window.cv);
+  const script = document.createElement('script');
+  script.src = 'https://docs.opencv.org/4.8.0/opencv.js';
+  script.async = true;
+  const timer = setTimeout(() => reject(new Error('timeout')), 10000);
+  script.onload = () => {
+    clearTimeout(timer);
+    const wait = setInterval(() => {
+      if (window.cv && window.cv.Mat) {
+        clearInterval(wait);
+        resolve(window.cv);
+      }
+    }, 100);
+  };
+  script.onerror = () => { clearTimeout(timer); reject(new Error('load error')); };
+  document.head.appendChild(script);
+});
 
 // Resolve the detection function across OpenCV.js API versions
 function resolveDetectFn(cv) {
@@ -75,7 +68,7 @@ export function useArUcoTracker() {
 
   const [cvReady,               setCvReady]               = useState(false);
   const [cvLoading,             setCvLoading]             = useState(true);
-  const [cvError,               setCvError]               = useState(null);
+  const [statusMsg,             setStatusMsg]             = useState('');
   const [isTracking,            setIsTracking]            = useState(false);
   const [currentVelocity,       setCurrentVelocity]       = useState(0);
   const [calibrationPxPerMeter, setCalibrationPxPerMeter] = useState(0);
@@ -84,10 +77,8 @@ export function useArUcoTracker() {
   // ── Load OpenCV.js and initialise ArUco resources ──────────────────────────
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        await loadScript(OPENCV_CDN);
-        const cv = await waitForCV();
+    loadOpenCV()
+      .then(cv => {
         if (cancelled) return;
         cvRef.current = cv;
 
@@ -103,11 +94,17 @@ export function useArUcoTracker() {
           if (!fn) throw new Error('No ArUco detection function found in this OpenCV build');
           detectFnRef.current = fn;
         }
-        if (!cancelled) { setCvReady(true); setCvLoading(false); }
-      } catch (err) {
-        if (!cancelled) { setCvError(err.message); setCvLoading(false); }
-      }
-    })();
+        setCvReady(true);
+        setStatusMsg('Motor listo ✓');
+        setCvLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCvReady(false);
+          setStatusMsg('Modo manual');
+          setCvLoading(false);
+        }
+      });
     return () => {
       cancelled = true;
       // Free C++ heap objects allocated in the WASM module
@@ -315,6 +312,6 @@ export function useArUcoTracker() {
     calibrationPxPerMeter,
     cvReady,
     cvLoading,
-    cvError,
+    statusMsg,
   };
 }

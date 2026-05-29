@@ -33,15 +33,22 @@ export default function VBTModule() {
   const {
     videoRef, isTracking, currentVelocity, repData,
     startTracking, stopTracking, resetSession, addManualRep,
-    calibrationPxPerMeter, cvReady, cvLoading, cvError,
+    calibrationPxPerMeter, cvReady, cvLoading, statusMsg,
   } = useArUcoTracker();
 
-  const [manualMPV, setManualMPV] = useState('');
+  const [manualMPV,    setManualMPV]    = useState('');
+  const [manualActive, setManualActive] = useState(false);
 
   function handleAddManualRep() {
     const v = parseFloat(manualMPV);
     if (!v || v <= 0) return;
     addManualRep(v);
+    setManualMPV('');
+  }
+
+  function handleReset() {
+    resetSession();
+    setManualActive(false);
     setManualMPV('');
   }
 
@@ -141,27 +148,17 @@ export default function VBTModule() {
         {/* Camera status + controls */}
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2 text-xs">
-            {cvLoading && (
+            {cvLoading ? (
               <span className="flex items-center gap-1.5 text-slate-400">
                 <Loader2 size={13} className="animate-spin text-accent" />
                 Cargando motor de visión…
               </span>
-            )}
-            {cvReady && isTracking && (
-              <span className="flex items-center gap-1.5 text-success">
-                <Camera size={13} /> Cámara activa
-              </span>
-            )}
-            {cvReady && !isTracking && (
-              <span className="flex items-center gap-1.5 text-success">
-                <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
-                Motor listo
-              </span>
-            )}
-            {cvError && (
-              <span className="flex items-center gap-1.5 text-warning">
-                <AlertTriangle size={13} />
-                Error — modo manual activado
+            ) : (
+              <span className={`flex items-center gap-1.5 ${cvReady ? 'text-success' : 'text-warning'}`}>
+                {cvReady
+                  ? isTracking ? <Camera size={13} /> : <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
+                  : <AlertTriangle size={13} />}
+                {cvReady && isTracking ? 'Cámara activa' : statusMsg}
               </span>
             )}
             {cvReady && calibrationPxPerMeter > 0 && (
@@ -172,26 +169,25 @@ export default function VBTModule() {
           </div>
 
           <div className="flex gap-2">
-            {!cvError && (
-              <button
-                type="button"
-                onClick={isTracking ? stopTracking : startTracking}
-                disabled={cvLoading || !cvReady}
-                style={{ touchAction: 'manipulation' }}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 ${
-                  isTracking
-                    ? 'bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30'
-                    : 'bg-accent text-background hover:bg-accent/90'
-                }`}
-              >
-                {isTracking
-                  ? <><Square size={14} /> Detener</>
-                  : <><Play size={14} /> Iniciar</>}
-              </button>
-            )}
             <button
               type="button"
-              onClick={resetSession}
+              onClick={cvReady
+                ? (isTracking ? stopTracking : startTracking)
+                : () => setManualActive(a => !a)}
+              style={{ touchAction: 'manipulation' }}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                (cvReady && isTracking) || (!cvReady && manualActive)
+                  ? 'bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30'
+                  : 'bg-accent text-background hover:bg-accent/90'
+              }`}
+            >
+              {(cvReady && isTracking) || (!cvReady && manualActive)
+                ? <><Square size={14} /> Detener</>
+                : <><Play size={14} /> Iniciar</>}
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
               title="Nueva sesión"
               style={{ touchAction: 'manipulation' }}
               className="px-3 py-2 bg-background border border-white/10 rounded-lg text-slate-400 hover:text-slate-200 transition-colors"
@@ -201,8 +197,8 @@ export default function VBTModule() {
           </div>
         </div>
 
-        {/* Manual mode — shown when OpenCV fails to load */}
-        {cvError && (
+        {/* Manual mode input — visible when OpenCV unavailable and session active */}
+        {!cvReady && !cvLoading && manualActive && (
           <div className="bg-background rounded-lg border border-white/10 p-3 space-y-2">
             <p className="text-xs text-slate-500">Ingresá MPV por rep manualmente</p>
             <div className="flex gap-2">

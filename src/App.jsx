@@ -15,7 +15,6 @@ import RPEForm from './views/RPEForm';
 import CargaSesionView from './views/CargaSesionView';
 import PlayerProfile from './views/PlayerProfile';
 import JumpAnalysis from './views/JumpAnalysis';
-import MovilidadTobillo from './views/MovilidadTobillo';
 import GoniometroView from './views/GoniometroView';
 
 // Detectar ruta /hooper/:teamId y /rpe/:teamId sin React Router (módulo-level, no cambia en runtime)
@@ -34,7 +33,6 @@ const views = {
   carga:           CargaSesionView,
   player:          PlayerProfile,
   jumpAnalysis:    JumpAnalysis,
-  movilidadTobillo: MovilidadTobillo,
   goniometro:       GoniometroView,
 };
 
@@ -65,7 +63,7 @@ function AppContent() {
         {!hideNav && <NavBar active={active} onChange={navigate} />}
         <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
           <View
-            key={active === 'wellness' || active === 'player' || active === 'movilidadTobillo'
+            key={active === 'wellness' || active === 'player'
               ? `${active}-${navParam}` : active}
             onNavigate={navigate}
             initialId={navParam}

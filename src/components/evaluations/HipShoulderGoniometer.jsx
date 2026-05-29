@@ -67,11 +67,6 @@ const JOINT_CONFIG = {
         optimo: 85,
         instruction: 'Atleta en decúbito supino, codo 90°. Tocá: 1) Muñeca (posición neutra) → 2) Vértice (olécranon/codo) → 3) Muñeca (rotada hacia arriba)',
       },
-      scapcion: {
-        label: 'Scapción',
-        optimo: 160,
-        instruction: 'Vista 45° (entre frontal y lateral). Tocá: 1) Línea media del tronco (referencia) → 2) Vértice (acromion) → 3) Epicóndilo lateral (codo, brazo en el plano de la escápula)',
-      },
     },
   },
 };

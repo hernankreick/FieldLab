@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Play, Square, RotateCcw, Camera, CameraOff,
+  Play, Square, RotateCcw, Camera, Loader2, Plus,
   AlertTriangle, Activity, Zap, TrendingDown,
 } from 'lucide-react';
 import {
@@ -32,9 +32,18 @@ export default function VBTModule() {
 
   const {
     videoRef, isTracking, currentVelocity, repData,
-    startTracking, stopTracking, resetSession,
-    calibrationPxPerMeter, cvReady, cvError,
+    startTracking, stopTracking, resetSession, addManualRep,
+    calibrationPxPerMeter, cvReady, cvLoading, cvError,
   } = useArUcoTracker();
+
+  const [manualMPV, setManualMPV] = useState('');
+
+  function handleAddManualRep() {
+    const v = parseFloat(manualMPV);
+    if (!v || v <= 0) return;
+    addManualRep(v);
+    setManualMPV('');
+  }
 
   const load       = parseFloat(loadKg) || 0;
   const repLoadRef = useRef({});
@@ -74,20 +83,6 @@ export default function VBTModule() {
         <h2 className="text-xl font-bold text-slate-100">VBT · ArUco</h2>
         <p className="text-sm text-slate-400">Velocity Based Training — seguimiento óptico en tiempo real</p>
       </div>
-
-      {/* ── OpenCV status banners ── */}
-      {cvError && (
-        <div className="flex items-center gap-2 p-3 bg-danger/10 border border-danger/30 rounded-lg text-sm text-danger">
-          <AlertTriangle size={14} />
-          OpenCV no disponible: {cvError}
-        </div>
-      )}
-      {!cvReady && !cvError && (
-        <div className="flex items-center gap-2 p-3 bg-surface border border-white/10 rounded-lg text-sm text-slate-400">
-          <span className="animate-pulse text-accent">●</span>
-          Cargando motor de visión (OpenCV.js)…
-        </div>
-      )}
 
       {/* ── Panel Superior — Sesión ── */}
       <div className="bg-surface rounded-fieldlab border border-white/5 p-4 space-y-3">
@@ -145,39 +140,55 @@ export default function VBTModule() {
 
         {/* Camera status + controls */}
         <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-3 text-xs">
-            {isTracking ? (
-              <span className="flex items-center gap-1.5 text-success">
-                <Camera size={14} /> Cámara activa
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-slate-500">
-                <CameraOff size={14} /> Sin señal
+          <div className="flex items-center gap-2 text-xs">
+            {cvLoading && (
+              <span className="flex items-center gap-1.5 text-slate-400">
+                <Loader2 size={13} className="animate-spin text-accent" />
+                Cargando motor de visión…
               </span>
             )}
-            {calibrationPxPerMeter > 0 && (
-              <span className="text-slate-600 font-data">
+            {cvReady && isTracking && (
+              <span className="flex items-center gap-1.5 text-success">
+                <Camera size={13} /> Cámara activa
+              </span>
+            )}
+            {cvReady && !isTracking && (
+              <span className="flex items-center gap-1.5 text-success">
+                <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
+                Motor listo
+              </span>
+            )}
+            {cvError && (
+              <span className="flex items-center gap-1.5 text-warning">
+                <AlertTriangle size={13} />
+                Error — modo manual activado
+              </span>
+            )}
+            {cvReady && calibrationPxPerMeter > 0 && (
+              <span className="text-slate-600 font-data ml-1">
                 {Math.round(calibrationPxPerMeter)} px/m
               </span>
             )}
           </div>
 
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={isTracking ? stopTracking : startTracking}
-              disabled={!cvReady}
-              style={{ touchAction: 'manipulation' }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 ${
-                isTracking
-                  ? 'bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30'
-                  : 'bg-accent text-background hover:bg-accent/90'
-              }`}
-            >
-              {isTracking
-                ? <><Square size={14} /> Detener</>
-                : <><Play size={14} /> Iniciar</>}
-            </button>
+            {!cvError && (
+              <button
+                type="button"
+                onClick={isTracking ? stopTracking : startTracking}
+                disabled={cvLoading || !cvReady}
+                style={{ touchAction: 'manipulation' }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 ${
+                  isTracking
+                    ? 'bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30'
+                    : 'bg-accent text-background hover:bg-accent/90'
+                }`}
+              >
+                {isTracking
+                  ? <><Square size={14} /> Detener</>
+                  : <><Play size={14} /> Iniciar</>}
+              </button>
+            )}
             <button
               type="button"
               onClick={resetSession}
@@ -189,6 +200,36 @@ export default function VBTModule() {
             </button>
           </div>
         </div>
+
+        {/* Manual mode — shown when OpenCV fails to load */}
+        {cvError && (
+          <div className="bg-background rounded-lg border border-white/10 p-3 space-y-2">
+            <p className="text-xs text-slate-500">Ingresá MPV por rep manualmente</p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.001"
+                min="0"
+                placeholder="MPV (m/s)"
+                value={manualMPV}
+                onChange={e => setManualMPV(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddManualRep()}
+                inputMode="decimal"
+                autoComplete="off"
+                style={{ touchAction: 'manipulation' }}
+                className="flex-1 bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
+              />
+              <button
+                type="button"
+                onClick={handleAddManualRep}
+                style={{ touchAction: 'manipulation' }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-accent text-background rounded-lg text-sm font-semibold hover:bg-accent/90 transition-colors"
+              >
+                <Plus size={14} /> Rep
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Hidden video element — camera frames consumed by the hook */}

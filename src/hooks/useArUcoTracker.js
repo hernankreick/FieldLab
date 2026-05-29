@@ -1,25 +1,25 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { calcMPV, calcPeakVelocity } from '../utils/vbtCalculations';
 
-// OpenCV.js 4.5.5 build includes aruco contrib
-const OPENCV_CDN    = 'https://docs.opencv.org/4.5.5/opencv.js';
+const OPENCV_CDN    = 'https://docs.opencv.org/4.8.0/opencv.js';
 const MARKER_SIZE_M = 0.08;  // physical side of printed ArUco marker in metres
 const VEL_THRESHOLD = 0.1;   // m/s — velocity gate for rep start / end
 const SMOOTH_N      = 4;     // frames used for velocity smoothing
 
-function loadScript(src) {
+function loadScript(src, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
     const s = document.createElement('script');
     s.src = src; s.async = true;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error(`Script load failed: ${src}`));
+    const t = setTimeout(() => reject(new Error('OpenCV script load timeout')), timeoutMs);
+    s.onload  = () => { clearTimeout(t); resolve(); };
+    s.onerror = () => { clearTimeout(t); reject(new Error(`Script load failed: ${src}`)); };
     document.head.appendChild(s);
   });
 }
 
 // Poll until window.cv is fully initialised (has Mat constructor)
-function waitForCV(timeoutMs = 45000) {
+function waitForCV(timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
     const tick = () => {
@@ -74,6 +74,7 @@ export function useArUcoTracker() {
   const smoothTsRef  = useRef([]);
 
   const [cvReady,               setCvReady]               = useState(false);
+  const [cvLoading,             setCvLoading]             = useState(true);
   const [cvError,               setCvError]               = useState(null);
   const [isTracking,            setIsTracking]            = useState(false);
   const [currentVelocity,       setCurrentVelocity]       = useState(0);
@@ -102,9 +103,9 @@ export function useArUcoTracker() {
           if (!fn) throw new Error('No ArUco detection function found in this OpenCV build');
           detectFnRef.current = fn;
         }
-        setCvReady(true);
+        if (!cancelled) { setCvReady(true); setCvLoading(false); }
       } catch (err) {
-        if (!cancelled) setCvError(err.message);
+        if (!cancelled) { setCvError(err.message); setCvLoading(false); }
       }
     })();
     return () => {
@@ -283,6 +284,13 @@ export function useArUcoTracker() {
     setCurrentVelocity(0);
   }, []);
 
+  // ── Manual rep entry (fallback when OpenCV is unavailable) ────────────────
+  const addManualRep = useCallback((mpv) => {
+    const v = parseFloat(mpv);
+    if (!v || v <= 0) return;
+    setRepData(prev => [...prev, { rep: prev.length + 1, mpv: v, peakVelocity: v }]);
+  }, []);
+
   // ── Reset session ──────────────────────────────────────────────────────────
   const resetSession = useCallback(() => {
     stopTracking();
@@ -303,8 +311,10 @@ export function useArUcoTracker() {
     startTracking,
     stopTracking,
     resetSession,
+    addManualRep,
     calibrationPxPerMeter,
     cvReady,
+    cvLoading,
     cvError,
   };
 }

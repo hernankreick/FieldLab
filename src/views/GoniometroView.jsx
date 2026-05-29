@@ -3,6 +3,7 @@ import { Camera, Upload, RotateCcw, CheckCircle, ChevronLeft, Ruler } from 'luci
 import { useAuth } from '../context/AuthContext';
 import { useGoniometer } from '../hooks/useGoniometer';
 import GoniometerCanvas from '../components/GoniometerCanvas';
+import HipShoulderGoniometer from '../components/evaluations/HipShoulderGoniometer';
 
 const TEST_CONFIGS = [
   {
@@ -134,6 +135,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
   const [bilateralResults, setBilateralResults] = useState({});
   const [transitionMsg,    setTransitionMsg]    = useState(null);
   const [selectedAthlete,  setSelectedAthlete]  = useState('');
+  const [selectedFamily,   setSelectedFamily]   = useState(null);
 
   const videoRef             = useRef(null);
   const streamRef            = useRef(null);
@@ -358,16 +360,70 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
     setStep('captura_modo');
   }, []);
 
+  // Delegate cadera/hombro to the full goniometric assessment component
+  if (selectedFamily === 'cadera' || selectedFamily === 'hombro') {
+    return (
+      <HipShoulderGoniometer
+        defaultJoint={selectedFamily}
+        onBack={() => setSelectedFamily(null)}
+        onFullscreen={onFullscreen}
+      />
+    );
+  }
+
   if (step === 'selector') {
+    // Family picker
+    if (!selectedFamily) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-6">
+            <Ruler size={22} className="text-sky-400" />
+            <h1 className="text-xl font-bold text-white">Goniómetro Digital</h1>
+          </div>
+          <p className="text-slate-400 text-sm">Seleccioná la articulación a evaluar:</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { id: 'tobillo',   label: 'Tobillo',   icon: '🦶', desc: 'Dorsiflexión bilateral' },
+              { id: 'cadera',    label: 'Cadera',    icon: '🦁', desc: '6 movimientos + ASI' },
+              { id: 'hombro',    label: 'Hombro',    icon: '💪', desc: '5 movimientos + ASI' },
+              { id: 'funcional', label: 'Funcional', icon: '🏋️', desc: 'Squat y movimientos' },
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setSelectedFamily(f.id)}
+                className="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 text-left transition-colors"
+              >
+                <p className="text-2xl mb-1">{f.icon}</p>
+                <p className="font-semibold text-white text-sm">{f.label}</p>
+                <p className="text-slate-400 text-xs mt-1">{f.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Filtered test grid for tobillo or funcional
+    const filteredTests = selectedFamily === 'tobillo'
+      ? TEST_CONFIGS.filter(t => t.id.startsWith('dorsiflex'))
+      : TEST_CONFIGS.filter(t => !t.id.startsWith('dorsiflex'));
+    const familyLabel = selectedFamily === 'tobillo' ? 'Tobillo' : 'Funcional';
+    const familyResults = selectedFamily === 'tobillo'
+      ? savedResults.filter(r => r.testId?.startsWith('dorsiflex'))
+      : savedResults.filter(r => !r.testId?.startsWith('dorsiflex'));
+
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-6">
-          <Ruler size={22} className="text-sky-400" />
-          <h1 className="text-xl font-bold text-white">Goniómetro Digital</h1>
-        </div>
-        <p className="text-slate-400 text-sm">Seleccioná la prueba que querés medir:</p>
+        <button
+          onClick={() => setSelectedFamily(null)}
+          className="flex items-center gap-1 text-slate-400 hover:text-white text-sm"
+        >
+          <ChevronLeft size={16} /> Articulación
+        </button>
+        <h1 className="text-xl font-bold text-white">{familyLabel}</h1>
+        <p className="text-slate-400 text-sm">Seleccioná la prueba:</p>
         <div className="grid grid-cols-2 gap-3">
-          {TEST_CONFIGS.map(test => (
+          {filteredTests.map(test => (
             <button
               key={test.id}
               onClick={() => selectTest(test)}
@@ -383,11 +439,11 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
           ))}
         </div>
 
-        {savedResults.length > 0 && (
+        {familyResults.length > 0 && (
           <div className="mt-6">
             <h2 className="text-slate-400 text-sm font-semibold mb-3 uppercase tracking-wider">Historial reciente</h2>
             <div className="space-y-2">
-              {savedResults.slice(0, 5).map(r => (
+              {familyResults.slice(0, 5).map(r => (
                 <div key={r.id} className="bg-slate-800 rounded-xl px-4 py-3 flex items-center justify-between">
                   <div>
                     <p className="text-white text-sm font-medium">{r.testLabel}</p>

@@ -74,7 +74,8 @@ const JOINT_CONFIG = {
 };
 
 const POINT_COLORS = ['#38bdf8', '#a78bfa', '#4ade80'];
-const STORAGE_KEY_FN = (coachId) => `fieldlab_${coachId}_hip_shoulder_gonio`;
+const STORAGE_KEY_FN = (coachId, joint) =>
+  joint ? `fieldlab_${coachId}_hip_shoulder_gonio_${joint}` : `fieldlab_${coachId}_hip_shoulder_gonio`;
 
 // ── Pure helpers ───────────────────────────────────────────────────────────────
 function calcAngle(p1, p2, p3) {
@@ -348,7 +349,7 @@ function GlobalASI({ results }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
+export default function HipShoulderGoniometer({ onNavigate, onFullscreen, defaultJoint = null, onBack = null }) {
   const { coach } = useAuth();
 
   const [step, setStep] = useState('selector');
@@ -362,7 +363,7 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
   const [points, setPoints] = useState([]);
   const [countdown, setCountdown] = useState(null);
   const [sessionResults, setSessionResults] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY_FN(coach?.id)) || '[]'); }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY_FN(coach?.id, defaultJoint)) || '[]'); }
     catch { return []; }
   });
 
@@ -654,7 +655,7 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
       saveMobilityAssessment(entry, coach?.id);
     }
 
-    try { localStorage.setItem(STORAGE_KEY_FN(coach?.id), JSON.stringify(next)); } catch {}
+    try { localStorage.setItem(STORAGE_KEY_FN(coach?.id, defaultJoint), JSON.stringify(next)); } catch {}
 
     if (selectedAthlete) {
       setSavedToastName(selectedAthlete.name);
@@ -685,9 +686,19 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
   if (step === 'selector') {
     return (
       <div style={{ paddingBottom: 32 }}>
+        {onBack && (
+          <button
+            onClick={onBack}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94a3b8', background: 'none', border: 'none', padding: '0 0 12px', cursor: 'pointer', fontSize: 14 }}
+          >
+            <ChevronLeft size={16} /> Articulación
+          </button>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <Ruler size={20} style={{ color: '#38bdf8' }} />
-          <h1 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 18, margin: 0 }}>Goniómetro Cadera & Hombro</h1>
+          <h1 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 18, margin: 0 }}>
+            Goniómetro {defaultJoint ? JOINT_CONFIG[defaultJoint]?.label : 'Cadera & Hombro'}
+          </h1>
         </div>
 
         {/* Athlete selector */}
@@ -770,7 +781,9 @@ export default function HipShoulderGoniometer({ onNavigate, onFullscreen }) {
         </div>
 
         {/* Joint selector */}
-        {Object.entries(JOINT_CONFIG).map(([jointKey, joint]) => (
+        {Object.entries(JOINT_CONFIG)
+          .filter(([key]) => !defaultJoint || key === defaultJoint)
+          .map(([jointKey, joint]) => (
           <div key={jointKey} style={{ marginBottom: 20 }}>
             <p style={{ color: '#64748b', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 8 }}>
               {joint.label.toUpperCase()}

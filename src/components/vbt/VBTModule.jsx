@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Play, Square, RotateCcw, Camera, CameraOff,
   AlertTriangle, Activity, Zap, TrendingDown,
@@ -36,7 +36,17 @@ export default function VBTModule() {
     calibrationPxPerMeter, cvReady, cvError,
   } = useArUcoTracker();
 
-  const load          = parseFloat(loadKg) || 0;
+  const load       = parseFloat(loadKg) || 0;
+  const repLoadRef = useRef({});
+
+  // Capture load at the moment each rep is saved so historical power is immutable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (repData.length === 0) { repLoadRef.current = {}; return; }
+    const last = repData[repData.length - 1];
+    if (!(last.rep in repLoadRef.current)) repLoadRef.current[last.rep] = load;
+  }, [repData.length]);
+
   const repVelocities = useMemo(() => repData.map(r => r.mpv), [repData]);
   const lastRep       = repData[repData.length - 1];
   const currentMPV    = lastRep?.mpv         ?? 0;
@@ -373,7 +383,7 @@ export default function VBTModule() {
               <tbody>
                 {repData.map((r, i) => {
                   const isLast = i === repData.length - 1;
-                  const pw     = calcPower(r.mpv, load);
+                  const pw     = calcPower(r.mpv, repLoadRef.current[r.rep] ?? load);
                   const zone   = classifyLoad(r.mpv);
                   const cl     = zoneColors(r.mpv);
                   return (

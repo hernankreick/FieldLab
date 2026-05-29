@@ -63,7 +63,8 @@ export function useArUcoTracker() {
   const detectFnRef   = useRef(null); // bound detectMarkers for old API
 
   // Calibration
-  const calibPxMRef  = useRef(0);
+  const calibPxMRef         = useRef(0);
+  const lastDisplayCalibRef = useRef(0); // tracks last rounded value pushed to state
 
   // Rep tracking — all in refs to avoid per-frame re-renders
   const inRepRef     = useRef(false);
@@ -106,7 +107,16 @@ export function useArUcoTracker() {
         if (!cancelled) setCvError(err.message);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      // Free C++ heap objects allocated in the WASM module
+      try { detectorRef.current?.delete?.(); } catch {}
+      try { paramsRef.current?.delete?.();  } catch {}
+      try { dictRef.current?.delete?.();    } catch {}
+      detectorRef.current = null;
+      paramsRef.current   = null;
+      dictRef.current     = null;
+    };
   }, []);
 
   // ── Single-frame processing ────────────────────────────────────────────────
@@ -142,16 +152,23 @@ export function useArUcoTracker() {
       if (ids.rows > 0) {
         const corner = corners.get(0);
         const d      = corner.data32F; // flat [x0,y0, x1,y1, x2,y2, x3,y3]
+        corner.delete();
+        // Guard against non-standard OpenCV builds that return a different typed array
+        if (!d || d.length < 8) return;
         // Centroid Y of the four corners
         const cy = (d[1] + d[3] + d[5] + d[7]) / 4;
         // Width from top-left to top-right corner (used for px/m calibration)
         const wPx = Math.hypot(d[2] - d[0], d[3] - d[1]);
-        corner.delete();
 
         if (wPx > 4) {
-          const pxPerM = wPx / MARKER_SIZE_M;
+          const pxPerM     = wPx / MARKER_SIZE_M;
           calibPxMRef.current = pxPerM;
-          setCalibrationPxPerMeter(pxPerM);
+          // Only update React state when rounded value changes — avoids 60fps re-renders
+          const displayVal = Math.round(pxPerM);
+          if (displayVal !== lastDisplayCalibRef.current) {
+            lastDisplayCalibRef.current = displayVal;
+            setCalibrationPxPerMeter(displayVal);
+          }
         }
 
         if (calibPxMRef.current > 0) {
@@ -197,16 +214,17 @@ export function useArUcoTracker() {
               repPosRef.current = [];
               repTsRef.current  = [];
               if (mpv > 0) {
+                // Store only computed metrics — omit raw arrays to keep state lean
                 setRepData(prev => [
                   ...prev,
-                  { rep: prev.length + 1, mpv, peakVelocity, positions, timestamps },
+                  { rep: prev.length + 1, mpv, peakVelocity },
                 ]);
               }
             }
           }
         }
       }
-    } catch { /* ignore individual frame errors */ } finally {
+    } catch (err) { console.error('[ArUco] frame error:', err); } finally {
       src?.delete();
       gray?.delete();
       corners?.delete();
@@ -218,13 +236,16 @@ export function useArUcoTracker() {
   // ── Start tracking ─────────────────────────────────────────────────────────
   const startTracking = useCallback(async () => {
     if (!cvReady || isTracking) return;
+    let stream = null;
     try {
       offscreenRef.current = document.createElement('canvas');
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
-      const video      = videoRef.current;
+      const video = videoRef.current;
+      // Guard: component may have unmounted during the async permission dialog
+      if (!video) throw new Error('Video element unmounted before stream could attach');
       video.srcObject  = stream;
       await new Promise((res, rej) => { video.onloadedmetadata = res; video.onerror = rej; });
       await video.play();
@@ -239,6 +260,9 @@ export function useArUcoTracker() {
       };
       rafRef.current = requestAnimationFrame(loop);
     } catch (err) {
+      // Always release the stream if we acquired one but failed to attach it
+      stream?.getTracks().forEach(t => t.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
       console.error('[useArUcoTracker] camera error:', err.message);
     }
   }, [cvReady, isTracking, processFrame]);
@@ -263,7 +287,8 @@ export function useArUcoTracker() {
   const resetSession = useCallback(() => {
     stopTracking();
     setRepData([]);
-    calibPxMRef.current = 0;
+    calibPxMRef.current         = 0;
+    lastDisplayCalibRef.current = 0;
     setCalibrationPxPerMeter(0);
   }, [stopTracking]);
 

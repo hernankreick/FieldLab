@@ -764,7 +764,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
 
             {/* Evaluate button */}
             <button
-              onClick={() => onNavigate?.('movilidadTobillo', player.id)}
+              onClick={() => onNavigate?.('goniometro')}
               className="w-full mt-4 py-2.5 rounded-xl font-semibold text-sm"
               style={{ background: '#38bdf8', color: '#0f172a' }}
             >

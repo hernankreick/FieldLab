@@ -812,6 +812,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
       setImageSrc(null);
       setSelectedTest(null);
       setCaptureMode(null);
+      setSelectedFamily(null);
       setStep('selector');
     };
 
@@ -935,6 +936,7 @@ export default function GoniometroView({ onNavigate, onFullscreen }) {
               setImageSrc(null);
               setSelectedTest(null);
               setCaptureMode(null);
+              setSelectedFamily(null);
               setStep('selector');
             }}
             className="flex-1 bg-sky-600 hover:bg-sky-500 text-white rounded-xl py-3 font-semibold transition-colors"

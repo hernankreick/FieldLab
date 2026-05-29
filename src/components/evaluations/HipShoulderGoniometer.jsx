@@ -74,8 +74,10 @@ const JOINT_CONFIG = {
 };
 
 const POINT_COLORS = ['#38bdf8', '#a78bfa', '#4ade80'];
-const STORAGE_KEY_FN = (coachId, joint) =>
-  joint ? `fieldlab_${coachId}_hip_shoulder_gonio_${joint}` : `fieldlab_${coachId}_hip_shoulder_gonio`;
+const STORAGE_KEY_FN = (coachId, joint) => {
+  const domain = joint ? `hip_shoulder_gonio_${joint}` : 'hip_shoulder_gonio';
+  return coachId ? `fieldlab_${coachId}_${domain}` : `fieldlab_${domain}`;
+};
 
 // ── Pure helpers ───────────────────────────────────────────────────────────────
 function calcAngle(p1, p2, p3) {

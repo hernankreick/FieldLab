@@ -505,25 +505,24 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-[#0f172a] flex flex-col">
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pt-safe-top py-3 bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
-        <div className="pointer-events-auto flex items-center gap-2">
-          <Target size={16} className="text-[#22d3ee]" />
+      {/* ── BANDA NEGRA — header fijo ───────────────────────────────────────── */}
+      <div className="shrink-0 flex items-center justify-between px-4 py-3 bg-[#0f172a] border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <Target size={15} className="text-[#22d3ee]" />
           <span className="text-sm font-semibold text-slate-200">
             {TEST_LABEL[testType] ?? testType}
           </span>
         </div>
         <button
           onClick={handleClose}
-          className="pointer-events-auto w-10 h-10 flex items-center justify-center rounded-full bg-black/50 text-slate-300 active:bg-black/70"
+          className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 text-slate-300 active:bg-white/10"
         >
           <X size={20} />
         </button>
       </div>
 
-      {/* ── Camera + canvas area ────────────────────────────────────────────── */}
-      <div className="relative flex-1 overflow-hidden bg-black">
-        {/* Video element — camera feed */}
+      {/* ── VIDEO CÁMARA — 60 % del espacio restante ───────────────────────── */}
+      <div className="relative overflow-hidden bg-black" style={{ flex: 3 }}>
         <video
           ref={videoRef}
           className="absolute inset-0 w-full h-full object-contain bg-black"
@@ -531,8 +530,6 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           muted
           autoPlay
         />
-
-        {/* Canvas overlay — all drawings happen here */}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
@@ -546,40 +543,7 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           onTouchCancel={handlePointerUp}
         />
 
-        {/* ── Result overlay ────────────────────────────────────────────────── */}
-        {phase === 'result' && resultTime !== null && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/65 z-10">
-            <div className="bg-[#0f172a]/95 rounded-2xl px-10 py-8 flex flex-col items-center gap-5 border border-white/10 shadow-2xl">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                {TEST_LABEL[testType] ?? testType}
-              </p>
-              <p
-                className="text-6xl font-bold text-[#22c55e] tabular-nums"
-                style={{ fontFamily: '"JetBrains Mono", monospace' }}
-              >
-                {resultTime.toFixed(3)}s
-              </p>
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={handleRepeat}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#1e293b] border border-white/10 text-slate-200 text-sm font-semibold min-h-[52px] active:bg-[#334155]"
-                >
-                  <RotateCcw size={16} />
-                  REPETIR
-                </button>
-                <button
-                  onClick={handleSave}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#22d3ee] text-[#0f172a] text-sm font-bold min-h-[52px] active:bg-[#06b6d4]"
-                >
-                  <Check size={16} />
-                  GUARDAR
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MediaPipe loading overlay */}
+        {/* MediaPipe loading */}
         {mpLoading && phase !== 'permission' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
             <p className="text-sm text-slate-300">Cargando MediaPipe…</p>
@@ -587,12 +551,15 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
         )}
       </div>
 
-      {/* ── Bottom panel ───────────────────────────────────────────────────── */}
-      <div className="bg-[#0f172a] border-t border-white/10 px-4 py-4 space-y-3 pb-safe-bottom">
+      {/* ── PANEL CALIBRACIÓN — 40 % del espacio restante ──────────────────── */}
+      <div
+        className="shrink-0 bg-[#0f172a] border-t border-white/10 px-4 pt-3 pb-safe-bottom overflow-y-auto"
+        style={{ flex: 2 }}
+      >
 
-        {/* Calibration step indicator */}
+        {/* Indicador de pasos (calib-1/2/3) */}
         {['calib-1', 'calib-2', 'calib-3'].includes(phase) && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-3">
             {[1, 2, 3].map(n => {
               const stepPhase = ['calib-1', 'calib-2', 'calib-3'][n - 1];
               const active = phase === stepPhase;
@@ -609,7 +576,7 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
                   >
                     {done && !active ? <Check size={12} /> : n}
                   </span>
-                  {n < 3 && <div className={cn('h-px w-6', done ? 'bg-[#22d3ee]' : 'bg-white/10')} />}
+                  {n < 3 && <div className={cn('h-px w-5', done ? 'bg-[#22d3ee]' : 'bg-white/10')} />}
                 </div>
               );
             })}
@@ -621,12 +588,12 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           </div>
         )}
 
-        {/* ── PERMISSION ───────────────────────────────────────────────────── */}
+        {/* ── PERMISSION ─────────────────────────────────────────────────────── */}
         {phase === 'permission' && (
-          <div className="space-y-3">
+          <div className="h-full flex flex-col justify-center gap-3">
             <p className="text-xs text-slate-400 leading-relaxed text-center">
-              La cámara detecta el centroide del cuerpo del atleta para medir el tiempo automáticamente.
-              Coloca el teléfono en un trípode o soporte lateral, perpendicular a la dirección de carrera.
+              La cámara detecta el centroide del atleta para medir el tiempo automáticamente.
+              Colocá el teléfono lateral, perpendicular a la dirección de carrera.
             </p>
             {(cameraError || mpError) && (
               <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20">
@@ -636,17 +603,17 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
             <button
               onClick={handleOpenCamera}
               disabled={mpLoading || !!mpError}
-              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-[#22d3ee] text-[#0f172a] font-bold text-sm disabled:opacity-40 min-h-[56px] active:bg-[#06b6d4]"
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-[#22d3ee] text-[#0f172a] font-bold text-sm disabled:opacity-40 min-h-[52px] active:bg-[#06b6d4]"
             >
               {mpLoading
-                ? <span className="text-sm">Cargando modelo…</span>
-                : <><Camera size={20} /> Abrir cámara</>
+                ? 'Cargando modelo…'
+                : <><Camera size={18} /> Abrir cámara</>
               }
             </button>
           </div>
         )}
 
-        {/* ── CALIB STEP 1 — Line positioning ──────────────────────────────── */}
+        {/* ── CALIB 1 — Posicionar líneas ────────────────────────────────────── */}
         {phase === 'calib-1' && (
           <div className="space-y-2">
             <p className="text-xs text-slate-400 leading-relaxed">
@@ -664,16 +631,17 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           </div>
         )}
 
-        {/* ── CALIB STEP 2 — Angle validation ──────────────────────────────── */}
+        {/* ── CALIB 2 — Validar ángulo ────────────────────────────────────────── */}
         {phase === 'calib-2' && (
           <div className="space-y-2">
             <p className="text-xs text-slate-400 leading-relaxed">
-              Mantené el teléfono <strong className="text-slate-200">vertical</strong> y{' '}
-              <strong className="text-slate-200">perpendicular</strong> al carril de carrera (±5°).
+              Mantené el teléfono{' '}
+              <strong className="text-slate-200">vertical</strong> y{' '}
+              <strong className="text-slate-200">perpendicular</strong> al carril (±5°).
             </p>
             {orientation.beta === null && (
               <p className="text-xs text-slate-500">
-                Sensor no disponible en este dispositivo — podés continuar igual.
+                Sensor no disponible — podés continuar igual.
               </p>
             )}
             {orientation.beta !== null && orientationOk && (
@@ -686,27 +654,25 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
               onClick={() => setPhase('calib-3')}
               className={cn(
                 'w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-sm min-h-[52px] transition-colors active:opacity-80',
-                orientationOk
-                  ? 'bg-[#22c55e] text-white'
-                  : 'bg-[#22d3ee] text-[#0f172a]'
+                orientationOk ? 'bg-[#22c55e] text-white' : 'bg-[#22d3ee] text-[#0f172a]'
               )}
             >
-              {orientationOk ? <Check size={16} /> : null}
+              {orientationOk && <Check size={16} />}
               {orientationOk ? 'Ángulo OK — Siguiente' : 'Siguiente'}
               <ChevronRight size={16} />
             </button>
           </div>
         )}
 
-        {/* ── CALIB STEP 3 — Test run ───────────────────────────────────────── */}
+        {/* ── CALIB 3 — Prueba de detección ──────────────────────────────────── */}
         {phase === 'calib-3' && (
           <div className="space-y-2">
             <p className="text-xs text-slate-400 leading-relaxed">
               {testRunCountdown !== null
-                ? `Detectando… ${testRunCountdown}s restantes. Mové al atleta frente a la cámara.`
+                ? `Detectando… ${testRunCountdown}s. Mové al atleta frente a la cámara.`
                 : testRunDone
-                ? '✓ Punto amarillo visible = detección activa. Listo para medir.'
-                : 'Hacé una prueba de 3 segundos para confirmar que el centroide se detecta.'}
+                ? '✓ Punto amarillo visible = detección activa.'
+                : 'Hacé una prueba de 3 s para confirmar que el centroide se detecta.'}
             </p>
             <div className="flex gap-2">
               <button
@@ -728,12 +694,12 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           </div>
         )}
 
-        {/* ── ARMED ────────────────────────────────────────────────────────── */}
+        {/* ── ARMED ──────────────────────────────────────────────────────────── */}
         {phase === 'armed' && (
-          <div className="flex items-center justify-between gap-3">
+          <div className="h-full flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-[#22d3ee]">ARMADO</p>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 mt-0.5">
                 Esperando cruce de línea <strong className="text-slate-300">INICIO</strong>
               </p>
             </div>
@@ -746,12 +712,12 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           </div>
         )}
 
-        {/* ── MEASURING ────────────────────────────────────────────────────── */}
+        {/* ── MEASURING ──────────────────────────────────────────────────────── */}
         {phase === 'measuring' && (
-          <div className="flex items-center justify-between gap-3">
+          <div className="h-full flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-[#22c55e]">MIDIENDO…</p>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 mt-0.5">
                 {isCOD && !codTurnMade
                   ? 'Esperando giro en línea GIRO…'
                   : isCOD
@@ -768,6 +734,37 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           </div>
         )}
       </div>
+
+      {/* ── RESULT — cubre toda la pantalla ─────────────────────────────────── */}
+      {phase === 'result' && resultTime !== null && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75">
+          <div className="bg-[#0f172a] rounded-2xl px-10 py-8 flex flex-col items-center gap-5 border border-white/10 shadow-2xl mx-6 w-full max-w-sm">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+              {TEST_LABEL[testType] ?? testType}
+            </p>
+            <p
+              className="text-6xl font-bold text-[#22c55e] tabular-nums"
+              style={{ fontFamily: '"JetBrains Mono", monospace' }}
+            >
+              {resultTime.toFixed(3)}s
+            </p>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={handleRepeat}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#1e293b] border border-white/10 text-slate-200 text-sm font-semibold min-h-[52px] active:bg-[#334155]"
+              >
+                <RotateCcw size={16} /> REPETIR
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#22d3ee] text-[#0f172a] text-sm font-bold min-h-[52px] active:bg-[#06b6d4]"
+              >
+                <Check size={16} /> GUARDAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

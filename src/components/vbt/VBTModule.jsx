@@ -13,6 +13,12 @@ import { calcPower, calcFatigueIndex, classifyLoad } from '../../utils/vbtCalcul
 const EXERCISES    = ['Sentadilla', 'Press Banca', 'Peso Muerto', 'Arranque'];
 const BAR_LENGTH_M = 2.2;
 
+const CAMERA_ERRORS = {
+  PERMISSION_DENIED: 'Permiso de cámara denegado. Ir a Ajustes > Safari > Cámara y permitir acceso.',
+  NO_CAMERA:         'No se detectó cámara en este dispositivo.',
+  ERROR:             'Error al abrir cámara. Intentá recargar la página.',
+};
+
 function zoneColors(mpv) {
   if (mpv > 1.00) return { bg: 'rgba(34,197,94,0.15)',  text: '#22c55e' };
   if (mpv >= 0.75) return { bg: 'rgba(234,179,8,0.15)', text: '#eab308' };
@@ -31,7 +37,7 @@ export default function VBTModule() {
   const [loadKg,      setLoadKg]      = useState('');
 
   const {
-    videoRef, isTracking, cameraError, currentVelocity, repData,
+    videoRef, canvasRef, isTracking, cameraError, currentVelocity, repData,
     startTracking, stopTracking, resetSession, addManualRep,
     setCalibration, captureFrame,
     calibrationPxPerMeter,
@@ -200,7 +206,7 @@ export default function VBTModule() {
                 <Camera size={13} /> Cámara activa — tracking por color
               </span>
             ) : cameraError ? (
-              <span className="flex items-center gap-1.5 text-danger" title={cameraError}>
+              <span className="flex items-center gap-1.5 text-danger">
                 <AlertTriangle size={13} /> Sin acceso a cámara
               </span>
             ) : (
@@ -241,6 +247,14 @@ export default function VBTModule() {
             </button>
           </div>
         </div>
+
+        {/* Camera error banner — shown when permission denied or no camera */}
+        {cameraError && (
+          <div className="flex items-start gap-2 p-2.5 bg-danger/10 border border-danger/20 rounded-lg text-xs text-danger">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span>{CAMERA_ERRORS[cameraError] ?? 'Error de cámara desconocido.'}</span>
+          </div>
+        )}
       </div>
 
       {/* Instruction hint */}
@@ -248,8 +262,16 @@ export default function VBTModule() {
         Pegá cinta naranja/roja en el extremo de la barra
       </p>
 
-      {/* Hidden video element */}
-      <video ref={videoRef} playsInline muted className="hidden" width={640} height={480} />
+      {/* Video always in DOM — iOS Safari requires element to exist before srcObject assignment */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        autoPlay
+        style={{ display: isTracking ? 'block' : 'none' }}
+        className="w-full max-h-48 rounded-fieldlab border border-white/5 bg-black object-cover"
+      />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       {/* ── Panel Central — Métricas en tiempo real ── */}
       <div className="grid grid-cols-2 gap-3">

@@ -39,11 +39,43 @@ function detectColorBlob(imageData) {
   return count >= BLOB_MIN_PX ? { cx: sumX / count, cy: sumY / count } : null;
 }
 
+// iOS Safari requires: playsinline set as attribute, muted, and a direct play() call.
+// Returns the MediaStream on success, or a string error code on failure.
+async function startCamera(videoRef) {
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720  },
+      },
+      audio: false,
+    });
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.setAttribute('playsinline', '');
+      videoRef.current.setAttribute('muted', '');
+      await videoRef.current.play();
+    }
+    return stream;
+  } catch (err) {
+    stream?.getTracks().forEach(t => t.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+    if (err.name === 'NotAllowedError') return 'PERMISSION_DENIED';
+    if (err.name === 'NotFoundError')   return 'NO_CAMERA';
+    return 'ERROR';
+  }
+}
+
 export function useArUcoTracker() {
-  const videoRef     = useRef(null);
+  // videoRef and canvasRef are attached to DOM elements in VBTModule.
+  // iOS requires both to be in the DOM before use.
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
+
   const streamRef    = useRef(null);
   const rafRef       = useRef(null);
-  const offscreenRef = useRef(null);
   const runningRef   = useRef(false);
 
   const calibPxMRef  = useRef(DEFAULT_PX_PER_M);
@@ -62,11 +94,10 @@ export function useArUcoTracker() {
 
   // ── Single-frame processing ────────────────────────────────────────────────
   const processFrame = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || video.readyState < 2) return;
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || video.readyState < 2 || !canvas) return;
 
-    const canvas = offscreenRef.current;
-    if (!canvas) return;
     if (canvas.width  !== video.videoWidth)  canvas.width  = video.videoWidth;
     if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
@@ -128,33 +159,23 @@ export function useArUcoTracker() {
   const startTracking = useCallback(async () => {
     if (isTracking) return;
     setCameraError(null);
-    let stream = null;
-    try {
-      offscreenRef.current = document.createElement('canvas');
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      const video = videoRef.current;
-      if (!video) throw new Error('Video element unmounted');
-      video.srcObject = stream;
-      await new Promise((res, rej) => { video.onloadedmetadata = res; video.onerror = rej; });
-      await video.play();
-      streamRef.current  = stream;
-      runningRef.current = true;
-      setIsTracking(true);
-      const loop = () => {
-        if (!runningRef.current) return;
-        processFrame();
-        rafRef.current = requestAnimationFrame(loop);
-      };
-      rafRef.current = requestAnimationFrame(loop);
-    } catch (err) {
-      stream?.getTracks().forEach(t => t.stop());
-      if (videoRef.current) videoRef.current.srcObject = null;
-      setCameraError(err.message);
-      console.error('[useArUcoTracker] camera error:', err.message);
+
+    const result = await startCamera(videoRef);
+    if (typeof result === 'string') {
+      setCameraError(result);
+      return;
     }
+
+    streamRef.current  = result;
+    runningRef.current = true;
+    setIsTracking(true);
+
+    const loop = () => {
+      if (!runningRef.current) return;
+      processFrame();
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
   }, [isTracking, processFrame]);
 
   // ── Stop tracking ──────────────────────────────────────────────────────────
@@ -186,15 +207,11 @@ export function useArUcoTracker() {
     setCalibrationPxPerMeter(Math.round(pxPerMeter));
   }, []);
 
-  // Capture the current video frame for the calibration UI
+  // Capture the current video frame (uses DOM canvas to avoid iOS off-screen restrictions)
   const captureFrame = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || video.readyState < 2) return null;
-    const c = document.createElement('canvas');
-    c.width  = video.videoWidth;
-    c.height = video.videoHeight;
-    c.getContext('2d').drawImage(video, 0, 0);
-    return { dataUrl: c.toDataURL('image/jpeg', 0.85), width: c.width, height: c.height };
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: canvas.width, height: canvas.height };
   }, []);
 
   // ── Reset session ──────────────────────────────────────────────────────────
@@ -210,6 +227,7 @@ export function useArUcoTracker() {
 
   return {
     videoRef,
+    canvasRef,
     isTracking,
     cameraError,
     currentVelocity,

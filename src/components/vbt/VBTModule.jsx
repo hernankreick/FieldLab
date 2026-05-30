@@ -97,9 +97,8 @@ export default function VBTModule() {
     };
   }, []);
 
-  // ── Audio helpers ──────────────────────────────────────────────────────────
-  function playBeep(freq, duration) {
-    const ctx = audioCtxRef.current;
+  // ── Audio helpers — ctx passed explicitly so iOS gets a fresh user-gesture context ──
+  function playBeep(freq, duration, ctx) {
     if (!ctx) return;
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -113,10 +112,10 @@ export default function VBTModule() {
     osc.stop(ctx.currentTime + duration);
   }
 
-  // ── Session complete: double beep ──────────────────────────────────────────
+  // ── Session complete: double beep (ctx already exists from START click) ────
   useEffect(() => {
-    if (!sessionComplete || !audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
+    if (!sessionComplete || !ctx) return;
     for (let i = 0; i < 2; i++) {
       const t    = ctx.currentTime + i * 0.45;
       const osc  = ctx.createOscillator();
@@ -132,38 +131,35 @@ export default function VBTModule() {
     }
   }, [sessionComplete]);
 
-  // ── Camera open → countdown → begin tracking ─────────────────────────────
-  async function handleStart() {
-    if (isCameraReady || isTracking || countdown !== null) return;
+  // ── PASO 1 → PASO 2: open camera, show preview ───────────────────────────
+  async function handleOpenCamera() {
+    if (isCameraReady || isTracking) return;
+    await openCamera();   // cameraError set in hook if denied
+  }
 
-    // AudioContext must be created inside a user gesture (iOS requirement)
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtxRef.current.state === 'suspended') {
-      await audioCtxRef.current.resume();
-    }
-
-    // Step 1: open camera — video appears fullscreen as soon as stream is ready
-    const err = await openCamera();
-    if (err) return;   // cameraError already set in the hook
-
-    // Step 2: countdown over the live camera feed
+  // ── PASO 2 → PASO 3: START button — AudioContext created here (iOS user gesture) ──
+  async function startCountdown(ctx) {
     countdownActiveRef.current = true;
     const wait = ms => new Promise(r => setTimeout(r, ms));
 
-    setCountdown(3); playBeep(800, 0.15);
+    setCountdown(3); playBeep(660, 0.12, ctx);
     await wait(1000); if (!countdownActiveRef.current) return;
-    setCountdown(2); playBeep(800, 0.15);
+    setCountdown(2); playBeep(660, 0.12, ctx);
     await wait(1000); if (!countdownActiveRef.current) return;
-    setCountdown(1); playBeep(800, 0.15);
+    setCountdown(1); playBeep(660, 0.12, ctx);
     await wait(1000); if (!countdownActiveRef.current) return;
-    setCountdown(0); playBeep(1200, 0.4);   // ¡YA!
-    await wait(600);  if (!countdownActiveRef.current) return;
+    setCountdown(0); playBeep(1320, 0.5, ctx);   // ¡YA! — high long tone
+    await wait(700);  if (!countdownActiveRef.current) return;
     setCountdown(null);
-
-    // Step 3: start velocity tracking loop
     beginTracking();
+  }
+
+  function handleStartButton() {
+    if (countdown !== null || !isCameraReady) return;
+    // AudioContext MUST be created inside the click handler (iOS user-gesture requirement)
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtxRef.current = ctx;
+    startCountdown(ctx);
   }
 
   // ── Calibration handlers ───────────────────────────────────────────────────
@@ -228,6 +224,63 @@ export default function VBTModule() {
         }}
       />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      {/* ── PASO 2: Camera preview — position the athlete, tap START ── */}
+      {isCameraReady && !isTracking && countdown === null && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 30,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            gap: '32px',
+          }}
+        >
+          {/* Instruction */}
+          <p
+            className="text-white font-semibold text-lg text-center drop-shadow-lg select-none"
+            style={{ textShadow: '0 2px 16px rgba(0,0,0,0.8)', paddingInline: '2rem' }}
+          >
+            Apuntá al marcador naranja
+          </p>
+
+          {/* Big circular START button */}
+          <button
+            type="button"
+            onClick={handleStartButton}
+            style={{
+              width: 128, height: 128,
+              borderRadius: '50%',
+              background: '#22c55e',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: '6px',
+              touchAction: 'manipulation',
+              boxShadow: '0 0 48px rgba(34,197,94,0.55), 0 4px 24px rgba(0,0,0,0.5)',
+              border: '3px solid rgba(255,255,255,0.25)',
+              flexShrink: 0,
+            }}
+            className="active:scale-95 transition-transform"
+          >
+            <Play size={44} fill="white" color="white" />
+            <span className="text-white font-bold text-xs tracking-widest leading-none">INICIAR</span>
+          </button>
+
+          {/* Cancel — returns to config */}
+          <button
+            type="button"
+            onClick={handleReset}
+            style={{
+              position: 'fixed',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+              left: '50%', transform: 'translateX(-50%)',
+              zIndex: 31, touchAction: 'manipulation',
+            }}
+            className="px-6 py-3 bg-black/60 backdrop-blur-sm rounded-xl text-sm text-white/60 active:bg-black/80"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
 
       {/* ── Countdown overlay — sits on top of the live video feed ── */}
       {countdown !== null && (
@@ -550,8 +603,8 @@ export default function VBTModule() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={handleStart}
-                  disabled={isCameraReady || isTracking || countdown !== null}
+                  onClick={handleOpenCamera}
+                  disabled={isCameraReady || isTracking}
                   style={{ touchAction: 'manipulation' }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-accent text-background hover:bg-accent/90 disabled:opacity-50 transition-colors"
                 >

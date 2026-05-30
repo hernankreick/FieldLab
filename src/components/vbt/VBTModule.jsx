@@ -84,6 +84,11 @@ export default function VBTModule() {
     ? repData.reduce((s, r) => s + r.mpv, 0) / repData.length
     : 0;
 
+  // Hide the bottom navbar while fullscreen is active (video covers the page)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('vbt-fullscreen', { detail: { active: isCameraReady || isTracking } }));
+  }, [isCameraReady, isTracking]);
+
   // Cancel countdown and close AudioContext on unmount to avoid setState on dead component
   useEffect(() => {
     return () => {
@@ -252,7 +257,7 @@ export default function VBTModule() {
               type="button"
               onClick={handleReset}
               style={{
-                position: 'fixed', bottom: 40, left: '50%',
+                position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)', left: '50%',
                 transform: 'translateX(-50%)', zIndex: 41,
                 touchAction: 'manipulation',
               }}
@@ -318,21 +323,21 @@ export default function VBTModule() {
             </span>
           </div>
 
-          {/* Calibrate — bottom left */}
+          {/* Calibrate — bottom left, above iOS home indicator */}
           <button
             type="button"
             onClick={handleCalibrate}
-            style={{ position: 'fixed', bottom: 44, left: 20, zIndex: 30, touchAction: 'manipulation' }}
+            style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 28px)', left: 20, zIndex: 30, touchAction: 'manipulation' }}
             className="px-4 py-3 bg-black/60 backdrop-blur-sm rounded-xl text-sm text-white/60 active:bg-black/80"
           >
             Calibrar
           </button>
 
-          {/* Stop button — bottom right */}
+          {/* Stop button — bottom right, above iOS home indicator */}
           <button
             type="button"
             onClick={stopTracking}
-            style={{ position: 'fixed', bottom: 40, right: 20, zIndex: 30, touchAction: 'manipulation' }}
+            style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)', right: 20, zIndex: 30, touchAction: 'manipulation' }}
             className="flex items-center gap-2 px-6 py-4 bg-red-600 hover:bg-red-500 active:bg-red-700 rounded-2xl text-white font-bold text-lg shadow-2xl"
           >
             <Square size={20} /> Detener

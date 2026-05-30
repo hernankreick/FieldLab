@@ -31,7 +31,7 @@ export default function VBTModule() {
   const [loadKg,      setLoadKg]      = useState('');
 
   const {
-    videoRef, isTracking, currentVelocity, repData,
+    videoRef, isTracking, cameraError, currentVelocity, repData,
     startTracking, stopTracking, resetSession, addManualRep,
     setCalibration, captureFrame,
     calibrationPxPerMeter,
@@ -198,6 +198,10 @@ export default function VBTModule() {
             {isTracking ? (
               <span className="flex items-center gap-1.5 text-success">
                 <Camera size={13} /> Cámara activa — tracking por color
+              </span>
+            ) : cameraError ? (
+              <span className="flex items-center gap-1.5 text-danger" title={cameraError}>
+                <AlertTriangle size={13} /> Sin acceso a cámara
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-slate-500">

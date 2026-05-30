@@ -30,8 +30,8 @@ function detectColorBlob(imageData) {
     for (let x = 0; x < width; x += SCAN_STRIDE) {
       const i = (y * width + x) * 4;
       const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
-      // Orange/red tape: H in [0,30]°, well-saturated, mid-luminance
-      if (h >= 0 && h <= 30 && s > 60 && l >= 40 && l <= 70) {
+      // Orange/red tape: H in [0,30]° or wrap-around red [330,360°], well-saturated, mid-luminance
+      if ((h <= 30 || h >= 330) && s > 60 && l >= 40 && l <= 70) {
         sumX += x; sumY += y; count++;
       }
     }
@@ -55,6 +55,7 @@ export function useArUcoTracker() {
   const smoothTsRef  = useRef([]);
 
   const [isTracking,            setIsTracking]            = useState(false);
+  const [cameraError,           setCameraError]           = useState(null);
   const [currentVelocity,       setCurrentVelocity]       = useState(0);
   const [calibrationPxPerMeter, setCalibrationPxPerMeter] = useState(DEFAULT_PX_PER_M);
   const [repData,               setRepData]               = useState([]);
@@ -72,7 +73,12 @@ export function useArUcoTracker() {
     ctx.drawImage(video, 0, 0);
 
     const blob = detectColorBlob(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    if (!blob) return;
+    if (!blob) {
+      // Clear smoothing window so stale timestamps don't corrupt velocity when blob reappears
+      smoothPosRef.current = [];
+      smoothTsRef.current  = [];
+      return;
+    }
 
     const pxPerM = calibPxMRef.current;
     // Negate: upward movement (decreasing Y in image) = positive position
@@ -121,6 +127,7 @@ export function useArUcoTracker() {
   // ── Start tracking ─────────────────────────────────────────────────────────
   const startTracking = useCallback(async () => {
     if (isTracking) return;
+    setCameraError(null);
     let stream = null;
     try {
       offscreenRef.current = document.createElement('canvas');
@@ -145,6 +152,7 @@ export function useArUcoTracker() {
     } catch (err) {
       stream?.getTracks().forEach(t => t.stop());
       if (videoRef.current) videoRef.current.srcObject = null;
+      setCameraError(err.message);
       console.error('[useArUcoTracker] camera error:', err.message);
     }
   }, [isTracking, processFrame]);
@@ -203,6 +211,7 @@ export function useArUcoTracker() {
   return {
     videoRef,
     isTracking,
+    cameraError,
     currentVelocity,
     repData,
     startTracking,

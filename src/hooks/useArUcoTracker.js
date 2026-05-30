@@ -4,8 +4,10 @@ import { calcMPV, calcPeakVelocity } from '../utils/vbtCalculations';
 const VEL_THRESHOLD    = 0.1;   // m/s
 const SMOOTH_N         = 4;
 const DEFAULT_PX_PER_M = 200;
-const BLOB_MIN_PX      = 10;    // minimum sampled pixels to consider a valid blob
-const SCAN_STRIDE      = 4;     // sample every Nth pixel (16× speedup vs full scan)
+const BLOB_MIN_PX      = 10;
+const SCAN_STRIDE      = 4;
+
+export const MAX_REPS = 4;
 
 // RGB → [H°, S%, L%]
 function rgbToHsl(r, g, b) {
@@ -85,8 +87,10 @@ export function useArUcoTracker() {
   const repTsRef     = useRef([]);
   const smoothPosRef = useRef([]);
   const smoothTsRef  = useRef([]);
+  const repCountRef  = useRef(0);
 
   const [isTracking,            setIsTracking]            = useState(false);
+  const [sessionComplete,       setSessionComplete]       = useState(false);
   const [cameraError,           setCameraError]           = useState(null);
   const [currentVelocity,       setCurrentVelocity]       = useState(0);
   const [calibrationPxPerMeter, setCalibrationPxPerMeter] = useState(DEFAULT_PX_PER_M);
@@ -149,7 +153,24 @@ export function useArUcoTracker() {
         repPosRef.current  = [];
         repTsRef.current   = [];
         if (mpv > 0) {
+          repCountRef.current += 1;
+          const done = repCountRef.current >= MAX_REPS;
           setRepData(prev => [...prev, { rep: prev.length + 1, mpv, peakVelocity }]);
+          if (done) {
+            // Inline stop — avoids calling stopTracking() from within the rAF callback
+            runningRef.current = false;
+            streamRef.current?.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+            if (videoRef.current) videoRef.current.srcObject = null;
+            inRepRef.current     = false;
+            repPosRef.current    = [];
+            repTsRef.current     = [];
+            smoothPosRef.current = [];
+            smoothTsRef.current  = [];
+            setIsTracking(false);
+            setCurrentVelocity(0);
+            setSessionComplete(true);
+          }
         }
       }
     }
@@ -218,6 +239,8 @@ export function useArUcoTracker() {
   const resetSession = useCallback(() => {
     stopTracking();
     setRepData([]);
+    setSessionComplete(false);
+    repCountRef.current = 0;
     calibPxMRef.current = DEFAULT_PX_PER_M;
     setCalibrationPxPerMeter(DEFAULT_PX_PER_M);
   }, [stopTracking]);
@@ -229,6 +252,7 @@ export function useArUcoTracker() {
     videoRef,
     canvasRef,
     isTracking,
+    sessionComplete,
     cameraError,
     currentVelocity,
     repData,

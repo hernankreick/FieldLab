@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Timer } from 'lucide-react';
+import { Timer, Camera } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
+import SprintVisionModule from '../components/SprintVisionModule';
 import { cn } from '../utils/cn';
 import { calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus } from '../utils/speed';
 
@@ -28,19 +29,29 @@ function SegControl({ options, active, onChange }) {
   );
 }
 
-function SprintRow({ label, value, onChange, velocity, status }) {
+function SprintRow({ label, value, onChange, velocity, status, onMeasure }) {
   return (
     <div>
       <label className="text-xs text-slate-400 mb-1 block">{label}</label>
-      <input
-        type="number"
-        inputMode="decimal"
-        step="0.01"
-        placeholder="0.00 s"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
-      />
+      <div className="flex gap-2">
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          placeholder="0.00 s"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="flex-1 bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
+        />
+        <button
+          onClick={onMeasure}
+          title="Medir con cámara"
+          className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/20 text-accent text-xs font-semibold whitespace-nowrap hover:bg-accent/20 transition-colors min-h-[44px]"
+        >
+          <Camera size={14} />
+          <span className="hidden sm:inline">Cámara</span>
+        </button>
+      </div>
       {velocity > 0 && (
         <div className="flex items-center gap-2 mt-1.5">
           <span className="text-xs font-data text-slate-400">{velocity.toFixed(2)} m/s</span>
@@ -60,6 +71,9 @@ function TabVelocidad() {
   const [curvoDer, setCurvoDer] = useState('');
   const [curvoIzq, setCurvoIzq] = useState('');
 
+  // Vision module state
+  const [visionTarget, setVisionTarget] = useState(null); // 'sprint10' | 'sprint20' | 'sprint30'
+
   const t10 = parseFloat(sprint10) || 0;
   const t20 = parseFloat(sprint20) || 0;
   const t30 = parseFloat(sprint30) || 0;
@@ -78,6 +92,14 @@ function TabVelocidad() {
   const asimSt = curvoAsimStatus(curvoAsim);
 
   const show = (s) => seg === s || seg === '10/20/30m';
+
+  function handleVisionResult(timeSeconds) {
+    const val = timeSeconds.toFixed(3);
+    if (visionTarget === 'sprint10') setSprint10(val);
+    else if (visionTarget === 'sprint20') setSprint20(val);
+    else if (visionTarget === 'sprint30') setSprint30(val);
+    setVisionTarget(null);
+  }
 
   return (
     <div className="space-y-4">
@@ -99,6 +121,7 @@ function TabVelocidad() {
                   label="Sprint 10m — Aceleración"
                   value={sprint10} onChange={setSprint10}
                   velocity={v10} status={st10}
+                  onMeasure={() => setVisionTarget('sprint10')}
                 />
               )}
               {show('20m') && (
@@ -106,6 +129,7 @@ function TabVelocidad() {
                   label="Sprint 20m — Aceleración máxima"
                   value={sprint20} onChange={setSprint20}
                   velocity={v20} status={st20}
+                  onMeasure={() => setVisionTarget('sprint20')}
                 />
               )}
               {show('30m') && (
@@ -113,6 +137,7 @@ function TabVelocidad() {
                   label="Sprint 30m — Velocidad máxima"
                   value={sprint30} onChange={setSprint30}
                   velocity={v30} status={st30}
+                  onMeasure={() => setVisionTarget('sprint30')}
                 />
               )}
             </div>
@@ -174,6 +199,15 @@ function TabVelocidad() {
             </p>
           </Card>
         </>
+      )}
+
+      {/* Vision module — fullscreen overlay */}
+      {visionTarget && (
+        <SprintVisionModule
+          testType={visionTarget}
+          onResult={handleVisionResult}
+          onClose={() => setVisionTarget(null)}
+        />
       )}
     </div>
   );

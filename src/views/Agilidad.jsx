@@ -1,20 +1,22 @@
 import { useState } from 'react';
-import { Shuffle } from 'lucide-react';
+import { Shuffle, Camera } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
+import SprintVisionModule from '../components/SprintVisionModule';
 import { cn } from '../utils/cn';
 import { calcCodDeficit, codDeficitType } from '../utils/speed';
 
 const COD_TESTS = [
-  { id: 'cod5',       label: 'COD 5+5',           refLabel: 'Sprint 10m' },
-  { id: 'proagility', label: 'Pro Agility 5+10+5', refLabel: 'Sprint 20m' },
+  { id: 'cod5',       label: 'COD 5+5',           refLabel: 'Sprint 10m', visionType: 'cod5+5' },
+  { id: 'proagility', label: 'Pro Agility 5+10+5', refLabel: 'Sprint 20m', visionType: 'proAgility' },
 ];
 
 function TabAgilidad() {
   const [test, setTest] = useState('cod5');
   const [tCod, setTCod] = useState('');
   const [tRef, setTRef] = useState('');
+  const [showVision, setShowVision] = useState(false);
 
   const current = COD_TESTS.find(t => t.id === test);
 
@@ -33,6 +35,11 @@ function TabAgilidad() {
     setTest(id);
     setTCod('');
     setTRef('');
+  }
+
+  function handleVisionResult(timeSeconds) {
+    setTCod(timeSeconds.toFixed(3));
+    setShowVision(false);
   }
 
   return (
@@ -65,12 +72,22 @@ function TabAgilidad() {
         <div className="space-y-4">
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Tiempo COD (s)</label>
-            <input
-              type="number" inputMode="decimal" step="0.01" placeholder="0.00"
-              value={tCod}
-              onChange={e => setTCod(e.target.value)}
-              className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
-            />
+            <div className="flex gap-2">
+              <input
+                type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                value={tCod}
+                onChange={e => setTCod(e.target.value)}
+                className="flex-1 bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
+              />
+              <button
+                onClick={() => setShowVision(true)}
+                title="Medir con cámara"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/20 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors min-h-[44px]"
+              >
+                <Camera size={14} />
+                <span className="hidden sm:inline">Cámara</span>
+              </button>
+            </div>
           </div>
           <div>
             <label className="text-xs text-slate-400 mb-1 block">
@@ -128,6 +145,15 @@ function TabAgilidad() {
           ≤ 0.3s = limitación de potencia
         </p>
       </Card>
+
+      {/* Vision module — fullscreen overlay */}
+      {showVision && (
+        <SprintVisionModule
+          testType={current.visionType}
+          onResult={handleVisionResult}
+          onClose={() => setShowVision(false)}
+        />
+      )}
     </div>
   );
 }

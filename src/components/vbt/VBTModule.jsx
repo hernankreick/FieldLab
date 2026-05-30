@@ -41,8 +41,8 @@ export default function VBTModule() {
   const countdownActiveRef = useRef(false);
 
   const {
-    videoRef, canvasRef, isTracking, sessionComplete, cameraError,
-    repData, startTracking, stopTracking, resetSession,
+    videoRef, canvasRef, isCameraReady, isTracking, sessionComplete, cameraError,
+    repData, openCamera, beginTracking, stopTracking, resetSession,
     setCalibration, captureFrame, calibrationPxPerMeter,
   } = useArUcoTracker();
 
@@ -127,9 +127,9 @@ export default function VBTModule() {
     }
   }, [sessionComplete]);
 
-  // ── Countdown + start ─────────────────────────────────────────────────────
+  // ── Camera open → countdown → begin tracking ─────────────────────────────
   async function handleStart() {
-    if (isTracking || countdown !== null) return;
+    if (isCameraReady || isTracking || countdown !== null) return;
 
     // AudioContext must be created inside a user gesture (iOS requirement)
     if (!audioCtxRef.current) {
@@ -139,6 +139,11 @@ export default function VBTModule() {
       await audioCtxRef.current.resume();
     }
 
+    // Step 1: open camera — video appears fullscreen as soon as stream is ready
+    const err = await openCamera();
+    if (err) return;   // cameraError already set in the hook
+
+    // Step 2: countdown over the live camera feed
     countdownActiveRef.current = true;
     const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -151,7 +156,9 @@ export default function VBTModule() {
     setCountdown(0); playBeep(1200, 0.4);   // ¡YA!
     await wait(600);  if (!countdownActiveRef.current) return;
     setCountdown(null);
-    await startTracking();
+
+    // Step 3: start velocity tracking loop
+    beginTracking();
   }
 
   // ── Calibration handlers ───────────────────────────────────────────────────
@@ -192,7 +199,8 @@ export default function VBTModule() {
     setCalibPoints([]);
   }
 
-  const isFullscreen = isTracking || countdown !== null;
+  // Camera is open during countdown AND tracking — video stays fullscreen both phases
+  const isFullscreen = isCameraReady || isTracking;
 
   return (
     <div className="space-y-4">
@@ -216,26 +224,43 @@ export default function VBTModule() {
       />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-      {/* ── Countdown overlay ── */}
+      {/* ── Countdown overlay — sits on top of the live video feed ── */}
       {countdown !== null && (
         <div
           style={{
             position: 'fixed', inset: 0, zIndex: 40,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
           }}
           className="bg-black/50"
         >
           <span
             className="font-bold text-white select-none drop-shadow-2xl"
             style={{
-              fontSize:    countdown === 0 ? '5rem' : '14rem',
-              lineHeight:  1,
-              textShadow:  '0 4px 40px rgba(0,0,0,0.9)',
+              fontSize:      countdown === 0 ? '5rem' : '14rem',
+              lineHeight:    1,
+              textShadow:    '0 4px 40px rgba(0,0,0,0.9)',
               letterSpacing: countdown === 0 ? '0.02em' : '-0.04em',
             }}
           >
             {countdown === 0 ? '¡YA!' : countdown}
           </span>
+
+          {/* Cancel while counting down */}
+          {countdown > 0 && (
+            <button
+              type="button"
+              onClick={handleReset}
+              style={{
+                position: 'fixed', bottom: 40, left: '50%',
+                transform: 'translateX(-50%)', zIndex: 41,
+                touchAction: 'manipulation',
+              }}
+              className="px-6 py-3 bg-black/60 backdrop-blur-sm rounded-xl text-sm text-white/60 active:bg-black/80"
+            >
+              Cancelar
+            </button>
+          )}
         </div>
       )}
 
@@ -420,7 +445,7 @@ export default function VBTModule() {
       )}
 
       {/* ── Normal view — config + live history ── */}
-      {!isTracking && !sessionComplete && (
+      {!isCameraReady && !isTracking && !sessionComplete && (
         <>
           {/* Header */}
           <div>
@@ -521,7 +546,7 @@ export default function VBTModule() {
                 <button
                   type="button"
                   onClick={handleStart}
-                  disabled={countdown !== null}
+                  disabled={isCameraReady || isTracking || countdown !== null}
                   style={{ touchAction: 'manipulation' }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-accent text-background hover:bg-accent/90 disabled:opacity-50 transition-colors"
                 >

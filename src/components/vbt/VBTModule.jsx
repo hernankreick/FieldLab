@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Play, Square, RotateCcw, Camera, CameraOff,
+  Play, Square, RotateCcw, CameraOff,
   AlertTriangle, Activity, Zap, TrendingDown, CheckCircle,
 } from 'lucide-react';
 import {
@@ -42,8 +42,8 @@ export default function VBTModule() {
 
   const {
     videoRef, canvasRef, isTracking, sessionComplete, cameraError,
-    currentVelocity, repData, startTracking, stopTracking, resetSession,
-    addManualRep, setCalibration, captureFrame, calibrationPxPerMeter,
+    repData, startTracking, stopTracking, resetSession,
+    setCalibration, captureFrame, calibrationPxPerMeter,
   } = useArUcoTracker();
 
   // Calibration state
@@ -83,6 +83,14 @@ export default function VBTModule() {
   const avgMPV = repData.length > 0
     ? repData.reduce((s, r) => s + r.mpv, 0) / repData.length
     : 0;
+
+  // Cancel countdown and close AudioContext on unmount to avoid setState on dead component
+  useEffect(() => {
+    return () => {
+      countdownActiveRef.current = false;
+      audioCtxRef.current?.close();
+    };
+  }, []);
 
   // ── Audio helpers ──────────────────────────────────────────────────────────
   function playBeep(freq, duration) {
@@ -143,7 +151,7 @@ export default function VBTModule() {
     setCountdown(0); playBeep(1200, 0.4);   // ¡YA!
     await wait(600);  if (!countdownActiveRef.current) return;
     setCountdown(null);
-    startTracking();
+    await startTracking();
   }
 
   // ── Calibration handlers ───────────────────────────────────────────────────

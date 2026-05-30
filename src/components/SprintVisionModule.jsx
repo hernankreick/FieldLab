@@ -7,7 +7,7 @@ import {
   calcMovementDirection,
   pushHistory,
   isDebounced,
-  calcVideoRegion,
+  calcVideoRegionCover,
   normToCanvas,
   canvasToNorm,
 } from '../utils/visionUtils';
@@ -45,9 +45,12 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
   const [testRunCountdown, setTestRunCountdown] = useState(null); // null | 3 | 2 | 1
   const [testRunDone, setTestRunDone] = useState(false);
   const [codTurnMade, setCodTurnMade] = useState(false);
+  // true when screen.orientation.lock failed and device is in portrait — CSS rotation applied
+  const [isPortraitFallback, setIsPortraitFallback] = useState(false);
 
   // ── Mutable refs (read inside RAF loops and stable callbacks) ──────────────
   const phaseRef = useRef('permission');
+  const isPortraitFallbackRef = useRef(false);
   const leftLineRef = useRef(0.2);   // normalized X within video frame
   const rightLineRef = useRef(0.8);  // normalized X within video frame
   const centroidRef = useRef(null);  // { x, y, confidence } | null
@@ -160,6 +163,49 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
       setPhase('calib-1');
     }
   }, [isRunning]);
+
+  // Keep ref in sync so RAF/callback closures can read current value without stale state
+  useEffect(() => { isPortraitFallbackRef.current = isPortraitFallback; }, [isPortraitFallback]);
+
+  // ── Orientation lock — lock to landscape; fallback to CSS rotation on older iOS ──
+  useEffect(() => {
+    function applyPortraitFallbackIfNeeded() {
+      if (window.innerHeight > window.innerWidth) {
+        setIsPortraitFallback(true);
+      }
+    }
+
+    if (screen.orientation?.lock) {
+      screen.orientation.lock('landscape').catch(() => {
+        // Lock not allowed (e.g. desktop browser, older iOS) — apply CSS rotation
+        applyPortraitFallbackIfNeeded();
+      });
+    } else {
+      applyPortraitFallbackIfNeeded();
+    }
+
+    return () => {
+      screen.orientation?.unlock?.();
+    };
+  }, []);
+
+  // ── ResizeObserver — keep canvas backing store sized to the video element ──
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const ro = new ResizeObserver(() => {
+      const w = video.offsetWidth;
+      const h = video.offsetHeight;
+      if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+        canvas.width  = w;
+        canvas.height = h;
+      }
+    });
+    ro.observe(video);
+    return () => ro.disconnect();
+  }, []); // videoRef and canvasRef are stable for the component lifetime
 
   // ── Canvas draw loop — runs at max fps independently of MediaPipe ──────────
   const drawOverlay = useCallback((ctx, W, H, ts) => {
@@ -352,22 +398,16 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
     function loop(ts) {
       animFrame = requestAnimationFrame(loop);
       const canvas = canvasRef.current;
-      const video = videoRef.current;
+      const video  = videoRef.current;
       if (!canvas) return;
 
-      const W = canvas.offsetWidth;
-      const H = canvas.offsetHeight;
+      const W = canvas.width;
+      const H = canvas.height;
       if (W === 0 || H === 0) return;
 
-      // Keep canvas backing store in sync with CSS display size
-      if (canvas.width !== W || canvas.height !== H) {
-        canvas.width = W;
-        canvas.height = H;
-      }
-
-      // Update video region every frame (handles orientation changes)
+      // Update landmark→canvas mapping using cover semantics (video fills container)
       if (video && video.videoWidth > 0) {
-        videoRegionRef.current = calcVideoRegion(video.videoWidth, video.videoHeight, W, H);
+        videoRegionRef.current = calcVideoRegionCover(video.videoWidth, video.videoHeight, W, H);
       } else {
         videoRegionRef.current = { x: 0, y: 0, w: W, h: H };
       }
@@ -446,8 +486,15 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
 
   // ── Line dragging ─────────────────────────────────────────────────────────
   function getPointerCanvasX(e) {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return 0;
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    if (!rect || !canvas) return 0;
+    if (isPortraitFallbackRef.current) {
+      // Canvas is rotated 90° CW: screen-Y maps to canvas-X (inverted)
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const ry = clientY - rect.top;
+      return (1 - ry / rect.height) * canvas.width;
+    }
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     return clientX - rect.left;
   }
@@ -502,11 +549,52 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+  const videoCanvasBase = isPortraitFallback
+    ? {
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        width: '100vh',
+        height: '100vw',
+        transform: 'translate(-50%, -50%) rotate(90deg)',
+      }
+    : {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+      };
+
   return (
-    <div className="fixed inset-0 z-50 bg-[#0f172a] flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black">
+
+      {/* Video — fixed full screen, object-fit:cover */}
+      <video
+        ref={videoRef}
+        className="object-cover"
+        style={{ ...videoCanvasBase, zIndex: 1 }}
+        playsInline
+        muted
+        autoPlay
+      />
+
+      {/* Canvas overlay — same layout as video */}
+      <canvas
+        ref={canvasRef}
+        className="touch-none"
+        style={{ ...videoCanvasBase, zIndex: 2 }}
+        onMouseDown={handlePointerDown}
+        onMouseMove={handlePointerMove}
+        onMouseUp={handlePointerUp}
+        onTouchStart={handlePointerDown}
+        onTouchMove={handlePointerMove}
+        onTouchEnd={handlePointerUp}
+        onTouchCancel={handlePointerUp}
+      />
 
       {/* ── BANDA NEGRA — header fijo ───────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-3 bg-[#0f172a] border-b border-white/5">
+      <div className="fixed top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3 bg-[#0f172a] border-b border-white/5">
         <div className="flex items-center gap-2">
           <Target size={15} className="text-[#22d3ee]" />
           <span className="text-sm font-semibold text-slate-200">
@@ -521,40 +609,17 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
         </button>
       </div>
 
-      {/* ── VIDEO CÁMARA — 60 % del espacio restante ───────────────────────── */}
-      <div className="relative overflow-hidden bg-black" style={{ flex: 3 }}>
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-contain bg-black"
-          playsInline
-          muted
-          autoPlay
-        />
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ touchAction: 'none' }}
-          onMouseDown={handlePointerDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={handlePointerUp}
-          onTouchStart={handlePointerDown}
-          onTouchMove={handlePointerMove}
-          onTouchEnd={handlePointerUp}
-          onTouchCancel={handlePointerUp}
-        />
+      {/* MediaPipe loading */}
+      {mpLoading && phase !== 'permission' && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60" style={{ zIndex: 3 }}>
+          <p className="text-sm text-slate-300">Cargando MediaPipe…</p>
+        </div>
+      )}
 
-        {/* MediaPipe loading */}
-        {mpLoading && phase !== 'permission' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
-            <p className="text-sm text-slate-300">Cargando MediaPipe…</p>
-          </div>
-        )}
-      </div>
-
-      {/* ── PANEL CALIBRACIÓN — 40 % del espacio restante ──────────────────── */}
+      {/* ── PANEL CALIBRACIÓN — fijo en el fondo ───────────────────────────── */}
       <div
-        className="shrink-0 bg-[#0f172a] border-t border-white/10 px-4 pt-3 pb-safe-bottom overflow-y-auto"
-        style={{ flex: 2 }}
+        className="fixed bottom-0 left-0 right-0 z-10 bg-[#0f172a] border-t border-white/10 px-4 pt-3 pb-safe-bottom overflow-y-auto"
+        style={{ maxHeight: '45vh' }}
       >
 
         {/* Indicador de pasos (calib-1/2/3) */}
@@ -737,7 +802,7 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
 
       {/* ── RESULT — cubre toda la pantalla ─────────────────────────────────── */}
       {phase === 'result' && resultTime !== null && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75">
+        <div className="fixed inset-0 z-20 flex flex-col items-center justify-center bg-black/75">
           <div className="bg-[#0f172a] rounded-2xl px-10 py-8 flex flex-col items-center gap-5 border border-white/10 shadow-2xl mx-6 w-full max-w-sm">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
               {TEST_LABEL[testType] ?? testType}

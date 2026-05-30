@@ -1,295 +1,258 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { calcMPV, calcPeakVelocity } from '../utils/vbtCalculations';
 
-// OpenCV.js 4.5.5 build includes aruco contrib
-const OPENCV_CDN    = 'https://docs.opencv.org/4.5.5/opencv.js';
-const MARKER_SIZE_M = 0.08;  // physical side of printed ArUco marker in metres
-const VEL_THRESHOLD = 0.1;   // m/s — velocity gate for rep start / end
-const SMOOTH_N      = 4;     // frames used for velocity smoothing
+const VEL_THRESHOLD    = 0.1;   // m/s
+const SMOOTH_N         = 4;
+const DEFAULT_PX_PER_M = 200;
+const BLOB_MIN_PX      = 10;
+const SCAN_STRIDE      = 4;
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = src; s.async = true;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error(`Script load failed: ${src}`));
-    document.head.appendChild(s);
-  });
+export const MAX_REPS = 4;
+
+// RGB → [H°, S%, L%]
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l * 100];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r)      h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else                h = (r - g) / d + 4;
+  return [h * 60, s * 100, l * 100];
 }
 
-// Poll until window.cv is fully initialised (has Mat constructor)
-function waitForCV(timeoutMs = 45000) {
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
-    const tick = () => {
-      if (window.cv?.Mat) { resolve(window.cv); return; }
-      if (Date.now() > deadline) { reject(new Error('OpenCV initialisation timeout')); return; }
-      setTimeout(tick, 250);
-    };
-    tick();
-  });
+// Returns centroid {cx, cy} of orange/red blob in image coordinates, or null
+function detectColorBlob(imageData) {
+  const { data, width, height } = imageData;
+  let sumX = 0, sumY = 0, count = 0;
+  for (let y = 0; y < height; y += SCAN_STRIDE) {
+    for (let x = 0; x < width; x += SCAN_STRIDE) {
+      const i = (y * width + x) * 4;
+      const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+      // Orange/red tape: H in [0,30]° or wrap-around red [330,360°], well-saturated, mid-luminance
+      if ((h <= 30 || h >= 330) && s > 60 && l >= 40 && l <= 70) {
+        sumX += x; sumY += y; count++;
+      }
+    }
+  }
+  return count >= BLOB_MIN_PX ? { cx: sumX / count, cy: sumY / count } : null;
 }
 
-// Resolve the detection function across OpenCV.js API versions
-function resolveDetectFn(cv) {
-  if (typeof cv.ArucoDetector === 'function') return null;         // new API — use instance
-  if (typeof cv.detectMarkers === 'function') return cv.detectMarkers.bind(cv);
-  if (typeof cv.aruco_detectMarkers === 'function') return cv.aruco_detectMarkers.bind(cv);
-  return null;
-}
-
-// Resolve the dictionary constructor across OpenCV.js API versions
-function buildDictionary(cv) {
-  const id = cv.DICT_4X4_50 ?? 0;
-  if (typeof cv.getPredefinedDictionary === 'function') return cv.getPredefinedDictionary(id);
-  if (cv.aruco?.getPredefinedDictionary) return cv.aruco.getPredefinedDictionary(id);
-  throw new Error('ArUco dictionary API not found — ensure OpenCV build includes aruco contrib');
+// iOS Safari requires: playsinline set as attribute, muted, and a direct play() call.
+// Returns the MediaStream on success, or a string error code on failure.
+async function startCamera(videoRef) {
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720  },
+      },
+      audio: false,
+    });
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.setAttribute('playsinline', '');
+      videoRef.current.setAttribute('muted', '');
+      await videoRef.current.play();
+    }
+    return stream;
+  } catch (err) {
+    stream?.getTracks().forEach(t => t.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+    if (err.name === 'NotAllowedError') return 'PERMISSION_DENIED';
+    if (err.name === 'NotFoundError')   return 'NO_CAMERA';
+    return 'ERROR';
+  }
 }
 
 export function useArUcoTracker() {
-  // DOM / stream refs
-  const videoRef     = useRef(null);
-  const streamRef    = useRef(null);
-  const rafRef       = useRef(null);
-  const offscreenRef = useRef(null);
-  const runningRef   = useRef(false);
+  // videoRef and canvasRef are attached to DOM elements in VBTModule.
+  // iOS requires both to be in the DOM before use.
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
 
-  // OpenCV refs (initialised once)
-  const cvRef         = useRef(null);
-  const dictRef       = useRef(null);
-  const paramsRef     = useRef(null);
-  const detectorRef   = useRef(null); // ArucoDetector instance for new API
-  const detectFnRef   = useRef(null); // bound detectMarkers for old API
+  const streamRef       = useRef(null);
+  const rafRef          = useRef(null);
+  const runningRef      = useRef(false);
+  const cameraReadyRef  = useRef(false); // true once stream is assigned to video
 
-  // Calibration
-  const calibPxMRef         = useRef(0);
-  const lastDisplayCalibRef = useRef(0); // tracks last rounded value pushed to state
+  const calibPxMRef  = useRef(DEFAULT_PX_PER_M);
 
-  // Rep tracking — all in refs to avoid per-frame re-renders
   const inRepRef     = useRef(false);
   const repPosRef    = useRef([]);
   const repTsRef     = useRef([]);
   const smoothPosRef = useRef([]);
   const smoothTsRef  = useRef([]);
+  const repCountRef  = useRef(0);
 
-  const [cvReady,               setCvReady]               = useState(false);
-  const [cvError,               setCvError]               = useState(null);
+  const [isCameraReady,         setIsCameraReady]         = useState(false);
   const [isTracking,            setIsTracking]            = useState(false);
+  const [sessionComplete,       setSessionComplete]       = useState(false);
+  const [cameraError,           setCameraError]           = useState(null);
   const [currentVelocity,       setCurrentVelocity]       = useState(0);
-  const [calibrationPxPerMeter, setCalibrationPxPerMeter] = useState(0);
+  const [calibrationPxPerMeter, setCalibrationPxPerMeter] = useState(DEFAULT_PX_PER_M);
   const [repData,               setRepData]               = useState([]);
-
-  // ── Load OpenCV.js and initialise ArUco resources ──────────────────────────
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        await loadScript(OPENCV_CDN);
-        const cv = await waitForCV();
-        if (cancelled) return;
-        cvRef.current = cv;
-
-        const dict   = buildDictionary(cv);
-        const params = new cv.DetectorParameters();
-        dictRef.current   = dict;
-        paramsRef.current = params;
-
-        if (typeof cv.ArucoDetector === 'function') {
-          detectorRef.current = new cv.ArucoDetector(dict, params);
-        } else {
-          const fn = resolveDetectFn(cv);
-          if (!fn) throw new Error('No ArUco detection function found in this OpenCV build');
-          detectFnRef.current = fn;
-        }
-        setCvReady(true);
-      } catch (err) {
-        if (!cancelled) setCvError(err.message);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      // Free C++ heap objects allocated in the WASM module
-      try { detectorRef.current?.delete?.(); } catch {}
-      try { paramsRef.current?.delete?.();  } catch {}
-      try { dictRef.current?.delete?.();    } catch {}
-      detectorRef.current = null;
-      paramsRef.current   = null;
-      dictRef.current     = null;
-    };
-  }, []);
 
   // ── Single-frame processing ────────────────────────────────────────────────
   const processFrame = useCallback(() => {
-    const cv    = cvRef.current;
-    const video = videoRef.current;
-    if (!cv || !video || video.readyState < 2) return;
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || video.readyState < 2 || !canvas) return;
 
-    // Draw current video frame to offscreen canvas for cv.imread
-    const canvas = offscreenRef.current;
     if (canvas.width  !== video.videoWidth)  canvas.width  = video.videoWidth;
     if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
 
-    let src, gray, corners, ids, rejected;
-    try {
-      src      = cv.imread(canvas);
-      gray     = new cv.Mat();
-      corners  = new cv.MatVector();
-      ids      = new cv.Mat();
-      rejected = new cv.MatVector();
+    const blob = detectColorBlob(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    if (!blob) {
+      // Clear smoothing window so stale timestamps don't corrupt velocity when blob reappears
+      smoothPosRef.current = [];
+      smoothTsRef.current  = [];
+      return;
+    }
 
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    const pxPerM = calibPxMRef.current;
+    // Negate: upward movement (decreasing Y in image) = positive position
+    const posM = -(blob.cy / pxPerM);
+    const now  = performance.now();
 
-      if (detectorRef.current) {
-        // New API (4.7.0+)
-        detectorRef.current.detectMarkers(gray, corners, ids);
-      } else {
-        // Old API (4.5.x)
-        detectFnRef.current(gray, dictRef.current, corners, ids, paramsRef.current, rejected);
-      }
+    smoothPosRef.current.push(posM);
+    smoothTsRef.current.push(now);
+    if (smoothPosRef.current.length > SMOOTH_N) {
+      smoothPosRef.current.shift();
+      smoothTsRef.current.shift();
+    }
 
-      if (ids.rows > 0) {
-        const corner = corners.get(0);
-        const d      = corner.data32F; // flat [x0,y0, x1,y1, x2,y2, x3,y3]
-        corner.delete();
-        // Guard against non-standard OpenCV builds that return a different typed array
-        if (!d || d.length < 8) return;
-        // Centroid Y of the four corners
-        const cy = (d[1] + d[3] + d[5] + d[7]) / 4;
-        // Width from top-left to top-right corner (used for px/m calibration)
-        const wPx = Math.hypot(d[2] - d[0], d[3] - d[1]);
+    let vel = 0;
+    const n = smoothPosRef.current.length;
+    if (n >= 2) {
+      const dp = smoothPosRef.current[n - 1] - smoothPosRef.current[0];
+      const dt = (smoothTsRef.current[n - 1] - smoothTsRef.current[0]) / 1000;
+      if (dt > 0) vel = dp / dt;
+    }
+    setCurrentVelocity(vel);
 
-        if (wPx > 4) {
-          const pxPerM     = wPx / MARKER_SIZE_M;
-          calibPxMRef.current = pxPerM;
-          // Only update React state when rounded value changes — avoids 60fps re-renders
-          const displayVal = Math.round(pxPerM);
-          if (displayVal !== lastDisplayCalibRef.current) {
-            lastDisplayCalibRef.current = displayVal;
-            setCalibrationPxPerMeter(displayVal);
-          }
-        }
-
-        if (calibPxMRef.current > 0) {
-          // Negate so that upward movement (decreasing Y in image space) = positive position
-          const posM = -(cy / calibPxMRef.current);
-          const now  = performance.now();
-
-          // Update smoothing window
-          smoothPosRef.current.push(posM);
-          smoothTsRef.current.push(now);
-          if (smoothPosRef.current.length > SMOOTH_N) {
-            smoothPosRef.current.shift();
-            smoothTsRef.current.shift();
-          }
-
-          // Velocity over the smoothing window
-          let vel = 0;
-          const n = smoothPosRef.current.length;
-          if (n >= 2) {
-            const dp = smoothPosRef.current[n - 1] - smoothPosRef.current[0];
-            const dt = (smoothTsRef.current[n - 1] - smoothTsRef.current[0]) / 1000;
-            if (dt > 0) vel = dp / dt;
-          }
-          setCurrentVelocity(vel);
-
-          const speed = Math.abs(vel);
-
-          if (!inRepRef.current && speed > VEL_THRESHOLD) {
-            // Rep started
-            inRepRef.current = true;
-            repPosRef.current = [posM];
-            repTsRef.current  = [now];
-          } else if (inRepRef.current) {
-            repPosRef.current.push(posM);
-            repTsRef.current.push(now);
-            if (speed < VEL_THRESHOLD) {
-              // Rep completed — compute metrics and save
-              inRepRef.current = false;
-              const positions  = repPosRef.current.slice();
-              const timestamps = repTsRef.current.slice();
-              const mpv        = calcMPV(positions, timestamps);
-              const peakVelocity = calcPeakVelocity(positions, timestamps);
-              repPosRef.current = [];
-              repTsRef.current  = [];
-              if (mpv > 0) {
-                // Store only computed metrics — omit raw arrays to keep state lean
-                setRepData(prev => [
-                  ...prev,
-                  { rep: prev.length + 1, mpv, peakVelocity },
-                ]);
-              }
-            }
+    const speed = Math.abs(vel);
+    if (!inRepRef.current && speed > VEL_THRESHOLD) {
+      inRepRef.current  = true;
+      repPosRef.current = [posM];
+      repTsRef.current  = [now];
+    } else if (inRepRef.current) {
+      repPosRef.current.push(posM);
+      repTsRef.current.push(now);
+      if (speed < VEL_THRESHOLD) {
+        inRepRef.current   = false;
+        const positions    = repPosRef.current.slice();
+        const timestamps   = repTsRef.current.slice();
+        const mpv          = calcMPV(positions, timestamps);
+        const peakVelocity = calcPeakVelocity(positions, timestamps);
+        repPosRef.current  = [];
+        repTsRef.current   = [];
+        if (mpv > 0) {
+          repCountRef.current += 1;
+          const done = repCountRef.current >= MAX_REPS;
+          setRepData(prev => [...prev, { rep: prev.length + 1, mpv, peakVelocity }]);
+          if (done) {
+            // Inline stop — avoids calling stopTracking() from within the rAF callback
+            runningRef.current   = false;
+            cameraReadyRef.current = false;
+            streamRef.current?.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+            if (videoRef.current) videoRef.current.srcObject = null;
+            inRepRef.current     = false;
+            repPosRef.current    = [];
+            repTsRef.current     = [];
+            smoothPosRef.current = [];
+            smoothTsRef.current  = [];
+            setIsCameraReady(false);
+            setIsTracking(false);
+            setCurrentVelocity(0);
+            setSessionComplete(true);
           }
         }
       }
-    } catch (err) { console.error('[ArUco] frame error:', err); } finally {
-      src?.delete();
-      gray?.delete();
-      corners?.delete();
-      ids?.delete();
-      rejected?.delete();
     }
   }, []);
 
-  // ── Start tracking ─────────────────────────────────────────────────────────
-  const startTracking = useCallback(async () => {
-    if (!cvReady || isTracking) return;
-    let stream = null;
-    try {
-      offscreenRef.current = document.createElement('canvas');
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      const video = videoRef.current;
-      // Guard: component may have unmounted during the async permission dialog
-      if (!video) throw new Error('Video element unmounted before stream could attach');
-      video.srcObject  = stream;
-      await new Promise((res, rej) => { video.onloadedmetadata = res; video.onerror = rej; });
-      await video.play();
-      streamRef.current  = stream;
-      runningRef.current = true;
-      setIsTracking(true);
-
-      const loop = () => {
-        if (!runningRef.current) return;
-        processFrame();
-        rafRef.current = requestAnimationFrame(loop);
-      };
-      rafRef.current = requestAnimationFrame(loop);
-    } catch (err) {
-      // Always release the stream if we acquired one but failed to attach it
-      stream?.getTracks().forEach(t => t.stop());
-      if (videoRef.current) videoRef.current.srcObject = null;
-      console.error('[useArUcoTracker] camera error:', err.message);
+  // ── Open camera only — video shows srcObject but rAF loop not started ──────
+  const openCamera = useCallback(async () => {
+    setCameraError(null);
+    const result = await startCamera(videoRef);
+    if (typeof result === 'string') {
+      setCameraError(result);
+      return result;   // return error code so caller can bail out
     }
-  }, [cvReady, isTracking, processFrame]);
+    streamRef.current    = result;
+    cameraReadyRef.current = true;
+    setIsCameraReady(true);
+    return null;         // success
+  }, []);
 
-  // ── Stop tracking ──────────────────────────────────────────────────────────
+  // ── Begin velocity tracking — starts rAF loop (camera must already be open) ─
+  const beginTracking = useCallback(() => {
+    if (!cameraReadyRef.current) return;
+    runningRef.current = true;
+    setIsTracking(true);
+    const loop = () => {
+      if (!runningRef.current) return;
+      processFrame();
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+  }, [processFrame]);
+
+  // ── Stop tracking + close camera ───────────────────────────────────────────
   const stopTracking = useCallback(() => {
-    runningRef.current = false;
+    runningRef.current     = false;
+    cameraReadyRef.current = false;
     cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
-    inRepRef.current      = false;
-    repPosRef.current     = [];
-    repTsRef.current      = [];
-    smoothPosRef.current  = [];
-    smoothTsRef.current   = [];
+    inRepRef.current     = false;
+    repPosRef.current    = [];
+    repTsRef.current     = [];
+    smoothPosRef.current = [];
+    smoothTsRef.current  = [];
+    setIsCameraReady(false);
     setIsTracking(false);
     setCurrentVelocity(0);
+  }, []);
+
+  // ── Manual rep entry (fallback) ────────────────────────────────────────────
+  const addManualRep = useCallback((mpv) => {
+    const v = parseFloat(mpv);
+    if (!v || v <= 0) return;
+    setRepData(prev => [...prev, { rep: prev.length + 1, mpv: v, peakVelocity: v }]);
+  }, []);
+
+  // ── Calibration ────────────────────────────────────────────────────────────
+  const setCalibration = useCallback((pxPerMeter) => {
+    calibPxMRef.current = pxPerMeter;
+    setCalibrationPxPerMeter(Math.round(pxPerMeter));
+  }, []);
+
+  // Capture the current video frame (uses DOM canvas to avoid iOS off-screen restrictions)
+  const captureFrame = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: canvas.width, height: canvas.height };
   }, []);
 
   // ── Reset session ──────────────────────────────────────────────────────────
   const resetSession = useCallback(() => {
     stopTracking();
     setRepData([]);
-    calibPxMRef.current         = 0;
-    lastDisplayCalibRef.current = 0;
-    setCalibrationPxPerMeter(0);
+    setSessionComplete(false);
+    repCountRef.current = 0;
+    calibPxMRef.current = DEFAULT_PX_PER_M;
+    setCalibrationPxPerMeter(DEFAULT_PX_PER_M);
   }, [stopTracking]);
 
   // Cleanup on unmount
@@ -297,14 +260,22 @@ export function useArUcoTracker() {
 
   return {
     videoRef,
+    canvasRef,
+    isCameraReady,
     isTracking,
+    sessionComplete,
+    cameraError,
     currentVelocity,
     repData,
-    startTracking,
+    openCamera,
+    beginTracking,
     stopTracking,
     resetSession,
+    addManualRep,
+    setCalibration,
+    captureFrame,
     calibrationPxPerMeter,
-    cvReady,
-    cvError,
+    cvReady:   true,
+    cvLoading: false,
   };
 }

@@ -68,6 +68,24 @@ export function calcVideoRegion(videoNativeW, videoNativeH, containerW, containe
   }
 }
 
+// Compute the pixel region for object-fit:cover — video fills container, may overflow.
+// Returned w/h can exceed containerW/H; x/y can be negative (cropped edges).
+// Use this for landmark-to-canvas mapping when the video uses object-fit:cover.
+export function calcVideoRegionCover(videoNativeW, videoNativeH, containerW, containerH) {
+  if (!videoNativeW || !videoNativeH || !containerW || !containerH) {
+    return { x: 0, y: 0, w: containerW || 0, h: containerH || 0 };
+  }
+  const scale = Math.max(containerW / videoNativeW, containerH / videoNativeH);
+  const w = videoNativeW * scale;
+  const h = videoNativeH * scale;
+  return {
+    x: (containerW - w) / 2,
+    y: (containerH - h) / 2,
+    w,
+    h,
+  };
+}
+
 // Convert normalized landmark coordinate to canvas pixel using the video region.
 export function normToCanvas(normX, normY, region) {
   return {

@@ -87,18 +87,25 @@ export function usePoseDetection({ onLandmarks }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          facingMode: { exact: 'environment' },
+          width:  { ideal: 1920 },
+          height: { ideal: 1080 },
         },
         audio: false,
       });
+
+      console.log('Stream track settings:', stream.getVideoTracks()[0].getSettings());
 
       const video = videoRef.current;
       if (!video) {
         stream.getTracks().forEach(t => t.stop());
         return;
       }
+
+      // Ensure iOS-critical attributes are set before srcObject assignment
+      video.playsInline = true;
+      video.muted       = true;
+      video.autoplay    = true;
 
       video.srcObject = stream;
       await new Promise((res, rej) => {

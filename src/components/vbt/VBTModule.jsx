@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Play, Square, RotateCcw, Camera, Loader2, Plus,
+  Play, Square, RotateCcw, Camera, CameraOff,
   AlertTriangle, Activity, Zap, TrendingDown,
 } from 'lucide-react';
 import {
@@ -10,9 +10,9 @@ import {
 import { useArUcoTracker } from '../../hooks/useArUcoTracker';
 import { calcPower, calcFatigueIndex, classifyLoad } from '../../utils/vbtCalculations';
 
-const EXERCISES = ['Sentadilla', 'Press Banca', 'Peso Muerto', 'Arranque'];
+const EXERCISES    = ['Sentadilla', 'Press Banca', 'Peso Muerto', 'Arranque'];
+const BAR_LENGTH_M = 2.2;
 
-// Background/text colour based on MPV zone
 function zoneColors(mpv) {
   if (mpv > 1.00) return { bg: 'rgba(34,197,94,0.15)',  text: '#22c55e' };
   if (mpv >= 0.75) return { bg: 'rgba(234,179,8,0.15)', text: '#eab308' };
@@ -33,35 +33,24 @@ export default function VBTModule() {
   const {
     videoRef, isTracking, currentVelocity, repData,
     startTracking, stopTracking, resetSession, addManualRep,
-    calibrationPxPerMeter, cvReady, cvLoading, statusMsg,
+    setCalibration, captureFrame,
+    calibrationPxPerMeter,
   } = useArUcoTracker();
 
-  const [manualMPV,    setManualMPV]    = useState('');
-  const [manualActive, setManualActive] = useState(false);
-
-  function handleAddManualRep() {
-    const v = parseFloat(manualMPV);
-    if (!v || v <= 0) return;
-    addManualRep(v);
-    setManualMPV('');
-  }
-
-  function handleReset() {
-    resetSession();
-    setManualActive(false);
-    setManualMPV('');
-  }
+  // Calibration state
+  const [calibMode,   setCalibMode]   = useState(false);
+  const [calibFrame,  setCalibFrame]  = useState(null);   // { dataUrl, width, height }
+  const [calibPoints, setCalibPoints] = useState([]);     // [{ xPct, yPct }, ...]
+  const calibImgRef = useRef(null);
 
   const load       = parseFloat(loadKg) || 0;
   const repLoadRef = useRef({});
 
-  // Capture load at the moment each rep is saved so historical power is immutable
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (repData.length === 0) { repLoadRef.current = {}; return; }
     const last = repData[repData.length - 1];
     if (!(last.rep in repLoadRef.current)) repLoadRef.current[last.rep] = load;
-  }, [repData.length]);
+  }, [repData.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const repVelocities = useMemo(() => repData.map(r => r.mpv), [repData]);
   const lastRep       = repData[repData.length - 1];
@@ -77,18 +66,55 @@ export default function VBTModule() {
   const dropLine  = firstMPV > 0 ? +(firstMPV * 0.8).toFixed(3) : null;
 
   const fatigueStatus =
-    fatigueIndex === null       ? null
-    : fatigueIndex > 20         ? 'danger'
-    : fatigueIndex > 10         ? 'warning'
+    fatigueIndex === null ? null
+    : fatigueIndex > 20   ? 'danger'
+    : fatigueIndex > 10   ? 'warning'
     : 'ok';
+
+  // ── Calibration handlers ───────────────────────────────────────────────────
+  function handleCalibrate() {
+    const frame = captureFrame();
+    if (!frame) return;
+    setCalibFrame(frame);
+    setCalibPoints([]);
+    setCalibMode(true);
+  }
+
+  function handleCalibTap(e) {
+    e.preventDefault();
+    const img = calibImgRef.current;
+    if (!img || !calibFrame) return;
+    const rect = img.getBoundingClientRect();
+    const clientX = e.touches?.[0]?.clientX ?? e.clientX;
+    const clientY = e.touches?.[0]?.clientY ?? e.clientY;
+    const xPct = (clientX - rect.left)  / rect.width;
+    const yPct = (clientY - rect.top)   / rect.height;
+    const next = [...calibPoints, { xPct, yPct }];
+    setCalibPoints(next);
+
+    if (next.length >= 2) {
+      // Convert fractions to actual video-frame pixels, then compute distance
+      const dx = (next[1].xPct - next[0].xPct) * calibFrame.width;
+      const dy = (next[1].yPct - next[0].yPct) * calibFrame.height;
+      setCalibration(Math.hypot(dx, dy) / BAR_LENGTH_M);
+      setCalibMode(false);
+      setCalibPoints([]);
+    }
+  }
+
+  function handleReset() {
+    resetSession();
+    setCalibMode(false);
+    setCalibPoints([]);
+  }
 
   return (
     <div className="space-y-4">
 
       {/* ── Header ── */}
       <div>
-        <h2 className="text-xl font-bold text-slate-100">VBT · ArUco</h2>
-        <p className="text-sm text-slate-400">Velocity Based Training — seguimiento óptico en tiempo real</p>
+        <h2 className="text-xl font-bold text-slate-100">VBT · Color Tracking</h2>
+        <p className="text-sm text-slate-400">Velocity Based Training — detección por color en tiempo real</p>
       </div>
 
       {/* ── Panel Superior — Sesión ── */}
@@ -145,24 +171,41 @@ export default function VBTModule() {
           </div>
         </div>
 
+        {/* Calibration row */}
+        <div className="flex items-center justify-between py-1 border-t border-white/5">
+          <div>
+            <p className="text-xs text-slate-400">Calibración</p>
+            <p className="text-xs text-slate-600 font-data mt-0.5">
+              {Math.round(calibrationPxPerMeter)} px/m
+              {calibrationPxPerMeter === 200 && <span className="ml-1 text-slate-700">(default)</span>}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCalibrate}
+            disabled={!isTracking}
+            title={isTracking ? 'Capturar frame y calibrar' : 'Iniciá la cámara para calibrar'}
+            style={{ touchAction: 'manipulation' }}
+            className="px-3 py-1.5 bg-background border border-white/10 rounded-lg text-xs text-slate-400 hover:text-slate-200 disabled:opacity-30 transition-colors"
+          >
+            Calibrar
+          </button>
+        </div>
+
         {/* Camera status + controls */}
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2 text-xs">
-            {cvLoading ? (
-              <span className="flex items-center gap-1.5 text-slate-400">
-                <Loader2 size={13} className="animate-spin text-accent" />
-                Cargando motor de visión…
+            {isTracking ? (
+              <span className="flex items-center gap-1.5 text-success">
+                <Camera size={13} /> Cámara activa — tracking por color
               </span>
             ) : (
-              <span className={`flex items-center gap-1.5 ${cvReady ? 'text-success' : 'text-warning'}`}>
-                {cvReady
-                  ? isTracking ? <Camera size={13} /> : <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
-                  : <AlertTriangle size={13} />}
-                {cvReady && isTracking ? 'Cámara activa' : statusMsg}
+              <span className="flex items-center gap-1.5 text-slate-500">
+                <CameraOff size={13} /> Sin señal
               </span>
             )}
-            {cvReady && calibrationPxPerMeter > 0 && (
-              <span className="text-slate-600 font-data ml-1">
+            {isTracking && calibrationPxPerMeter > 0 && (
+              <span className="text-slate-700 font-data">
                 {Math.round(calibrationPxPerMeter)} px/m
               </span>
             )}
@@ -171,17 +214,15 @@ export default function VBTModule() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={cvReady
-                ? (isTracking ? stopTracking : startTracking)
-                : () => setManualActive(a => !a)}
+              onClick={isTracking ? stopTracking : startTracking}
               style={{ touchAction: 'manipulation' }}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                (cvReady && isTracking) || (!cvReady && manualActive)
+                isTracking
                   ? 'bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30'
                   : 'bg-accent text-background hover:bg-accent/90'
               }`}
             >
-              {(cvReady && isTracking) || (!cvReady && manualActive)
+              {isTracking
                 ? <><Square size={14} /> Detener</>
                 : <><Play size={14} /> Iniciar</>}
             </button>
@@ -196,39 +237,14 @@ export default function VBTModule() {
             </button>
           </div>
         </div>
-
-        {/* Manual mode input — visible when OpenCV unavailable and session active */}
-        {!cvReady && !cvLoading && manualActive && (
-          <div className="bg-background rounded-lg border border-white/10 p-3 space-y-2">
-            <p className="text-xs text-slate-500">Ingresá MPV por rep manualmente</p>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                step="0.001"
-                min="0"
-                placeholder="MPV (m/s)"
-                value={manualMPV}
-                onChange={e => setManualMPV(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddManualRep()}
-                inputMode="decimal"
-                autoComplete="off"
-                style={{ touchAction: 'manipulation' }}
-                className="flex-1 bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
-              />
-              <button
-                type="button"
-                onClick={handleAddManualRep}
-                style={{ touchAction: 'manipulation' }}
-                className="flex items-center gap-1.5 px-4 py-2 bg-accent text-background rounded-lg text-sm font-semibold hover:bg-accent/90 transition-colors"
-              >
-                <Plus size={14} /> Rep
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Hidden video element — camera frames consumed by the hook */}
+      {/* Instruction hint */}
+      <p className="text-xs text-slate-600 text-center -mt-1">
+        Pegá cinta naranja/roja en el extremo de la barra
+      </p>
+
+      {/* Hidden video element */}
       <video ref={videoRef} playsInline muted className="hidden" width={640} height={480} />
 
       {/* ── Panel Central — Métricas en tiempo real ── */}
@@ -246,8 +262,8 @@ export default function VBTModule() {
             <span
               className="text-xs font-medium px-2 py-0.5 rounded-full border"
               style={{
-                background: currentMPV > 0 ? colors.bg : 'rgba(255,255,255,0.04)',
-                color:      currentMPV > 0 ? colors.text : '#475569',
+                background:  currentMPV > 0 ? colors.bg  : 'rgba(255,255,255,0.04)',
+                color:       currentMPV > 0 ? colors.text : '#475569',
                 borderColor: currentMPV > 0 ? colors.text + '40' : 'rgba(255,255,255,0.08)',
               }}
             >
@@ -359,7 +375,6 @@ export default function VBTModule() {
                 labelStyle={{ color: '#f8fafc' }}
                 itemStyle={{ color: '#38bdf8' }}
               />
-              {/* Reference line at first rep MPV */}
               {firstMPV > 0 && (
                 <ReferenceLine
                   y={firstMPV}
@@ -368,7 +383,6 @@ export default function VBTModule() {
                   label={{ value: 'Rep 1', fill: '#64748b', fontSize: 10, position: 'insideTopLeft' }}
                 />
               )}
-              {/* Danger zone — 20% drop from first rep */}
               {dropLine && (
                 <>
                   <ReferenceArea y1={0} y2={dropLine} fill="rgba(239,68,68,0.07)" />
@@ -399,13 +413,17 @@ export default function VBTModule() {
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
             <TrendingDown size={14} className="text-slate-400" />
             <span className="text-sm font-medium text-slate-200">Histórico de serie</span>
-            <span className="ml-auto text-xs text-slate-500">{athleteName || '—'} · {exercise} · {load || '—'} kg</span>
+            <span className="ml-auto text-xs text-slate-500">
+              {athleteName || '—'} · {exercise} · {load || '—'} kg
+            </span>
           </div>
 
           {fatigueStatus === 'danger' && (
             <div className="mx-4 mt-3 flex items-center gap-2 p-2.5 bg-danger/10 border border-danger/30 rounded-lg">
               <AlertTriangle size={14} className="text-danger flex-shrink-0" />
-              <span className="text-xs font-bold text-danger">DETENER SERIE — caída de velocidad superior al 20%</span>
+              <span className="text-xs font-bold text-danger">
+                DETENER SERIE — caída de velocidad superior al 20%
+              </span>
             </div>
           )}
           {fatigueStatus === 'warning' && (
@@ -468,6 +486,71 @@ export default function VBTModule() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── Calibration overlay ── */}
+      {calibMode && calibFrame && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center gap-4 p-4">
+          <p className="text-sm font-semibold text-slate-200">
+            {calibPoints.length === 0
+              ? 'Tocá el primer extremo de la barra (2.2 m)'
+              : 'Tocá el otro extremo de la barra'}
+          </p>
+          <p className="text-xs text-slate-500 -mt-2">La distancia entre los dos puntos = 2.2 m</p>
+
+          <div
+            className="relative select-none"
+            onPointerDown={handleCalibTap}
+            style={{ touchAction: 'none', cursor: 'crosshair' }}
+          >
+            <img
+              ref={calibImgRef}
+              src={calibFrame.dataUrl}
+              alt="Calibración"
+              draggable={false}
+              className="max-w-full max-h-[60vh] rounded-lg block"
+            />
+            {/* Tap points */}
+            {calibPoints.map((p, i) => (
+              <div
+                key={i}
+                className="absolute w-5 h-5 rounded-full border-2 border-white bg-accent/80 pointer-events-none"
+                style={{
+                  left:      `${p.xPct * 100}%`,
+                  top:       `${p.yPct * 100}%`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+            ))}
+            {/* Line between points */}
+            {calibPoints.length === 2 && (
+              <svg
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                <line
+                  x1={`${calibPoints[0].xPct * 100}%`}
+                  y1={`${calibPoints[0].yPct * 100}%`}
+                  x2={`${calibPoints[1].xPct * 100}%`}
+                  y2={`${calibPoints[1].yPct * 100}%`}
+                  stroke="#38bdf8"
+                  strokeWidth="0.5"
+                  strokeDasharray="3 2"
+                />
+              </svg>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => { setCalibMode(false); setCalibPoints([]); }}
+            style={{ touchAction: 'manipulation' }}
+            className="px-5 py-2 bg-background border border-white/10 rounded-lg text-sm text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            Cancelar
+          </button>
         </div>
       )}
     </div>

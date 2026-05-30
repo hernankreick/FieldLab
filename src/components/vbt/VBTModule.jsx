@@ -37,12 +37,11 @@ export default function VBTModule() {
   const [loadKg,      setLoadKg]      = useState('');
   const [countdown,   setCountdown]   = useState(null); // null | '3' | '2' | '1' | '¡YA!'
 
-  const audioCtxRef        = useRef(null);
   const countdownActiveRef = useRef(false);
 
   const {
     videoRef, canvasRef, isCameraReady, isTracking, sessionComplete, cameraError,
-    repData, openCamera, beginTracking, stopTracking, resetSession,
+    repData, blobDetected, openCamera, beginTracking, stopTracking, resetSession,
     setCalibration, captureFrame, calibrationPxPerMeter,
   } = useArUcoTracker();
 
@@ -89,75 +88,37 @@ export default function VBTModule() {
     window.dispatchEvent(new CustomEvent('vbt-fullscreen', { detail: { active: isCameraReady || isTracking } }));
   }, [isCameraReady, isTracking]);
 
-  // Cancel countdown and close AudioContext on unmount to avoid setState on dead component
+  // Cancel countdown on unmount
   useEffect(() => {
-    return () => {
-      countdownActiveRef.current = false;
-      audioCtxRef.current?.close();
-    };
+    return () => { countdownActiveRef.current = false; };
   }, []);
 
-  // ── Audio helpers — ctx passed explicitly so iOS gets a fresh user-gesture context ──
-  function playBeep(freq, duration, ctx) {
-    if (!ctx) return;
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = freq;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + duration);
-  }
-
-  // ── Session complete: double beep (ctx already exists from START click) ────
+  // ── Session complete vibration ─────────────────────────────────────────────
   useEffect(() => {
-    const ctx = audioCtxRef.current;
-    if (!sessionComplete || !ctx) return;
-    for (let i = 0; i < 2; i++) {
-      const t    = ctx.currentTime + i * 0.45;
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 600;
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(0.3, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-      osc.start(t);
-      osc.stop(t + 0.3);
-    }
+    if (!sessionComplete) return;
+    navigator.vibrate?.([200, 100, 200]);
   }, [sessionComplete]);
 
-  // ── PASO 1 → PASO 2: create+unlock AudioContext FIRST (sync), then open camera ──
+  // ── PASO 1 → PASO 2: open camera ──────────────────────────────────────────
   async function handleIniciar() {
     if (isCameraReady || isTracking) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-    audioCtxRef.current = ctx;
     await openCamera();
   }
 
-  // ── PASO 2 → PASO 3: setTimeout-based countdown — no async/await after user gesture ──
-  function startCountdown(ctx) {
+  // ── PASO 2 → PASO 3: setTimeout countdown with haptic feedback ────────────
+  function startCountdown() {
     countdownActiveRef.current = true;
-    const beeps = [
-      { n: '3',    t:    0, f:  660, d: 0.15 },
-      { n: '2',    t: 1000, f:  660, d: 0.15 },
-      { n: '1',    t: 2000, f:  660, d: 0.15 },
-      { n: '¡YA!', t: 3000, f: 1320, d: 0.5  },
+    const steps = [
+      { n: '3',    t:    0, vibMs: 100 },
+      { n: '2',    t: 1000, vibMs: 100 },
+      { n: '1',    t: 2000, vibMs: 100 },
+      { n: '¡YA!', t: 3000, vibMs: 400 },
     ];
-    beeps.forEach(({ n, t, f, d }) => {
+    steps.forEach(({ n, t, vibMs }) => {
       setTimeout(() => {
         if (!countdownActiveRef.current) return;
         setCountdown(n);
-        playBeep(f, d, ctx);
+        navigator.vibrate?.(vibMs);
       }, t);
     });
     setTimeout(() => {
@@ -167,12 +128,9 @@ export default function VBTModule() {
     }, 4000);
   }
 
-  async function handleStartButton() {
+  function handleStartButton() {
     if (countdown !== null || !isCameraReady) return;
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    if (ctx.state === 'suspended') await ctx.resume();
-    startCountdown(ctx);
+    startCountdown();
   }
 
   // ── Calibration handlers ───────────────────────────────────────────────────
@@ -356,6 +314,13 @@ export default function VBTModule() {
             <p className="text-xs text-white/30 font-data mt-1">
               V.Pico {currentPeak.toFixed(2)} · {Math.round(currentPower)} W
             </p>
+            <div className="flex items-center gap-1 mt-2 pt-1.5 border-t border-white/10">
+              <span
+                className={`text-[10px] font-semibold tracking-wider ${blobDetected ? 'text-green-400 animate-pulse' : 'text-slate-500'}`}
+              >
+                {blobDetected ? '● TARGET' : '○ SIN TARGET'}
+              </span>
+            </div>
           </div>
 
           {/* Rep counter — top right */}

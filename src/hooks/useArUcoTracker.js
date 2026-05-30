@@ -1,11 +1,18 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { calcMPV, calcPeakVelocity } from '../utils/vbtCalculations';
 
-const VEL_THRESHOLD    = 0.1;   // m/s
-const SMOOTH_N         = 4;
-const DEFAULT_PX_PER_M = 200;
-const BLOB_MIN_PX      = 10;
-const SCAN_STRIDE      = 4;
+const VEL_THRESHOLD        = 0.15;   // m/s — min speed to start/end a rep
+const SMOOTH_N             = 5;      // frames for position moving average (smoothY)
+const VEL_WINDOW           = 3;      // frames for velocity derivation
+const DEFAULT_PX_PER_M     = 200;
+const MIN_BLOB_AREA        = 400;    // px² — ignore tiny noise blobs
+const MAX_BLOB_AREA        = 40000;  // px² — ignore blobs that fill the frame
+const MAX_VELOCITY         = 3.0;   // m/s — physical ceiling; higher = noise spike
+const MAX_CENTROID_JUMP_PX = 80;    // px — max cy shift between consecutive frames
+const MIN_REP_MS           = 300;   // ms — shorter = false positive
+const MAX_REP_MS           = 4000;  // ms — longer = false positive
+const MIN_PAUSE_MS         = 500;   // ms — dead zone between reps
+const SCAN_STRIDE          = 4;
 
 export const MAX_REPS = 4;
 
@@ -24,7 +31,7 @@ function rgbToHsl(r, g, b) {
   return [h * 60, s * 100, l * 100];
 }
 
-// Returns centroid {cx, cy} of orange/red blob in image coordinates, or null
+// Returns centroid {cx, cy} of orange/red blob that passes area thresholds, or null.
 function detectColorBlob(imageData) {
   const { data, width, height } = imageData;
   let sumX = 0, sumY = 0, count = 0;
@@ -32,17 +39,20 @@ function detectColorBlob(imageData) {
     for (let x = 0; x < width; x += SCAN_STRIDE) {
       const i = (y * width + x) * 4;
       const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
-      // Orange/red tape: H in [0,30]° or wrap-around red [330,360°], well-saturated, mid-luminance
+      // Orange/red tape: H in [0,30]° or wrap-around [330,360°], well-saturated, mid-luminance
       if ((h <= 30 || h >= 330) && s > 60 && l >= 40 && l <= 70) {
         sumX += x; sumY += y; count++;
       }
     }
   }
-  return count >= BLOB_MIN_PX ? { cx: sumX / count, cy: sumY / count } : null;
+  // Each sampled pixel represents SCAN_STRIDE² actual pixels
+  const area = count * SCAN_STRIDE * SCAN_STRIDE;
+  if (area < MIN_BLOB_AREA || area > MAX_BLOB_AREA) return null;
+  return { cx: sumX / count, cy: sumY / count };
 }
 
-// iOS Safari requires: playsinline set as attribute, muted, and a direct play() call.
-// Returns the MediaStream on success, or a string error code on failure.
+// iOS Safari: playsinline + muted + explicit play() required.
+// Returns MediaStream on success, or error string on failure.
 async function startCamera(videoRef) {
   let stream = null;
   try {
@@ -71,24 +81,34 @@ async function startCamera(videoRef) {
 }
 
 export function useArUcoTracker() {
-  // videoRef and canvasRef are attached to DOM elements in VBTModule.
-  // iOS requires both to be in the DOM before use.
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
 
-  const streamRef       = useRef(null);
-  const rafRef          = useRef(null);
-  const runningRef      = useRef(false);
-  const cameraReadyRef  = useRef(false); // true once stream is assigned to video
+  const streamRef        = useRef(null);
+  const rafRef           = useRef(null);
+  const runningRef       = useRef(false);
+  const cameraReadyRef   = useRef(false);
 
-  const calibPxMRef  = useRef(DEFAULT_PX_PER_M);
+  const calibPxMRef      = useRef(DEFAULT_PX_PER_M);
 
-  const inRepRef     = useRef(false);
-  const repPosRef    = useRef([]);
-  const repTsRef     = useRef([]);
-  const smoothPosRef = useRef([]);
-  const smoothTsRef  = useRef([]);
-  const repCountRef  = useRef(0);
+  // Rep state
+  const inRepRef         = useRef(false);
+  const repPosRef        = useRef([]);
+  const repTsRef         = useRef([]);
+  const repCountRef      = useRef(0);
+  const repStartTsRef    = useRef(null);   // when current rep started
+  const lastRepEndTsRef  = useRef(null);   // when last rep ended (pause guard)
+
+  // Smoothing
+  const positionBufferRef = useRef([]);    // last SMOOTH_N raw cy px values → smoothY
+  const smoothPosRef      = useRef([]);    // last VEL_WINDOW smoothed posM values
+  const smoothTsRef       = useRef([]);    // timestamps for velocity window
+
+  // Centroid stability
+  const prevCyRef         = useRef(null);  // previous frame's cy for jump detection
+
+  // Blob indicator
+  const blobDetectedRef   = useRef(false);
 
   const [isCameraReady,         setIsCameraReady]         = useState(false);
   const [isTracking,            setIsTracking]            = useState(false);
@@ -97,6 +117,7 @@ export function useArUcoTracker() {
   const [currentVelocity,       setCurrentVelocity]       = useState(0);
   const [calibrationPxPerMeter, setCalibrationPxPerMeter] = useState(DEFAULT_PX_PER_M);
   const [repData,               setRepData]               = useState([]);
+  const [blobDetected,          setBlobDetected]          = useState(false);
 
   // ── Single-frame processing ────────────────────────────────────────────────
   const processFrame = useCallback(() => {
@@ -111,20 +132,42 @@ export function useArUcoTracker() {
 
     const blob = detectColorBlob(ctx.getImageData(0, 0, canvas.width, canvas.height));
     if (!blob) {
-      // Clear smoothing window so stale timestamps don't corrupt velocity when blob reappears
-      smoothPosRef.current = [];
-      smoothTsRef.current  = [];
+      positionBufferRef.current = [];
+      smoothPosRef.current      = [];
+      smoothTsRef.current       = [];
+      prevCyRef.current         = null;
+      if (blobDetectedRef.current) { blobDetectedRef.current = false; setBlobDetected(false); }
       return;
     }
 
+    // Centroid jump check — discard frames where the blob teleports
+    const prevCy = prevCyRef.current;
+    prevCyRef.current = blob.cy;
+    if (prevCy !== null && Math.abs(blob.cy - prevCy) > MAX_CENTROID_JUMP_PX) {
+      positionBufferRef.current = [];
+      smoothPosRef.current      = [];
+      smoothTsRef.current       = [];
+      if (blobDetectedRef.current) { blobDetectedRef.current = false; setBlobDetected(false); }
+      return;
+    }
+
+    if (!blobDetectedRef.current) { blobDetectedRef.current = true; setBlobDetected(true); }
+
+    // Position smoothing: 5-frame moving average on raw cy pixel values
+    const cyBuf = positionBufferRef.current;
+    cyBuf.push(blob.cy);
+    if (cyBuf.length > SMOOTH_N) cyBuf.shift();
+    const smoothY = cyBuf.reduce((a, b) => a + b, 0) / cyBuf.length;
+
     const pxPerM = calibPxMRef.current;
     // Negate: upward movement (decreasing Y in image) = positive position
-    const posM = -(blob.cy / pxPerM);
+    const posM = -(smoothY / pxPerM);
     const now  = performance.now();
 
+    // Velocity derivation: 3-frame window on smoothed positions
     smoothPosRef.current.push(posM);
     smoothTsRef.current.push(now);
-    if (smoothPosRef.current.length > SMOOTH_N) {
+    if (smoothPosRef.current.length > VEL_WINDOW) {
       smoothPosRef.current.shift();
       smoothTsRef.current.shift();
     }
@@ -136,40 +179,65 @@ export function useArUcoTracker() {
       const dt = (smoothTsRef.current[n - 1] - smoothTsRef.current[0]) / 1000;
       if (dt > 0) vel = dp / dt;
     }
+
+    // Velocity spike filter — physical ceiling
+    if (Math.abs(vel) > MAX_VELOCITY) return;
+
     setCurrentVelocity(vel);
 
     const speed = Math.abs(vel);
+
     if (!inRepRef.current && speed > VEL_THRESHOLD) {
-      inRepRef.current  = true;
-      repPosRef.current = [posM];
-      repTsRef.current  = [now];
+      // Enforce minimum rest pause between reps
+      if (lastRepEndTsRef.current !== null && now - lastRepEndTsRef.current < MIN_PAUSE_MS) return;
+      inRepRef.current      = true;
+      repStartTsRef.current = now;
+      repPosRef.current     = [posM];
+      repTsRef.current      = [now];
     } else if (inRepRef.current) {
       repPosRef.current.push(posM);
       repTsRef.current.push(now);
       if (speed < VEL_THRESHOLD) {
-        inRepRef.current   = false;
+        inRepRef.current = false;
+        const repDuration = now - (repStartTsRef.current ?? now);
+        lastRepEndTsRef.current = now;
+
+        // Discard reps that are too short (noise) or too long (static hold)
+        if (repDuration < MIN_REP_MS || repDuration > MAX_REP_MS) {
+          repPosRef.current = [];
+          repTsRef.current  = [];
+          return;
+        }
+
         const positions    = repPosRef.current.slice();
         const timestamps   = repTsRef.current.slice();
         const mpv          = calcMPV(positions, timestamps);
         const peakVelocity = calcPeakVelocity(positions, timestamps);
         repPosRef.current  = [];
         repTsRef.current   = [];
+
         if (mpv > 0) {
           repCountRef.current += 1;
           const done = repCountRef.current >= MAX_REPS;
           setRepData(prev => [...prev, { rep: prev.length + 1, mpv, peakVelocity }]);
           if (done) {
-            // Inline stop — avoids calling stopTracking() from within the rAF callback
-            runningRef.current   = false;
+            // Inline stop — safe to call from within the rAF callback
+            runningRef.current    = false;
             cameraReadyRef.current = false;
             streamRef.current?.getTracks().forEach(t => t.stop());
             streamRef.current = null;
             if (videoRef.current) videoRef.current.srcObject = null;
-            inRepRef.current     = false;
-            repPosRef.current    = [];
-            repTsRef.current     = [];
-            smoothPosRef.current = [];
-            smoothTsRef.current  = [];
+            inRepRef.current          = false;
+            repPosRef.current         = [];
+            repTsRef.current          = [];
+            positionBufferRef.current = [];
+            smoothPosRef.current      = [];
+            smoothTsRef.current       = [];
+            prevCyRef.current         = null;
+            repStartTsRef.current     = null;
+            lastRepEndTsRef.current   = null;
+            blobDetectedRef.current   = false;
+            setBlobDetected(false);
             setIsCameraReady(false);
             setIsTracking(false);
             setCurrentVelocity(0);
@@ -180,18 +248,18 @@ export function useArUcoTracker() {
     }
   }, []);
 
-  // ── Open camera only — video shows srcObject but rAF loop not started ──────
+  // ── Open camera only — stream assigned, rAF loop not started ──────────────
   const openCamera = useCallback(async () => {
     setCameraError(null);
     const result = await startCamera(videoRef);
     if (typeof result === 'string') {
       setCameraError(result);
-      return result;   // return error code so caller can bail out
+      return result;
     }
-    streamRef.current    = result;
+    streamRef.current      = result;
     cameraReadyRef.current = true;
     setIsCameraReady(true);
-    return null;         // success
+    return null;
   }, []);
 
   // ── Begin velocity tracking — starts rAF loop (camera must already be open) ─
@@ -215,11 +283,17 @@ export function useArUcoTracker() {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
-    inRepRef.current     = false;
-    repPosRef.current    = [];
-    repTsRef.current     = [];
-    smoothPosRef.current = [];
-    smoothTsRef.current  = [];
+    inRepRef.current          = false;
+    repPosRef.current         = [];
+    repTsRef.current          = [];
+    positionBufferRef.current = [];
+    smoothPosRef.current      = [];
+    smoothTsRef.current       = [];
+    prevCyRef.current         = null;
+    repStartTsRef.current     = null;
+    lastRepEndTsRef.current   = null;
+    blobDetectedRef.current   = false;
+    setBlobDetected(false);
     setIsCameraReady(false);
     setIsTracking(false);
     setCurrentVelocity(0);
@@ -238,7 +312,7 @@ export function useArUcoTracker() {
     setCalibrationPxPerMeter(Math.round(pxPerMeter));
   }, []);
 
-  // Capture the current video frame (uses DOM canvas to avoid iOS off-screen restrictions)
+  // ── Capture current video frame (DOM canvas — safe on iOS) ────────────────
   const captureFrame = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
@@ -267,6 +341,7 @@ export function useArUcoTracker() {
     cameraError,
     currentVelocity,
     repData,
+    blobDetected,
     openCamera,
     beginTracking,
     stopTracking,

@@ -105,8 +105,8 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
       // Start trigger: centroid crosses LEFT line going left-to-right
       if (!isDebounced(lastCrossingRef.current, now)) {
         if (didCrossLine(prevX, currX, leftLineRef.current, 'ltr')) {
-          timerStartRef.current = performance.now(); // use fresh now for precision
-          lastCrossingRef.current = performance.now();
+          timerStartRef.current = now;
+          lastCrossingRef.current = now;
           codTurnMadeRef.current = false;
           setCodTurnMade(false);
           setPhase('measuring');
@@ -119,17 +119,17 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
           // Waiting for athlete to reach the TURN line (right line, going ltr)
           if (didCrossLine(prevX, currX, rightLineRef.current, 'ltr')) {
             codTurnMadeRef.current = true;
-            lastCrossingRef.current = performance.now();
+            lastCrossingRef.current = now;
             setCodTurnMade(true);
           }
         } else {
           // Turn confirmed — now waiting for return crossing of LEFT line (rtl)
-          if (!isDebounced(lastCrossingRef.current, performance.now())) {
+          if (!isDebounced(lastCrossingRef.current, now)) {
             // Verify direction: centroid must be moving left (rtl)
             const dx = calcMovementDirection(centroidHistoryRef.current);
             if (dx < 0 && didCrossLine(prevX, currX, leftLineRef.current, 'rtl')) {
-              const elapsed = (performance.now() - timerStartRef.current) / 1000;
-              lastCrossingRef.current = performance.now();
+              const elapsed = (now - timerStartRef.current) / 1000;
+              lastCrossingRef.current = now;
               setResultTime(elapsed);
               setPhase('result');
             }
@@ -137,10 +137,10 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
         }
       } else {
         // Sprint: stop timer when centroid crosses RIGHT line going ltr
-        if (!isDebounced(lastCrossingRef.current, performance.now())) {
+        if (!isDebounced(lastCrossingRef.current, now)) {
           if (didCrossLine(prevX, currX, rightLineRef.current, 'ltr')) {
-            const elapsed = (performance.now() - timerStartRef.current) / 1000;
-            lastCrossingRef.current = performance.now();
+            const elapsed = (now - timerStartRef.current) / 1000;
+            lastCrossingRef.current = now;
             setResultTime(elapsed);
             setPhase('result');
           }
@@ -151,7 +151,15 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
     prevCentroidXRef.current = currX;
   }, [isCOD]);
 
-  const { videoRef, mpLoading, mpError, cameraError, startCamera, stopCamera } = usePoseDetection({ onLandmarks });
+  const { videoRef, isRunning, mpLoading, mpError, cameraError, startCamera, stopCamera } = usePoseDetection({ onLandmarks });
+
+  // Transition to calib-1 only once the camera stream is actually running.
+  // This prevents advancing the wizard on permission-denied or early-click errors.
+  useEffect(() => {
+    if (isRunning && phaseRef.current === 'permission') {
+      setPhase('calib-1');
+    }
+  }, [isRunning]);
 
   // ── Canvas draw loop — runs at max fps independently of MediaPipe ──────────
   const drawOverlay = useCallback((ctx, W, H, ts) => {
@@ -377,23 +385,32 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
   useEffect(() => {
     if (phase !== 'calib-2') return;
 
+    // `cancelled` guards against the iOS permission promise resolving after
+    // the user has already moved past calib-2, which would add a stale listener.
+    let cancelled = false;
+
     function handler(e) {
       orientationRef.current = { beta: e.beta, gamma: e.gamma };
       setOrientation({ beta: e.beta, gamma: e.gamma });
     }
 
-    // iOS 13+ requires permission
+    // iOS 13+ requires an explicit permission request
     if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
       DeviceOrientationEvent.requestPermission()
         .then(state => {
-          if (state === 'granted') window.addEventListener('deviceorientation', handler);
+          if (!cancelled && state === 'granted') {
+            window.addEventListener('deviceorientation', handler);
+          }
         })
         .catch(() => {});
     } else {
       window.addEventListener('deviceorientation', handler);
     }
 
-    return () => window.removeEventListener('deviceorientation', handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('deviceorientation', handler);
+    };
   }, [phase]);
 
   const orientationOk =
@@ -422,9 +439,9 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
   useEffect(() => () => clearInterval(countdownRef.current), []);
 
   // ── Camera open ───────────────────────────────────────────────────────────
+  // Phase transition is handled by the isRunning effect above.
   async function handleOpenCamera() {
     await startCamera();
-    setPhase('calib-1');
   }
 
   // ── Line dragging ─────────────────────────────────────────────────────────
@@ -618,7 +635,7 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
             )}
             <button
               onClick={handleOpenCamera}
-              disabled={!!mpError}
+              disabled={mpLoading || !!mpError}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-[#22d3ee] text-[#0f172a] font-bold text-sm disabled:opacity-40 min-h-[56px] active:bg-[#06b6d4]"
             >
               {mpLoading

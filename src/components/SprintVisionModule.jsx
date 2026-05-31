@@ -45,12 +45,9 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
   const [testRunCountdown, setTestRunCountdown] = useState(null); // null | 3 | 2 | 1
   const [testRunDone, setTestRunDone] = useState(false);
   const [codTurnMade, setCodTurnMade] = useState(false);
-  // true when screen.orientation.lock failed and device is in portrait — CSS rotation applied
-  const [isPortraitFallback, setIsPortraitFallback] = useState(false);
 
   // ── Mutable refs (read inside RAF loops and stable callbacks) ──────────────
   const phaseRef = useRef('permission');
-  const isPortraitFallbackRef = useRef(false);
   const leftLineRef = useRef(0.2);   // normalized X within video frame
   const rightLineRef = useRef(0.8);  // normalized X within video frame
   const centroidRef = useRef(null);  // { x, y, confidence } | null
@@ -164,48 +161,22 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
     }
   }, [isRunning]);
 
-  // Keep ref in sync so RAF/callback closures can read current value without stale state
-  useEffect(() => { isPortraitFallbackRef.current = isPortraitFallback; }, [isPortraitFallback]);
-
-  // ── Orientation lock — lock to landscape; fallback to CSS rotation on older iOS ──
+  // ── ResizeObserver — keep canvas backing store sized to its CSS layout box ──
   useEffect(() => {
-    function applyPortraitFallbackIfNeeded() {
-      if (window.innerHeight > window.innerWidth) {
-        setIsPortraitFallback(true);
-      }
-    }
-
-    if (screen.orientation?.lock) {
-      screen.orientation.lock('landscape').catch(() => {
-        // Lock not allowed (e.g. desktop browser, older iOS) — apply CSS rotation
-        applyPortraitFallbackIfNeeded();
-      });
-    } else {
-      applyPortraitFallbackIfNeeded();
-    }
-
-    return () => {
-      screen.orientation?.unlock?.();
-    };
-  }, []);
-
-  // ── ResizeObserver — keep canvas backing store sized to the video element ──
-  useEffect(() => {
-    const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!canvas) return;
 
     const ro = new ResizeObserver(() => {
-      const w = video.offsetWidth;
-      const h = video.offsetHeight;
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
       if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
         canvas.width  = w;
         canvas.height = h;
       }
     });
-    ro.observe(video);
+    ro.observe(canvas);
     return () => ro.disconnect();
-  }, []); // videoRef and canvasRef are stable for the component lifetime
+  }, []);
 
   // ── Canvas draw loop — runs at max fps independently of MediaPipe ──────────
   const drawOverlay = useCallback((ctx, W, H, ts) => {
@@ -226,14 +197,14 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
       ctx.setLineDash([]);
       for (let i = 1; i < 6; i++) {
         ctx.beginPath();
-        ctx.moveTo(region.x + (i / 6) * region.w, region.y);
-        ctx.lineTo(region.x + (i / 6) * region.w, region.y + region.h);
+        ctx.moveTo((i / 6) * W, 0);
+        ctx.lineTo((i / 6) * W, H);
         ctx.stroke();
       }
       for (let j = 1; j < 8; j++) {
         ctx.beginPath();
-        ctx.moveTo(region.x, region.y + (j / 8) * region.h);
-        ctx.lineTo(region.x + region.w, region.y + (j / 8) * region.h);
+        ctx.moveTo(0, (j / 8) * H);
+        ctx.lineTo(W, (j / 8) * H);
         ctx.stroke();
       }
     }
@@ -247,7 +218,7 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
         const ok = betaOk && gammaOk;
 
         const cx = W / 2;
-        const cy = region.y + region.h * 0.45;
+        const cy = H * 0.45;
         const radius = 52;
 
         // Outer ring
@@ -304,14 +275,14 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
       const lineColorRight = (isMeasuring && !isCOD) ? `rgba(34,197,94,1)` : `rgba(34,211,238,${pulse})`;
       const labelBg        = 'rgba(0,0,0,0.55)';
 
-      // Helper: draw one vertical line with label
+      // Helper: draw one vertical line spanning full canvas height
       function drawLine(pixelX, color, labelText, showHandle) {
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.setLineDash([]);
         ctx.beginPath();
-        ctx.moveTo(pixelX, region.y);
-        ctx.lineTo(pixelX, region.y + region.h);
+        ctx.moveTo(pixelX, 0);
+        ctx.lineTo(pixelX, H);
         ctx.stroke();
 
         // Label badge at top
@@ -319,13 +290,13 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
         ctx.textAlign = 'center';
         const labelW = ctx.measureText(labelText).width + 14;
         ctx.fillStyle = labelBg;
-        ctx.fillRect(pixelX - labelW / 2, region.y + 6, labelW, 20);
+        ctx.fillRect(pixelX - labelW / 2, 6, labelW, 20);
         ctx.fillStyle = color;
-        ctx.fillText(labelText, pixelX, region.y + 20);
+        ctx.fillText(labelText, pixelX, 20);
 
-        // Drag handle (calib steps only)
+        // Drag handle at mid-height (calib steps only)
         if (showHandle) {
-          const hy = region.y + region.h / 2;
+          const hy = H / 2;
           ctx.beginPath();
           ctx.arc(pixelX, hy, 18, 0, Math.PI * 2);
           ctx.fillStyle = color.replace('1)', '0.25)').replace(/rgba\((\d+,\d+,\d+),1\)/, 'rgba($1,0.25)');
@@ -357,13 +328,13 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Vertical guide line from dot to bottom of video
+      // Vertical guide line from dot to bottom of canvas
       ctx.strokeStyle = 'rgba(251,191,36,0.3)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
       ctx.moveTo(px, py + 13);
-      ctx.lineTo(px, region.y + region.h);
+      ctx.lineTo(px, H);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -373,7 +344,7 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
       const elapsed = (performance.now() - timerStartRef.current) / 1000;
       const text = elapsed.toFixed(2) + 's';
       const cx = W / 2;
-      const ty = region.y + 60;
+      const ty = 60;
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
       ctx.fillRect(cx - 72, ty - 28, 144, 44);
       ctx.fillStyle = '#22c55e';
@@ -388,7 +359,7 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
     if (phase === 'armed') {
       const pulse = 0.5 + 0.5 * Math.sin(ts * 0.003);
       ctx.fillStyle = `rgba(34,211,238,${0.06 * pulse})`;
-      ctx.fillRect(region.x, region.y, region.w, region.h);
+      ctx.fillRect(0, 0, W, H);
     }
   }, [isCOD]);
 
@@ -486,15 +457,8 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
 
   // ── Line dragging ─────────────────────────────────────────────────────────
   function getPointerCanvasX(e) {
-    const canvas = canvasRef.current;
-    const rect = canvas?.getBoundingClientRect();
-    if (!rect || !canvas) return 0;
-    if (isPortraitFallbackRef.current) {
-      // Canvas is rotated 90° CW: screen-Y maps to canvas-X (inverted)
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const ry = clientY - rect.top;
-      return (1 - ry / rect.height) * canvas.width;
-    }
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     return clientX - rect.left;
   }
@@ -513,11 +477,14 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
     if (!draggingRef.current || !canvasRef.current) return;
     e.preventDefault();
     const canvasX = getPointerCanvasX(e);
-    const norm = canvasToNorm(canvasX, videoRegionRef.current);
+    const W = canvasRef.current.width;
+    const region = videoRegionRef.current;
     if (draggingRef.current === 'left') {
-      leftLineRef.current = Math.min(norm, rightLineRef.current - 0.08);
+      const clamped = Math.max(0.05 * W, Math.min(0.45 * W, canvasX));
+      leftLineRef.current = canvasToNorm(clamped, region);
     } else {
-      rightLineRef.current = Math.max(norm, leftLineRef.current + 0.08);
+      const clamped = Math.max(0.55 * W, Math.min(0.95 * W, canvasX));
+      rightLineRef.current = canvasToNorm(clamped, region);
     }
   }
 
@@ -549,49 +516,30 @@ export default function SprintVisionModule({ testType, onResult, onClose }) {
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
-  const videoCanvasBase = isPortraitFallback
-    ? {
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        width: '100vh',
-        height: '100vw',
-        transform: 'translate(-50%, -50%) rotate(90deg)',
-      }
-    : {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-      };
-
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div className="fixed inset-0 z-50">
 
-      {/* Video — fixed full screen, object-fit:cover */}
-      <video
-        ref={videoRef}
-        className="object-cover"
-        style={{ ...videoCanvasBase, zIndex: 1 }}
-        playsInline
-        muted
-        autoPlay
-      />
-
-      {/* Canvas overlay — same layout as video */}
-      <canvas
-        ref={canvasRef}
-        className="touch-none"
-        style={{ ...videoCanvasBase, zIndex: 2 }}
-        onMouseDown={handlePointerDown}
-        onMouseMove={handlePointerMove}
-        onMouseUp={handlePointerUp}
-        onTouchStart={handlePointerDown}
-        onTouchMove={handlePointerMove}
-        onTouchEnd={handlePointerUp}
-        onTouchCancel={handlePointerUp}
-      />
+      {/* Camera container — overflow:hidden keeps cover-cropped edges clipped */}
+      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', overflow: 'hidden', background: 'black' }}>
+        <video
+          ref={videoRef}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          playsInline
+          muted
+          autoPlay
+        />
+        <canvas
+          ref={canvasRef}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', touchAction: 'none' }}
+          onMouseDown={handlePointerDown}
+          onMouseMove={handlePointerMove}
+          onMouseUp={handlePointerUp}
+          onTouchStart={handlePointerDown}
+          onTouchMove={handlePointerMove}
+          onTouchEnd={handlePointerUp}
+          onTouchCancel={handlePointerUp}
+        />
+      </div>
 
       {/* ── BANDA NEGRA — header fijo ───────────────────────────────────────── */}
       <div className="fixed top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3 bg-[#0f172a] border-b border-white/5">

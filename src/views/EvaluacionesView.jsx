@@ -15,7 +15,7 @@ import {
 } from '../utils/speed';
 import { getMetricStatus } from '../utils/thresholds';
 import { PLAYERS } from '../data/players';
-import { calcUNCa, calcNavette } from '../utils/calculations';
+import { calcUNCa, calcNavette, calcSprintCurvo } from '../utils/calculations';
 const MAIN_TABS = ['Salto', 'Velocidad', 'Agilidad', 'Resistencia'];
 const SUB_TABS = {
   Salto:       ['SJ', 'CMJ', 'Drop Jump'],
@@ -237,6 +237,8 @@ export default function EvaluacionesView() {
   const [t20, setT20]       = useState('');
   const [t30, setT30]       = useState('');
   const [curDer, setCurDer] = useState(''); const [curIzq, setCurIzq]   = useState('');
+  const [scDist, setScDist]     = useState(20);
+  const [scTiempo, setScTiempo] = useState('');
 
   // Agilidad inputs (separate state per test to preserve values when switching)
   const [ag5Cod, setAg5Cod]   = useState(''); const [ag5Ref, setAg5Ref]   = useState('');
@@ -273,7 +275,9 @@ export default function EvaluacionesView() {
   const v0_10  = calcVelocity(10, t10v);
   const v10_20 = t10v > 0 && t20v > t10v ? calcVelocity(10, t20v - t10v) : 0;
   const v20_30 = t20v > 0 && t30v > t20v ? calcVelocity(10, t30v - t20v) : 0;
-  const asim   = calcCurvoAsim(parseFloat(curDer) || 0, parseFloat(curIzq) || 0);
+  const asim     = calcCurvoAsim(parseFloat(curDer) || 0, parseFloat(curIzq) || 0);
+  const scTiempoV = parseFloat(scTiempo) || 0;
+  const scResult  = scTiempoV > 0 ? calcSprintCurvo(scDist, scTiempoV) : null;
 
   // Agilidad calcs
   const cod5Raw    = ag5Cod && ag5Ref ? calcCodDeficit(parseFloat(ag5Cod), parseFloat(ag5Ref)) : null;
@@ -430,14 +434,49 @@ export default function EvaluacionesView() {
       {/* ── VELOCIDAD: Curvo ── */}
       {mainTab === 'Velocidad' && subTab === 'Curvo' && (
         <Card title="Sprint Curvo" icon={ClipboardList}>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <NumInput label="Giro Derecho (s)"   value={curDer} onChange={setCurDer} />
-            <NumInput label="Giro Izquierdo (s)" value={curIzq} onChange={setCurIzq} />
+          <div className="mb-4">
+            <p className="text-xs text-slate-400 mb-2 block">Distancia</p>
+            <div className="flex gap-2">
+              {[20, 30, 40].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setScDist(d)}
+                  className={cn(
+                    'flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors',
+                    scDist === d
+                      ? 'bg-accent text-background border-accent'
+                      : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
+                  )}
+                >
+                  {d}m
+                </button>
+              ))}
+            </div>
           </div>
-          {asim > 0 && (
-            <ResultCard label="Asimetría de giro" value={asim.toFixed(1)} unit="%"
-              status={curvoAsimStatus(asim)} sub="< 3% óptimo · 3–5% monitoreo · > 5% riesgo biomecánico" />
+          <NumInput label="Tiempo (s)" value={scTiempo} onChange={setScTiempo} />
+          {scResult && (
+            <div className="mt-4">
+              <ResultCard
+                label={`Velocidad ${scDist}m curvo`}
+                value={scResult.velocidad.toFixed(2)}
+                unit="km/h"
+                status={getMetricStatus('sprintCurvo', scResult.velocidad, athlete.sport, athlete.category, athlete.sex)}
+                sub={`${scDist}m ÷ ${scTiempo}s × 3.6`}
+              />
+            </div>
           )}
+          {/* Asimetría de giro — opcional */}
+          <div className="pt-4 border-t border-white/5 mt-4">
+            <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Asimetría de giro — opcional</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <NumInput label="Giro Derecho (s)"   value={curDer} onChange={setCurDer} />
+              <NumInput label="Giro Izquierdo (s)" value={curIzq} onChange={setCurIzq} />
+            </div>
+            {asim > 0 && (
+              <ResultCard label="Asimetría de giro" value={asim.toFixed(1)} unit="%"
+                status={curvoAsimStatus(asim)} sub="< 3% óptimo · 3–5% monitoreo · > 5% riesgo biomecánico" />
+            )}
+          </div>
         </Card>
       )}
 

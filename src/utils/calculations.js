@@ -103,3 +103,10 @@ export function calcNavette(palier, shuttle) {
   const vo2max = (vam * 3.5) - 3.5;
   return { palier, shuttle, vam: +vam.toFixed(1), vo2max: +vo2max.toFixed(1) };
 }
+
+// Sprint Curvo — velocidad media en curva
+// distancia (m), tiempo (s) → velocidad (km/h)
+export function calcSprintCurvo(distancia, tiempo) {
+  const velocidad = (distancia / tiempo) * 3.6;
+  return { distancia, tiempo, velocidad: +velocidad.toFixed(2) };
+}

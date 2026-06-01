@@ -14,6 +14,7 @@ import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
 import { cn } from '../utils/cn';
 import { getLatestWellness, getWellnessByPlayer, getPlayerRecentLoads, getPlayerEvals } from '../utils/storage';
 import { PLAYERS } from '../data/players';
+import { getMetricStatus } from '../utils/thresholds';
 
 // PLAYERS se importa desde src/data/players.js
 
@@ -76,14 +77,6 @@ function playerRisk(player, latestWellness) {
   if (loadRisk === 'warning' || wellRisk === 'warning') return 'warning';
   return 'safe';
 }
-
-// Zonas para evaluaciones
-function jumpSt(h)       { return h >= 40 ? 'safe' : h >= 30 ? 'warning' : 'danger'; }
-function rsiSt(r)        { return r >= 2.0 ? 'safe' : r >= 1.5 ? 'warning' : 'danger'; }
-function vo2St(v)        { return v >= 50 ? 'safe' : v >= 40 ? 'warning' : 'danger'; }
-function lsiSt(p)        { return p < 8 ? 'safe' : p <= 15 ? 'warning' : 'danger'; }
-function sprint10St(t)   { return t <= 1.75 ? 'safe' : t <= 1.90 ? 'warning' : 'danger'; }
-function sprint30St(t)   { return t <= 4.10 ? 'safe' : t <= 4.50 ? 'warning' : 'danger'; }
 
 // ── Barra ACWR con zonas y marcador ─────────────────────────────────────────
 
@@ -563,7 +556,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               <ResultCard
                 label={realSJ ? 'SJ altura ✓' : 'SJ altura'}
                 value={(realSJ?.height ?? ev.sj.height).toFixed(1)} unit="cm"
-                status={jumpSt(realSJ?.height ?? ev.sj.height)}
+                status={getMetricStatus('sj', realSJ?.height ?? ev.sj.height, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label={realSJ ? 'SJ potencia ✓' : 'SJ potencia'}
@@ -573,7 +566,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               <ResultCard
                 label={realCMJ ? 'CMJ altura ✓' : 'CMJ altura'}
                 value={(realCMJ?.height ?? ev.cmj.height).toFixed(1)} unit="cm"
-                status={jumpSt(realCMJ?.height ?? ev.cmj.height)}
+                status={getMetricStatus('cmj', realCMJ?.height ?? ev.cmj.height, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label={realCMJ ? 'CMJ potencia ✓' : 'CMJ potencia'}
@@ -590,7 +583,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               <ResultCard
                 label="Drop Jump RSI"
                 value={ev.dj.rsi.toFixed(2)}
-                status={rsiSt(ev.dj.rsi)}
+                status={getMetricStatus('rsi', ev.dj.rsi, player.sport, player.category, player.sex)}
                 sub="≥ 2.0 élite · ≥ 1.5 aceptable"
                 className="col-span-2"
               />
@@ -635,12 +628,12 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               <ResultCard
                 label="Sprint 10m"
                 value={ev.sprint10.time.toFixed(2)} unit="s"
-                status={sprint10St(ev.sprint10.time)}
+                status={getMetricStatus('sprint10', ev.sprint10.time, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label="Sprint 30m"
                 value={ev.sprint30.time.toFixed(2)} unit="s"
-                status={sprint30St(ev.sprint30.time)}
+                status={getMetricStatus('sprint30', ev.sprint30.time, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label="Top Speed"
@@ -663,7 +656,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               <ResultCard
                 label="VO₂ máx"
                 value={ev.resistance.vo2max.toFixed(1)} unit="ml/kg/min"
-                status={vo2St(ev.resistance.vo2max)}
+                status={getMetricStatus('vo2max', ev.resistance.vo2max, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label="VAM"
@@ -678,7 +671,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             <ResultCard
               label="Asimetría"
               value={ev.lsiPct.toFixed(1)} unit="%"
-              status={lsiSt(ev.lsiPct)}
+              status={getMetricStatus('lsi', ev.lsiPct, player.sport, player.category, player.sex)}
               sub="< 8% óptimo · 8–15% monitorear · > 15% riesgo"
             />
           </Card>

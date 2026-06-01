@@ -1,15 +1,23 @@
+import { getThresholds } from './thresholds';
+
 // Sprint velocity
 export function calcVelocity(distance, time) {
   if (!time || time === 0) return 0;
   return distance / time;
 }
 
-// Reference thresholds (seconds) — team sports, male senior
-export const sprintRef = {
-  sprint10: { safe: 1.70, warning: 1.85 },
-  sprint20: { safe: 2.90, warning: 3.10 },
-  sprint30: { safe: 4.10, warning: 4.40 },
-};
+// Reference thresholds (seconds) — derived from dynamic baremos (default: football/senior/male)
+// Keys kept as { safe, warning } for backward compatibility with sprintStatus()
+function buildSprintRef(sport = 'football', category = 'senior', sex = 'male') {
+  const t = getThresholds(sport, category, sex);
+  return {
+    sprint10: { safe: t.sprint10.green, warning: t.sprint10.yellow },
+    sprint20: { safe: t.sprint20.green, warning: t.sprint20.yellow },
+    sprint30: { safe: t.sprint30.green, warning: t.sprint30.yellow },
+  };
+}
+
+export const sprintRef = buildSprintRef();
 
 // Lower time = better performance
 export function sprintStatus(time, ref) {

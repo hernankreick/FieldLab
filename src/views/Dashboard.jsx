@@ -10,6 +10,7 @@ import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
 import { getTeamAlerts } from '../utils/alerts';
 import { useCoachStorage } from '../hooks/useCoachStorage';
 import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
 import { PLAYERS } from '../data/players';
 
 // Roster inicial derivado de PLAYERS: mismos IDs (1-8) para que PlayerProfile
@@ -21,6 +22,7 @@ const DEFAULT_ATHLETES = PLAYERS.map(p => ({
   number:   0,
   acwr:     p.acwr,
   lsi:      p.lsi,
+  teamId:   p.teamId ?? 'primera',
 }));
 
 const DOT_COLOR  = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
@@ -66,6 +68,7 @@ function dotPriority(a, w) {
 
 export default function Dashboard({ onNavigate }) {
   const { coach, logout } = useAuth();
+  const { activeTeam }    = useTeam();
   const [athletes, setAthletes] = useCoachStorage('athletes', DEFAULT_ATHLETES);
   const [showAdd,  setShowAdd]  = useState(false);
   const [newName,  setNewName]  = useState('');
@@ -101,10 +104,12 @@ export default function Dashboard({ onNavigate }) {
     setShowAdd(false);
   }
 
-  const athletesWithWellness = athletes.map(a => ({
-    ...a,
-    w: wellnessMap[String(a.id)] ?? null,
-  }));
+  const athletesWithWellness = athletes
+    .filter(a => (a.teamId ?? 'primera') === activeTeam.id)
+    .map(a => ({
+      ...a,
+      w: wellnessMap[String(a.id)] ?? null,
+    }));
 
   const sortedAthletes = [...athletesWithWellness].sort((a, b) => {
     const dp = dotPriority(a, a.w) - dotPriority(b, b.w);

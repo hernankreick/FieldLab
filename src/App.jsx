@@ -1,7 +1,9 @@
 import { useState, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { TeamProvider } from './context/TeamContext';
 import Login from './views/Login';
 import NavBar from './components/NavBar';
+import TeamSelector from './components/TeamSelector';
 
 // Lazy-loaded views — each becomes a separate chunk so recharts/jspdf
 // are never bundled into the initial JS payload.
@@ -76,17 +78,24 @@ function AppContent() {
       style={{ fontFamily: 'Inter, sans-serif' }}>
       <div className="flex md:flex-row flex-col min-h-screen">
         {!hideNav && <NavBar active={active} onChange={navigate} />}
-        <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
-          <Suspense fallback={FALLBACK}>
-            <View
-              key={active === 'wellness' || active === 'player'
-                ? `${active}-${navParam}` : active}
-              onNavigate={navigate}
-              initialId={navParam}
-              onFullscreen={setHideNav}
-            />
-          </Suspense>
-        </main>
+        <div className="flex-1 flex flex-col min-h-screen">
+          {!hideNav && (
+            <div className="px-4 pt-3 max-w-2xl mx-auto w-full">
+              <TeamSelector />
+            </div>
+          )}
+          <main className="flex-1 p-4 pb-20 md:pb-4 max-w-2xl mx-auto w-full">
+            <Suspense fallback={FALLBACK}>
+              <View
+                key={active === 'wellness' || active === 'player'
+                  ? `${active}-${navParam}` : active}
+                onNavigate={navigate}
+                initialId={navParam}
+                onFullscreen={setHideNav}
+              />
+            </Suspense>
+          </main>
+        </div>
       </div>
     </div>
   );
@@ -95,7 +104,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <TeamProvider>
+        <AppContent />
+      </TeamProvider>
     </AuthProvider>
   );
 }

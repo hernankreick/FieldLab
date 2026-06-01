@@ -4,7 +4,7 @@
 export const PLAYERS = [
   {
     id: 1, name: 'Ramiro Sánchez',   position: 'Fullback',      sport: 'Rugby',
-    category: 'senior', sex: 'male',
+    category: 'senior', sex: 'male', teamId: 'primera',
     acwr: 1.42, lsi: 6.2,
     eval: {
       sj:         { height: 34.2, power: 3200 },
@@ -19,7 +19,7 @@ export const PLAYERS = [
   },
   {
     id: 2, name: 'Leandro Martínez', position: 'Apertura',      sport: 'Rugby',
-    category: 'senior', sex: 'male',
+    category: 'senior', sex: 'male', teamId: 'primera',
     acwr: 1.61, lsi: 18.4,
     eval: {
       sj:         { height: 30.1, power: 2950 },
@@ -34,7 +34,7 @@ export const PLAYERS = [
   },
   {
     id: 3, name: 'Tomás Ruiz',       position: 'Hooker',        sport: 'Rugby',
-    category: 'senior', sex: 'male',
+    category: 'senior', sex: 'male', teamId: 'primera',
     acwr: 1.1,  lsi: 4.8,
     eval: {
       sj:         { height: 36.8, power: 3480 },
@@ -49,7 +49,7 @@ export const PLAYERS = [
   },
   {
     id: 4, name: 'Facundo Benítez',  position: 'Ala',           sport: 'Rugby',
-    category: 'senior', sex: 'male',
+    category: 'senior', sex: 'male', teamId: 'primera',
     acwr: 0.95, lsi: 11.2,
     eval: {
       sj:         { height: 32.5, power: 3100 },
@@ -64,7 +64,7 @@ export const PLAYERS = [
   },
   {
     id: 5, name: 'Agustín Torres',   position: 'Centro',        sport: 'Rugby',
-    category: 'senior', sex: 'male',
+    category: 'senior', sex: 'male', teamId: 'primera',
     acwr: 1.05, lsi: 5.0,
     eval: {
       sj:         { height: 38.0, power: 3620 },
@@ -79,7 +79,7 @@ export const PLAYERS = [
   },
   {
     id: 6, name: 'Lucía Fernández',  position: 'Mediocampista', sport: 'Fútbol',
-    category: 'senior', sex: 'female',
+    category: 'senior', sex: 'female', teamId: 'sub18',
     acwr: 0.88, lsi: 7.3,
     eval: {
       sj:         { height: 28.4, power: 2680 },
@@ -94,7 +94,7 @@ export const PLAYERS = [
   },
   {
     id: 7, name: 'Valentina López',  position: 'Delantera',     sport: 'Fútbol',
-    category: 'senior', sex: 'female',
+    category: 'senior', sex: 'female', teamId: 'sub18',
     acwr: 1.22, lsi: 9.8,
     eval: {
       sj:         { height: 31.5, power: 2920 },
@@ -109,7 +109,7 @@ export const PLAYERS = [
   },
   {
     id: 8, name: 'Martín González',  position: 'Delantero',     sport: 'Fútbol',
-    category: 'senior', sex: 'male',
+    category: 'senior', sex: 'male', teamId: 'sub18',
     acwr: 1.35, lsi: 6.1,
     eval: {
       sj:         { height: 40.2, power: 3780 },

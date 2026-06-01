@@ -5,24 +5,28 @@ import NavBar from './components/NavBar';
 
 // Lazy-loaded views — each becomes a separate chunk so recharts/jspdf
 // are never bundled into the initial JS payload.
-const Dashboard       = lazy(() => import('./views/Dashboard'));
-const ACWR            = lazy(() => import('./views/ACWR'));
-const Bosco           = lazy(() => import('./views/Bosco'));
-const Wellness        = lazy(() => import('./views/Wellness'));
-const VBT             = lazy(() => import('./views/VBT'));
-const TabVelocidad    = lazy(() => import('./views/Velocidad'));
-const TabAgilidad     = lazy(() => import('./views/Agilidad'));
+const Dashboard        = lazy(() => import('./views/Dashboard'));
+const ACWR             = lazy(() => import('./views/ACWR'));
+const Bosco            = lazy(() => import('./views/Bosco'));
+const Wellness         = lazy(() => import('./views/Wellness'));
+const VBT              = lazy(() => import('./views/VBT'));
+const TabVelocidad     = lazy(() => import('./views/Velocidad'));
+const TabAgilidad      = lazy(() => import('./views/Agilidad'));
 const EvaluacionesView = lazy(() => import('./views/EvaluacionesView'));
-const HooperQR        = lazy(() => import('./views/HooperQR'));
-const RPEForm         = lazy(() => import('./views/RPEForm'));
-const CargaSesionView = lazy(() => import('./views/CargaSesionView'));
-const PlayerProfile   = lazy(() => import('./views/PlayerProfile'));
-const JumpAnalysis    = lazy(() => import('./views/JumpAnalysis'));
-const GoniometroView  = lazy(() => import('./views/GoniometroView'));
+const HooperQR         = lazy(() => import('./views/HooperQR'));
+const RPEForm          = lazy(() => import('./views/RPEForm'));
+const CargaSesionView  = lazy(() => import('./views/CargaSesionView'));
+const PlayerProfile    = lazy(() => import('./views/PlayerProfile'));
+const JumpAnalysis     = lazy(() => import('./views/JumpAnalysis'));
+const GoniometroView   = lazy(() => import('./views/GoniometroView'));
+// Public wellness form (per-player QR) and coach QR generator
+const WellnessFormPublic = lazy(() => import('./views/WellnessFormPublic'));
+const QRGeneratorView    = lazy(() => import('./views/QRGeneratorView'));
 
-// Detectar ruta /hooper/:teamId y /rpe/:teamId sin React Router (módulo-level, no cambia en runtime)
-const HOOPER_MATCH = window.location.pathname.match(/^\/hooper\/([^/]+)/);
-const RPE_MATCH    = window.location.pathname.match(/^\/rpe\/([^/]+)/);
+// Detectar rutas públicas sin React Router (módulo-level, no cambia en runtime)
+const HOOPER_MATCH   = window.location.pathname.match(/^\/hooper\/([^/]+)/);
+const RPE_MATCH      = window.location.pathname.match(/^\/rpe\/([^/]+)/);
+const WELLNESS_PUBLIC = window.location.pathname === '/wellness';
 
 const views = {
   dashboard:    Dashboard,
@@ -37,6 +41,7 @@ const views = {
   player:       PlayerProfile,
   jumpAnalysis: JumpAnalysis,
   goniometro:   GoniometroView,
+  qr:           QRGeneratorView,
 };
 
 const FALLBACK = (
@@ -56,9 +61,10 @@ function AppContent() {
     setNavParam(param);
   }
 
-  // Rutas standalone QR — sin auth, sin navbar
-  if (HOOPER_MATCH) return <Suspense fallback={FALLBACK}><HooperQR teamId={HOOPER_MATCH[1]} /></Suspense>;
-  if (RPE_MATCH)    return <Suspense fallback={FALLBACK}><RPEForm  teamId={RPE_MATCH[1]}    /></Suspense>;
+  // Rutas públicas — sin auth, sin navbar
+  if (HOOPER_MATCH)    return <Suspense fallback={FALLBACK}><HooperQR          teamId={HOOPER_MATCH[1]} /></Suspense>;
+  if (RPE_MATCH)       return <Suspense fallback={FALLBACK}><RPEForm           teamId={RPE_MATCH[1]}    /></Suspense>;
+  if (WELLNESS_PUBLIC) return <Suspense fallback={FALLBACK}><WellnessFormPublic /></Suspense>;
 
   // Gate de login
   if (!coach) return <Login />;

@@ -4,8 +4,10 @@ import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import QRGenerator from '../components/QRGenerator';
 import ReportButton from '../components/ReportButton';
+import AlertBanner from '../components/AlertBanner';
 import { acwrStatus, lsiStatus } from '../utils/biomechanics';
 import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
+import { getTeamAlerts } from '../utils/alerts';
 import { useCoachStorage } from '../hooks/useCoachStorage';
 import { useAuth } from '../context/AuthContext';
 import { PLAYERS } from '../data/players';
@@ -116,6 +118,12 @@ export default function Dashboard({ onNavigate }) {
     return athleteRisk(a, w) === 'danger';
   });
 
+  const acwrMap         = Object.fromEntries(athletes.map(a => [a.id, { ratio: a.acwr }]));
+  const wellnessDateMap = Object.fromEntries(
+    athletes.map(a => [a.id, wellnessMap[String(a.id)]?.timestamp ?? null])
+  );
+  const teamAlerts = getTeamAlerts(athletes, acwrMap, wellnessDateMap);
+
   return (
     <div className="space-y-4">
       {/* Header con nombre del coach, botón de informe y logout */}
@@ -135,6 +143,9 @@ export default function Dashboard({ onNavigate }) {
           </button>
         </div>
       </div>
+
+      {/* Panel de alertas del equipo */}
+      <AlertBanner alerts={teamAlerts} />
 
       {/* KPI strip — 4 columnas compactas */}
       {(() => {

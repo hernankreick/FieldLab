@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints } from 'lucide-react';
+import { ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints, FileDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getAngleStatus, statusColor, statusLabel, statusBg } from '../hooks/useLungePhoto';
 import ReportButton from '../components/ReportButton';
@@ -277,6 +277,11 @@ export default function PlayerProfile({ initialId, onNavigate }) {
 
   const { eval: ev } = player;
 
+  async function handleExportPDF() {
+    const { generatePlayerReport } = await import('../utils/pdfReport');
+    generatePlayerReport(player, latestWellness, displayAcwr, playerEvals);
+  }
+
   // Último registro real por tipo de salto (newest-first desde storage)
   const realByType = {};
   for (const e of playerEvals) {
@@ -314,6 +319,15 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               label={risk === 'safe' ? 'Apto' : risk === 'warning' ? 'Alerta' : 'Riesgo'}
             />
             <ReportButton type="player" player={player} variant="icon" />
+            <button
+              onClick={handleExportPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+              title="Exportar PDF"
+            >
+              <FileDown size={14} />
+              PDF
+            </button>
           </div>
         </div>
 

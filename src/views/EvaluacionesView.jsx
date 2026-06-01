@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ClipboardList } from 'lucide-react';
 import Card from '../components/Card';
 import ResultCard from '../components/ResultCard';
@@ -15,6 +15,7 @@ import {
 } from '../utils/speed';
 import { getMetricStatus } from '../utils/thresholds';
 import { PLAYERS } from '../data/players';
+import { calcUNCa, calcNavette } from '../utils/calculations';
 const MAIN_TABS = ['Salto', 'Velocidad', 'Agilidad', 'Resistencia'];
 const SUB_TABS = {
   Salto:       ['SJ', 'CMJ', 'Drop Jump'],
@@ -115,6 +116,108 @@ function CodSection({ name, deficit, invalidOrder, tCod, setTCod, tRef, setTRef,
   );
 }
 
+// ── Navette beep timer (Web Audio API, no external files) ──────────────────────
+
+const ZONE_COLORS = {
+  regenerativo: '#3b82f6', aerobicoBase: '#22c55e',
+  aerobicoDesarrollo: '#eab308', umbralAnaer: '#f97316', hiit: '#ef4444',
+};
+
+function navIntervalMs(palier) {
+  return Math.round(72000 / (8.5 + 0.5 * palier)); // 72000 / VAM_kmh ms
+}
+
+function playBeep(audioRef) {
+  try {
+    if (!audioRef.current)
+      audioRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.3, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.15);
+  } catch { /* AudioContext unavailable */ }
+}
+
+function NavetteTimer({ onStop }) {
+  const [running,   setRunning]   = useState(false);
+  const [dispPal,   setDispPal]   = useState(1);
+  const [dispShut,  setDispShut]  = useState(0);
+  const [nextSec,   setNextSec]   = useState(null);
+  const audioRef  = useRef(null);
+  const stateRef  = useRef({ palier: 1, shuttle: 0 });
+  const nextBRef  = useRef(0);
+  const tickRef   = useRef(null);
+
+  function handleStart() {
+    stateRef.current = { palier: 1, shuttle: 0 };
+    playBeep(audioRef);
+    const ms = navIntervalMs(1);
+    nextBRef.current = Date.now() + ms;
+    setDispPal(1); setDispShut(0); setNextSec(ms / 1000);
+    setRunning(true);
+    tickRef.current = setInterval(() => {
+      const rem = nextBRef.current - Date.now();
+      if (rem <= 0) {
+        let { palier, shuttle } = stateRef.current;
+        shuttle += 1;
+        if (shuttle >= 7) { shuttle = 0; palier += 1; }
+        stateRef.current = { palier, shuttle };
+        const next = navIntervalMs(palier);
+        nextBRef.current = Date.now() + next;
+        playBeep(audioRef);
+        setDispPal(palier); setDispShut(shuttle); setNextSec(next / 1000);
+      } else {
+        setNextSec(rem / 1000);
+      }
+    }, 100);
+  }
+
+  function handleStop() {
+    clearInterval(tickRef.current);
+    setRunning(false); setNextSec(null);
+    onStop?.(stateRef.current.palier, stateRef.current.shuttle);
+  }
+
+  useEffect(() => () => clearInterval(tickRef.current), []);
+
+  if (running) {
+    return (
+      <div className="rounded-xl bg-background border border-white/10 p-4 space-y-3">
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Palier</p>
+            <span className="text-3xl font-data font-black text-accent">{dispPal}</span>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Shuttle</p>
+            <span className="text-3xl font-data font-black text-slate-200">
+              {dispShut}<span className="text-sm font-normal text-slate-600">/7</span>
+            </span>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Próximo</p>
+            <span className="text-3xl font-data font-black text-warning">{nextSec?.toFixed(1)}s</span>
+          </div>
+        </div>
+        <button onClick={handleStop}
+          className="w-full py-3 rounded-xl text-sm font-bold border border-danger/30 text-danger bg-danger/10 hover:bg-danger/20 active:scale-95 transition-colors">
+          ⏹ Detener — registrar palier
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button onClick={handleStart}
+      className="w-full py-3 rounded-xl text-sm font-bold bg-accent text-background hover:bg-accent/90 active:scale-95 transition-colors">
+      ▶ Iniciar Navette
+    </button>
+  );
+}
+
 export default function EvaluacionesView() {
   const [athlete, setAthlete] = useState(PLAYERS[0]);
   const [mainTab, setMainTab] = useState('Salto');
@@ -146,6 +249,10 @@ export default function EvaluacionesView() {
   const [navEdad, setNavEdad]     = useState('');
   const [uncaDist, setUncaDist]   = useState(''); const [uncaMin, setUncaMin]       = useState('');
   const [coopDist, setCoopDist]   = useState('');
+  // Nuevos tests aeróbicos
+  const [uncaVfa, setUncaVfa] = useState('');
+  const [navPal,  setNavPal]  = useState('');
+  const [navShut, setNavShut] = useState('');
 
   function switchMain(tab) { setMainTab(tab); setSubTab(SUB_TABS[tab][0]); }
 
@@ -190,6 +297,10 @@ export default function EvaluacionesView() {
   const uncaVo2 = uncaD > 0 && uncaT > 0 ? (uncaD / uncaT) * 6.65 - 35.8 : 0;
   const coopD   = parseFloat(coopDist) || 0;
   const coopVo2 = coopD > 0 ? (coopD - 504.9) / 44.73 : 0;
+  // Nuevos tests aeróbicos
+  const uncaVfaV  = parseFloat(uncaVfa) || 0;
+  const navPalV   = parseInt(navPal,  10) || 0;
+  const navResult = navPalV > 0 ? calcNavette(navPalV, parseInt(navShut, 10) || 0) : null;
 
   return (
     <div className="space-y-4">
@@ -369,36 +480,50 @@ export default function EvaluacionesView() {
 
       {/* ── RESISTENCIA: Navette ── */}
       {mainTab === 'Resistencia' && subTab === 'Navette' && (
-        <Card title="Course Navette · Léger & Lambert" icon={ClipboardList}>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <NumInput label="Etapa alcanzada" value={navEtapa}   onChange={setNavEtapa}   step="1" placeholder="8" />
-            <NumInput label="Paliers"         value={navPaliers} onChange={setNavPaliers} step="1" placeholder="3" />
-            <div className="col-span-full">
-              <NumInput label="Edad (años)" value={navEdad} onChange={setNavEdad} step="1" placeholder="22" />
+        <Card title="Course Navette · Léger & Boucher" icon={ClipboardList}>
+          <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Temporizador de audio</p>
+          <NavetteTimer onStop={(p, s) => { setNavPal(String(p)); setNavShut(String(s)); }} />
+          <div className="pt-4 border-t border-white/5 mt-4">
+            <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">O ingresá el resultado manualmente</p>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <NumInput label="Palier alcanzado" value={navPal}  onChange={setNavPal}  step="1" placeholder="8" />
+              <NumInput label="Shuttle"          value={navShut} onChange={setNavShut} step="1" placeholder="3" />
             </div>
           </div>
-          {navVo2 > 0 && (
-            <>
-              <p className="text-xs text-slate-500 mb-3">
-                Velocidad alcanzada: <span className="font-data text-slate-300">{navVel.toFixed(1)} km/h</span>
-              </p>
-              <ResultCard label="VO₂ máx estimado" value={navVo2.toFixed(1)} unit="ml/kg/min" status={getMetricStatus('vo2max', navVo2, athlete.sport, athlete.category, athlete.sex)} />
-            </>
+          {navResult && (
+            <div className="grid grid-cols-2 gap-3">
+              <ResultCard label="VAM" value={navResult.vam.toFixed(1)} unit="km/h" status="neutral" />
+              <ResultCard label="VO₂ máx estimado" value={navResult.vo2max.toFixed(1)} unit="ml/kg/min"
+                status={getMetricStatus('vo2max', navResult.vo2max, athlete.sport, athlete.category, athlete.sex)}
+                className="col-span-2" />
+            </div>
           )}
+          <p className="text-xs text-slate-600 mt-3 text-center">VAM = 8.5 + (0.5 × palier) · VO₂ = (VAM × 3.5) − 3.5</p>
         </Card>
       )}
 
       {/* ── RESISTENCIA: UNCa ── */}
       {mainTab === 'Resistencia' && subTab === 'UNCa' && (
-        <Card title="Test UNCa" icon={ClipboardList}>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <NumInput label="Distancia (m)" value={uncaDist} onChange={setUncaDist} step="1"   placeholder="1500" />
-            <NumInput label="Tiempo (min)"  value={uncaMin}  onChange={setUncaMin}  step="0.1" placeholder="6.0" />
+        <Card title="Test UNCa · García, Cappa y Secchi" icon={ClipboardList}>
+          <div className="mb-4">
+            <NumInput label="VFA alcanzada (km/h)" value={uncaVfa} onChange={setUncaVfa} step="0.5" placeholder="14.0" />
           </div>
-          {uncaVo2 > 0 && (
-            <ResultCard label="VO₂ máx estimado" value={uncaVo2.toFixed(1)} unit="ml/kg/min"
-              status={getMetricStatus('vo2max', uncaVo2, athlete.sport, athlete.category, athlete.sex)} sub="(dist / tiempo) × 6.65 − 35.8" />
-          )}
+          {uncaVfaV > 0 && (() => {
+            const { zones } = calcUNCa(uncaVfaV);
+            return (
+              <div className="space-y-2">
+                {Object.entries(zones).map(([key, z]) => (
+                  <div key={key} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-background border border-white/5">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: ZONE_COLORS[key] }} />
+                    <span className="text-xs font-semibold text-slate-300 flex-1">{z.label}</span>
+                    <span className="text-xs font-data text-slate-400 tabular-nums">{z.min}–{z.max} km/h</span>
+                    <div className="w-14 h-1.5 rounded-full" style={{ background: ZONE_COLORS[key], opacity: 0.55 }} />
+                  </div>
+                ))}
+                <p className="text-xs text-slate-600 text-center pt-1">Referencia: García, Cappa y Secchi (2013)</p>
+              </div>
+            );
+          })()}
         </Card>
       )}
 

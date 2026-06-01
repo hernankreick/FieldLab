@@ -34,3 +34,49 @@ export function calcACWR(loads) {
 
   return { acute: ewmaAcute, chronic: ewmaChronic, ratio, risk };
 }
+
+// Yo-Yo IR1 — official VAM & VO2max lookup (Bangsbo et al.)
+export function yoyoIR1(level) {
+  const table = {
+     5: { vam: 10.0, vo2max: 32.9 },
+     6: { vam: 11.0, vo2max: 35.7 },
+     7: { vam: 12.0, vo2max: 38.5 },
+     8: { vam: 13.0, vo2max: 41.3 },
+     9: { vam: 13.5, vo2max: 42.7 },
+    10: { vam: 14.0, vo2max: 44.1 },
+    11: { vam: 14.5, vo2max: 45.5 },
+    12: { vam: 15.0, vo2max: 46.9 },
+    13: { vam: 15.5, vo2max: 48.3 },
+    14: { vam: 16.0, vo2max: 49.7 },
+    15: { vam: 16.5, vo2max: 51.1 },
+    16: { vam: 17.0, vo2max: 52.5 },
+    17: { vam: 17.5, vo2max: 53.9 },
+    18: { vam: 18.0, vo2max: 55.4 },
+    19: { vam: 18.5, vo2max: 56.8 },
+    20: { vam: 19.0, vo2max: 58.2 },
+    21: { vam: 19.5, vo2max: 59.6 },
+    22: { vam: 20.0, vo2max: 61.0 },
+    23: { vam: 20.5, vo2max: 62.4 },
+  };
+  return table[level] ?? { vam: null, vo2max: null };
+}
+
+// Yo-Yo IR2 — official VAM & VO2max lookup (Bangsbo et al.)
+export function yoyoIR2(level) {
+  const table = {
+    11: { vam: 15.0, vo2max: 40.2 },
+    12: { vam: 15.5, vo2max: 42.0 },
+    13: { vam: 16.0, vo2max: 43.8 },
+    14: { vam: 16.5, vo2max: 45.6 },
+    15: { vam: 17.0, vo2max: 47.4 },
+    16: { vam: 17.5, vo2max: 49.2 },
+    17: { vam: 18.0, vo2max: 51.0 },
+    18: { vam: 18.5, vo2max: 52.8 },
+    19: { vam: 19.0, vo2max: 54.6 },
+    20: { vam: 19.5, vo2max: 56.4 },
+    21: { vam: 20.0, vo2max: 58.2 },
+    22: { vam: 20.5, vo2max: 60.0 },
+    23: { vam: 21.0, vo2max: 61.8 },
+  };
+  return table[level] ?? { vam: null, vo2max: null };
+}

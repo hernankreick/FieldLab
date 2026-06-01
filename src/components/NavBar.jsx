@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Activity, BarChart2, Zap, Heart, Eye, Timer, Shuffle, ClipboardList, Dumbbell, Ruler } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -15,8 +16,19 @@ const tabs = [
 ];
 
 export default function NavBar({ active, onChange }) {
+  const [hideNav, setHideNav] = useState(false);
+
+  useEffect(() => {
+    const handler = (e) => setHideNav(e.detail.active);
+    window.addEventListener('vbt-fullscreen', handler);
+    return () => window.removeEventListener('vbt-fullscreen', handler);
+  }, []);
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-surface border-t border-white/5 flex items-center h-16 z-50 overflow-x-auto scrollbar-none md:static md:flex-col md:h-full md:w-20 md:border-t-0 md:border-r md:justify-start md:pt-8 md:gap-1 md:overflow-x-visible">
+    <nav className={cn(
+      'fixed bottom-0 left-0 right-0 bg-surface border-t border-white/5 flex items-center h-16 z-50 overflow-x-auto scrollbar-none md:static md:flex-col md:h-full md:w-20 md:border-t-0 md:border-r md:justify-start md:pt-8 md:gap-1 md:overflow-x-visible',
+      hideNav && 'hidden'
+    )}>
       {tabs.map(({ id, label, Icon }) => (
         <button
           key={id}

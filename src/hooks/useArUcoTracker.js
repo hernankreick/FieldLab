@@ -76,9 +76,10 @@ export function useArUcoTracker() {
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
 
-  const streamRef    = useRef(null);
-  const rafRef       = useRef(null);
-  const runningRef   = useRef(false);
+  const streamRef       = useRef(null);
+  const rafRef          = useRef(null);
+  const runningRef      = useRef(false);
+  const cameraReadyRef  = useRef(false); // true once stream is assigned to video
 
   const calibPxMRef  = useRef(DEFAULT_PX_PER_M);
 
@@ -89,6 +90,7 @@ export function useArUcoTracker() {
   const smoothTsRef  = useRef([]);
   const repCountRef  = useRef(0);
 
+  const [isCameraReady,         setIsCameraReady]         = useState(false);
   const [isTracking,            setIsTracking]            = useState(false);
   const [sessionComplete,       setSessionComplete]       = useState(false);
   const [cameraError,           setCameraError]           = useState(null);
@@ -158,7 +160,8 @@ export function useArUcoTracker() {
           setRepData(prev => [...prev, { rep: prev.length + 1, mpv, peakVelocity }]);
           if (done) {
             // Inline stop — avoids calling stopTracking() from within the rAF callback
-            runningRef.current = false;
+            runningRef.current   = false;
+            cameraReadyRef.current = false;
             streamRef.current?.getTracks().forEach(t => t.stop());
             streamRef.current = null;
             if (videoRef.current) videoRef.current.srcObject = null;
@@ -167,6 +170,7 @@ export function useArUcoTracker() {
             repTsRef.current     = [];
             smoothPosRef.current = [];
             smoothTsRef.current  = [];
+            setIsCameraReady(false);
             setIsTracking(false);
             setCurrentVelocity(0);
             setSessionComplete(true);
@@ -176,32 +180,37 @@ export function useArUcoTracker() {
     }
   }, []);
 
-  // ── Start tracking ─────────────────────────────────────────────────────────
-  const startTracking = useCallback(async () => {
-    if (isTracking) return;
+  // ── Open camera only — video shows srcObject but rAF loop not started ──────
+  const openCamera = useCallback(async () => {
     setCameraError(null);
-
     const result = await startCamera(videoRef);
     if (typeof result === 'string') {
       setCameraError(result);
-      return;
+      return result;   // return error code so caller can bail out
     }
+    streamRef.current    = result;
+    cameraReadyRef.current = true;
+    setIsCameraReady(true);
+    return null;         // success
+  }, []);
 
-    streamRef.current  = result;
+  // ── Begin velocity tracking — starts rAF loop (camera must already be open) ─
+  const beginTracking = useCallback(() => {
+    if (!cameraReadyRef.current) return;
     runningRef.current = true;
     setIsTracking(true);
-
     const loop = () => {
       if (!runningRef.current) return;
       processFrame();
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
-  }, [isTracking, processFrame]);
+  }, [processFrame]);
 
-  // ── Stop tracking ──────────────────────────────────────────────────────────
+  // ── Stop tracking + close camera ───────────────────────────────────────────
   const stopTracking = useCallback(() => {
-    runningRef.current = false;
+    runningRef.current     = false;
+    cameraReadyRef.current = false;
     cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
@@ -211,6 +220,7 @@ export function useArUcoTracker() {
     repTsRef.current     = [];
     smoothPosRef.current = [];
     smoothTsRef.current  = [];
+    setIsCameraReady(false);
     setIsTracking(false);
     setCurrentVelocity(0);
   }, []);
@@ -251,12 +261,14 @@ export function useArUcoTracker() {
   return {
     videoRef,
     canvasRef,
+    isCameraReady,
     isTracking,
     sessionComplete,
     cameraError,
     currentVelocity,
     repData,
-    startTracking,
+    openCamera,
+    beginTracking,
     stopTracking,
     resetSession,
     addManualRep,

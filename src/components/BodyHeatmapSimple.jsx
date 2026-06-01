@@ -29,7 +29,8 @@ const ZONE_NAMES = {
   p_dorsal_izq: 'Dorsal izq', p_dorsal_der: 'Dorsal der',
   p_antebrazo_izq: 'Antebrazo post izq', p_antebrazo_der: 'Antebrazo post der',
   p_lumbar: 'Lumbar',
-  p_gluteo_izq: 'Glúteo izq', p_gluteo_der: 'Glúteo der',
+  p_gluteo_medio_izq: 'Glúteo medio izq', p_gluteo_medio_der: 'Glúteo medio der',
+  p_gluteo_mayor_izq: 'Glúteo mayor izq', p_gluteo_mayor_der: 'Glúteo mayor der',
   p_isquio_izq: 'Isquiotibial izq', p_isquio_der: 'Isquiotibial der',
   p_rodilla_izq: 'Rodilla post izq', p_rodilla_der: 'Rodilla post der',
   p_gemelo_izq: 'Gemelo izq', p_gemelo_der: 'Gemelo der',
@@ -101,8 +102,10 @@ function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip })
       <Zone {...zp('p_antebrazo_izq', 'rect',    { x:17, y:74, width:16, height:19, rx:4 })}/>
       <Zone {...zp('p_antebrazo_der', 'rect',    { x:87, y:74, width:16, height:19, rx:4 })}/>
       <Zone {...zp('p_lumbar',        'rect',    { x:36, y:85, width:48, height:15, rx:4 })}/>
-      <Zone {...zp('p_gluteo_izq',    'rect',    { x:36, y:101, width:24, height:20, rx:5 })}/>
-      <Zone {...zp('p_gluteo_der',    'rect',    { x:60, y:101, width:24, height:20, rx:5 })}/>
+      <Zone {...zp('p_gluteo_medio_izq', 'rect', { x:37, y:101, width:22, height:9,  rx:4 })}/>
+      <Zone {...zp('p_gluteo_medio_der', 'rect', { x:61, y:101, width:22, height:9,  rx:4 })}/>
+      <Zone {...zp('p_gluteo_mayor_izq', 'rect', { x:36, y:111, width:23, height:11, rx:5 })}/>
+      <Zone {...zp('p_gluteo_mayor_der', 'rect', { x:61, y:111, width:23, height:11, rx:5 })}/>
       <Zone {...zp('p_isquio_izq',    'rect',    { x:37, y:122, width:22, height:36, rx:5 })}/>
       <Zone {...zp('p_isquio_der',    'rect',    { x:61, y:122, width:22, height:36, rx:5 })}/>
       <Zone {...zp('p_rodilla_izq',   'rect',    { x:37, y:159, width:22, height:10, rx:4 })}/>

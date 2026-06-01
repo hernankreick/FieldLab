@@ -13,8 +13,8 @@ import {
   calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus,
   calcCodDeficit, codDeficitType,
 } from '../utils/speed';
-
-const ATHLETES = ['Ramiro S.', 'Leandro M.', 'Tomás R.', 'Facundo B.'];
+import { getMetricStatus } from '../utils/thresholds';
+import { PLAYERS } from '../data/players';
 const MAIN_TABS = ['Salto', 'Velocidad', 'Agilidad', 'Resistencia'];
 const SUB_TABS = {
   Salto:       ['SJ', 'CMJ', 'Drop Jump'],
@@ -28,9 +28,6 @@ const COD_META = {
   'Pro Agility': { refLabel: 'Sprint 20m' },
 };
 
-function jumpStatus(h) { if (h >= 40) return 'safe'; if (h >= 30) return 'warning'; return 'danger'; }
-function rsiSt(r)      { if (r >= 2.0) return 'safe'; if (r >= 1.5) return 'warning'; return 'danger'; }
-function vo2Status(v)  { if (v >= 50) return 'safe'; if (v >= 40) return 'warning'; return 'danger'; }
 
 function NumInput({ label, value, onChange, placeholder = '0.00', step = '0.01' }) {
   return (
@@ -119,7 +116,7 @@ function CodSection({ name, deficit, invalidOrder, tCod, setTCod, tRef, setTRef,
 }
 
 export default function EvaluacionesView() {
-  const [athlete, setAthlete] = useState(ATHLETES[0]);
+  const [athlete, setAthlete] = useState(PLAYERS[0]);
   const [mainTab, setMainTab] = useState('Salto');
   const [subTab, setSubTab] = useState('SJ');
 
@@ -203,14 +200,14 @@ export default function EvaluacionesView() {
 
       {/* Athlete selector */}
       <div className="flex gap-2 flex-wrap">
-        {ATHLETES.map(n => (
-          <button key={n} onClick={() => setAthlete(n)}
+        {PLAYERS.map(p => (
+          <button key={p.id} onClick={() => setAthlete(p)}
             className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors',
-              athlete === n
+              athlete.id === p.id
                 ? 'bg-accent text-background border-accent'
                 : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
             )}>
-            {n}
+            {p.name.split(' ')[0]} {p.name.split(' ')[1]?.[0]}.
           </button>
         ))}
       </div>
@@ -228,7 +225,7 @@ export default function EvaluacionesView() {
           </div>
           {sjH > 0 && (
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <ResultCard label="Altura SJ" value={sjH.toFixed(1)} unit="cm" status={jumpStatus(sjH)} />
+              <ResultCard label="Altura SJ" value={sjH.toFixed(1)} unit="cm" status={getMetricStatus('sj', sjH, athlete.sport, athlete.category, athlete.sex)} />
               {sjW > 0 && <ResultCard label="Potencia Sayers" value={Math.round(sjW)} unit="W" status="neutral" />}
             </div>
           )}
@@ -248,7 +245,7 @@ export default function EvaluacionesView() {
           </div>
           {cmjH > 0 && (
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <ResultCard label="Altura CMJ" value={cmjH.toFixed(1)} unit="cm" status={jumpStatus(cmjH)} />
+              <ResultCard label="Altura CMJ" value={cmjH.toFixed(1)} unit="cm" status={getMetricStatus('cmj', cmjH, athlete.sport, athlete.category, athlete.sex)} />
               {cmjW > 0 && <ResultCard label="Potencia Sayers" value={Math.round(cmjW)} unit="W" status="neutral" />}
               {iue !== null && (
                 <ResultCard label="IUE" value={iue.toFixed(1)} unit="%" status={iueStatus(iue)}
@@ -269,9 +266,9 @@ export default function EvaluacionesView() {
           </div>
           {djH > 0 && (
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <ResultCard label="Altura DJ" value={djH.toFixed(1)} unit="cm" status={jumpStatus(djH)} />
+              <ResultCard label="Altura DJ" value={djH.toFixed(1)} unit="cm" status={getMetricStatus('dj', djH, athlete.sport, athlete.category, athlete.sex)} />
               {rsi > 0 && (
-                <ResultCard label="RSI" value={rsi.toFixed(2)} status={rsiSt(rsi)}
+                <ResultCard label="RSI" value={rsi.toFixed(2)} status={getMetricStatus('rsi', rsi, athlete.sport, athlete.category, athlete.sex)}
                   sub="≥ 2.0 élite · ≥ 1.5 aceptable" />
               )}
             </div>
@@ -365,7 +362,7 @@ export default function EvaluacionesView() {
           </div>
           {yyVo2 > 0 && (
             <ResultCard label="VO₂ máx estimado" value={yyVo2.toFixed(1)} unit="ml/kg/min"
-              status={vo2Status(yyVo2)} sub="(dist × 0.0084) + 36.4" />
+              status={getMetricStatus('vo2max', yyVo2, athlete.sport, athlete.category, athlete.sex)} sub="(dist × 0.0084) + 36.4" />
           )}
         </Card>
       )}
@@ -385,7 +382,7 @@ export default function EvaluacionesView() {
               <p className="text-xs text-slate-500 mb-3">
                 Velocidad alcanzada: <span className="font-data text-slate-300">{navVel.toFixed(1)} km/h</span>
               </p>
-              <ResultCard label="VO₂ máx estimado" value={navVo2.toFixed(1)} unit="ml/kg/min" status={vo2Status(navVo2)} />
+              <ResultCard label="VO₂ máx estimado" value={navVo2.toFixed(1)} unit="ml/kg/min" status={getMetricStatus('vo2max', navVo2, athlete.sport, athlete.category, athlete.sex)} />
             </>
           )}
         </Card>
@@ -400,7 +397,7 @@ export default function EvaluacionesView() {
           </div>
           {uncaVo2 > 0 && (
             <ResultCard label="VO₂ máx estimado" value={uncaVo2.toFixed(1)} unit="ml/kg/min"
-              status={vo2Status(uncaVo2)} sub="(dist / tiempo) × 6.65 − 35.8" />
+              status={getMetricStatus('vo2max', uncaVo2, athlete.sport, athlete.category, athlete.sex)} sub="(dist / tiempo) × 6.65 − 35.8" />
           )}
         </Card>
       )}
@@ -413,7 +410,7 @@ export default function EvaluacionesView() {
           </div>
           {coopVo2 > 0 && (
             <ResultCard label="VO₂ máx estimado" value={coopVo2.toFixed(1)} unit="ml/kg/min"
-              status={vo2Status(coopVo2)} sub="(dist − 504.9) / 44.73" />
+              status={getMetricStatus('vo2max', coopVo2, athlete.sport, athlete.category, athlete.sex)} sub="(dist − 504.9) / 44.73" />
           )}
         </Card>
       )}

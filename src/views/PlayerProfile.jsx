@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints } from 'lucide-react';
+import {
+  ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints,
+  ChevronDown, ChevronUp, Save, Check,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getAngleStatus, statusColor, statusLabel, statusBg } from '../hooks/useLungePhoto';
 import ReportButton from '../components/ReportButton';
 import {
   LineChart, Line, AreaChart, Area,
@@ -15,12 +17,10 @@ import { cn } from '../utils/cn';
 import { getLatestWellness, getWellnessByPlayer, getPlayerRecentLoads, getPlayerEvals } from '../utils/storage';
 import { PLAYERS } from '../data/players';
 import { getMetricStatus } from '../utils/thresholds';
-
-// PLAYERS se importa desde src/data/players.js
+import { saveEvaluation, getEvaluations } from '../lib/db';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-// Colores por altura de salto (mismo criterio que JumpAnalysis)
 function heightColor(cm) {
   if (cm >= 40) return '#22c55e';
   if (cm >= 25) return '#f59e0b';
@@ -32,6 +32,7 @@ function isToday(ts) {
 }
 
 function formatDate(ts) {
+  if (!ts) return '—';
   const d         = new Date(ts);
   const today     = new Date();
   const yesterday = new Date(today);
@@ -84,17 +85,15 @@ function AcwrBar({ value }) {
   const clamped = Math.min(Math.max(value, 0), 2.0);
   const color   = acwrColor(value);
   const W = 200, barY = 30, barH = 12;
-  const mx = (clamped / 2.0) * W;
-  // Clamp del marcador para que no se recorte en valores extremos
+  const mx  = (clamped / 2.0) * W;
   const tmx = Math.min(Math.max(mx, 5), W - 5);
-  // Clamp del label (más margen porque el texto es más ancho)
-  const lx = Math.min(Math.max(mx, 18), W - 18);
+  const lx  = Math.min(Math.max(mx, 18), W - 18);
 
   const zones = [
-    { from: 0,   to: 0.8, fill: '#334155' }, // gris — subcarga
-    { from: 0.8, to: 1.3, fill: '#22c55e' }, // verde — óptimo
-    { from: 1.3, to: 1.5, fill: '#f59e0b' }, // amarillo — precaución
-    { from: 1.5, to: 2.0, fill: '#ef4444' }, // rojo — peligro
+    { from: 0,   to: 0.8, fill: '#334155' },
+    { from: 0.8, to: 1.3, fill: '#22c55e' },
+    { from: 1.3, to: 1.5, fill: '#f59e0b' },
+    { from: 1.5, to: 2.0, fill: '#ef4444' },
   ];
 
   const zoneLabels = [
@@ -107,13 +106,10 @@ function AcwrBar({ value }) {
   return (
     <svg viewBox={`0 0 ${W} 62`} className="w-full">
       <defs>
-        {/* ClipPath para que los extremos de la barra sean redondeados */}
         <clipPath id="acwrBarClip">
           <rect x="0" y={barY} width={W} height={barH} rx={barH / 2} />
         </clipPath>
       </defs>
-
-      {/* Segmentos de zona */}
       <g clipPath="url(#acwrBarClip)">
         {zones.map(({ from, to, fill }) => (
           <rect key={from}
@@ -123,8 +119,6 @@ function AcwrBar({ value }) {
           />
         ))}
       </g>
-
-      {/* Separadores entre zonas */}
       {[0.8, 1.3, 1.5].map(v => {
         const tx = (v / 2.0) * W;
         return (
@@ -132,21 +126,15 @@ function AcwrBar({ value }) {
             stroke="rgba(0,0,0,0.35)" strokeWidth="1.5" />
         );
       })}
-
-      {/* Triángulo marcador apuntando hacia la barra desde arriba */}
       <polygon
         points={`${tmx},${barY} ${tmx - 5},${barY - 9} ${tmx + 5},${barY - 9}`}
         fill={color}
       />
-
-      {/* Valor actual sobre el triángulo */}
       <text x={lx} y={barY - 12} textAnchor="middle"
         fontSize="12" fontWeight="700" fill={color}
         fontFamily="ui-monospace,monospace">
         {value.toFixed(2)}
       </text>
-
-      {/* Etiquetas de zona */}
       {zoneLabels.map(({ label, cx }) => (
         <text key={label} x={cx} y={barY + barH + 14}
           textAnchor="middle" fontSize="8" fill="#64748b">
@@ -183,42 +171,193 @@ const TOOLTIP_STYLE = {
 
 const DAYS_ES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
-// ── Mobility data reader ─────────────────────────────────────────────────────
+// ── Mobility helpers ─────────────────────────────────────────────────────────
 
-function getMobilidadTobillo(coachId, athleteId) {
-  const pfx  = `fieldlab_${coachId}_mobility_${athleteId}_tobillo_`;
-  const keys = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k?.startsWith(pfx)) keys.push(k);
-    }
-    if (!keys.length) return null;
-    keys.sort().reverse();
-    return JSON.parse(localStorage.getItem(keys[0]));
-  } catch { return null; }
+const MOBILITY_DEFAULTS = {
+  ankle:    { der: '', izq: '' },
+  hip:      { flexDer: '', flexIzq: '', extDer: '', extIzq: '', rotIntDer: '', rotIntIzq: '', rotExtDer: '', rotExtIzq: '' },
+  shoulder: { flexDer: '', flexIzq: '', abdDer: '', abdIzq: '', rotIntDer: '', rotIntIzq: '', rotExtDer: '', rotExtIzq: '' },
+  fms:      { deepSquat: '', hurdleStepDer: '', hurdleStepIzq: '', inlineLungeDer: '', inlineLungeIzq: '', aslrDer: '', aslrIzq: '' },
+};
+
+function asymPct(a, b) {
+  const va = Number(a), vb = Number(b);
+  if (!va || !vb || va <= 0 || vb <= 0) return null;
+  const pct = (Math.abs(va - vb) / Math.max(va, vb)) * 100;
+  return pct.toFixed(1);
 }
 
-function AngleChip({ label, angle, sport }) {
-  if (angle == null) return null;
-  const st  = getAngleStatus(angle, sport);
-  const col = statusColor(st);
-  const bg  = statusBg(st);
-  const lbl = statusLabel(st);
+function asymColor(pct) {
+  const n = Number(pct);
+  if (n > 15) return '#ef4444';
+  if (n > 10) return '#f59e0b';
+  return '#22c55e';
+}
+
+function rangeStatus(val, greenMin, yellowMin) {
+  const v = Number(val);
+  if (!v || v <= 0) return 'neutral';
+  if (v >= greenMin) return 'safe';
+  if (v >= yellowMin) return 'warning';
+  return 'danger';
+}
+
+function ankleStatus(deg) { return rangeStatus(deg, 35, 25); }
+
+const STATUS_COLOR = { safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444', neutral: '#475569' };
+
+function fmsTotal(fms) {
+  const vals = [
+    fms.deepSquat, fms.hurdleStepDer, fms.hurdleStepIzq,
+    fms.inlineLungeDer, fms.inlineLungeIzq, fms.aslrDer, fms.aslrIzq,
+  ];
+  if (vals.every(v => v === '' || v == null)) return null;
+  return vals.reduce((s, v) => s + (Number(v) || 0), 0);
+}
+
+function fmsStatus(total) {
+  if (total == null) return 'neutral';
+  if (total >= 14) return 'safe';
+  if (total >= 11) return 'warning';
+  return 'danger';
+}
+
+// ── Mobility sub-components ──────────────────────────────────────────────────
+
+function SectionCard({ title, icon: Icon, open, onToggle, children }) {
   return (
-    <div className="flex-1 rounded-xl p-4 flex flex-col items-center gap-2"
-      style={{ background: bg, border: `1px solid ${col}` }}>
-      <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{label}</p>
-      <span style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: '40px', fontWeight: 900, color: col, lineHeight: 1,
-      }}>
-        {angle}°
-      </span>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-        style={{ background: col, color: '#0f172a' }}>
-        {lbl}
-      </span>
+    <div className="bg-card rounded-2xl border border-white/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 py-3.5 text-left"
+      >
+        <div className="flex items-center gap-2">
+          {Icon && <Icon size={15} className="text-accent flex-shrink-0" />}
+          <span className="text-sm font-semibold text-slate-200">{title}</span>
+        </div>
+        {open
+          ? <ChevronUp size={15} className="text-slate-500 flex-shrink-0" />
+          : <ChevronDown size={15} className="text-slate-500 flex-shrink-0" />
+        }
+      </button>
+      {open && <div className="px-4 pb-4 space-y-1">{children}</div>}
+    </div>
+  );
+}
+
+function DegInput({ value, onChange, max }) {
+  return (
+    <input
+      type="number"
+      min="0"
+      max={max}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder="—"
+      className="w-full bg-slate-800/60 border border-white/10 rounded-lg px-1 py-1.5
+        text-sm text-center font-data text-slate-100
+        focus:outline-none focus:border-accent/50 placeholder-slate-600"
+    />
+  );
+}
+
+function GonioRow({ label, derVal, izqVal, onDer, onIzq, max, statusFn }) {
+  const asy   = asymPct(derVal, izqVal);
+  const stDer = statusFn ? statusFn(derVal) : 'neutral';
+  const stIzq = statusFn ? statusFn(izqVal) : 'neutral';
+
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="text-xs text-slate-400 min-w-0 flex-1 leading-tight">{label}</span>
+      <div className="w-[68px] flex-shrink-0">
+        <p className="text-[9px] text-slate-600 text-center mb-0.5">Der</p>
+        <div className="relative">
+          <DegInput value={derVal} onChange={onDer} max={max} />
+          {derVal !== '' && derVal > 0 && (
+            <span className="absolute right-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: STATUS_COLOR[stDer] }} />
+          )}
+        </div>
+      </div>
+      <div className="w-[68px] flex-shrink-0">
+        <p className="text-[9px] text-slate-600 text-center mb-0.5">Izq</p>
+        <div className="relative">
+          <DegInput value={izqVal} onChange={onIzq} max={max} />
+          {izqVal !== '' && izqVal > 0 && (
+            <span className="absolute right-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: STATUS_COLOR[stIzq] }} />
+          )}
+        </div>
+      </div>
+      <div className="w-12 flex-shrink-0 text-right">
+        {asy != null
+          ? <span className="text-xs font-data font-bold" style={{ color: asymColor(asy) }}>{asy}%</span>
+          : <span className="text-xs text-slate-700">—</span>
+        }
+      </div>
+    </div>
+  );
+}
+
+function FmsItem({ label, value, onChange, bilateral, derVal, izqVal, onDer, onIzq }) {
+  function ScoreInput({ val, onCh }) {
+    return (
+      <select
+        value={val}
+        onChange={e => onCh(e.target.value)}
+        className="bg-slate-800/60 border border-white/10 rounded-lg px-1 py-1.5
+          text-sm text-center font-data text-slate-100
+          focus:outline-none focus:border-accent/50 w-[58px]"
+      >
+        <option value="">—</option>
+        {[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}
+      </select>
+    );
+  }
+
+  if (!bilateral) {
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <span className="text-xs text-slate-400 flex-1">{label}</span>
+        <ScoreInput val={value} onCh={onChange} />
+        <div className="w-12" />
+      </div>
+    );
+  }
+
+  const asy = (derVal !== '' && izqVal !== '' && Number(derVal) >= 0 && Number(izqVal) >= 0)
+    ? Math.abs(Number(derVal) - Number(izqVal))
+    : null;
+
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="text-xs text-slate-400 flex-1">{label}</span>
+      <div className="w-[68px] flex-shrink-0">
+        <p className="text-[9px] text-slate-600 text-center mb-0.5">Der</p>
+        <ScoreInput val={derVal} onCh={onDer} />
+      </div>
+      <div className="w-[68px] flex-shrink-0">
+        <p className="text-[9px] text-slate-600 text-center mb-0.5">Izq</p>
+        <ScoreInput val={izqVal} onCh={onIzq} />
+      </div>
+      <div className="w-12 text-right flex-shrink-0">
+        {asy != null
+          ? <span className={`text-xs font-data font-bold ${asy > 1 ? 'text-yellow-400' : 'text-green-400'}`}>{asy > 0 ? `Δ${asy}` : '✓'}</span>
+          : <span className="text-xs text-slate-700">—</span>
+        }
+      </div>
+    </div>
+  );
+}
+
+function RowHeader() {
+  return (
+    <div className="flex items-center gap-2 mb-0.5 pb-1 border-b border-white/5">
+      <div className="flex-1" />
+      <div className="w-[68px] text-center text-[9px] text-slate-600 font-semibold uppercase tracking-wider flex-shrink-0">Der</div>
+      <div className="w-[68px] text-center text-[9px] text-slate-600 font-semibold uppercase tracking-wider flex-shrink-0">Izq</div>
+      <div className="w-12 text-right text-[9px] text-slate-600 font-semibold uppercase tracking-wider flex-shrink-0">Asim.</div>
     </div>
   );
 }
@@ -230,7 +369,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const player = PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
 
   const [activeTab,       setActiveTab]       = useState('wellness');
-  const [mobilidadData,   setMobilidadData]   = useState(null);
   const [latestWellness,  setLatestWellness]  = useState(null);
   const [wellnessHistory, setWellnessHistory] = useState([]);
   const [playerEvals,     setPlayerEvals]     = useState([]);
@@ -241,20 +379,75 @@ export default function PlayerProfile({ initialId, onNavigate }) {
     }))
   );
 
+  // ── Movilidad state ──────────────────────────────────────────────────────
+  const [openSections, setOpenSections] = useState({ ankle: true, hip: false, shoulder: false, fms: false });
+  const [ankle,    setAnkle]    = useState(MOBILITY_DEFAULTS.ankle);
+  const [hip,      setHip]      = useState(MOBILITY_DEFAULTS.hip);
+  const [shoulder, setShoulder] = useState(MOBILITY_DEFAULTS.shoulder);
+  const [fms,      setFms]      = useState(MOBILITY_DEFAULTS.fms);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [saving,   setSaving]   = useState(false);
+  const [saveDone, setSaveDone] = useState(false);
+
   useEffect(() => {
     function loadData() {
       setLatestWellness(getLatestWellness(player.id));
       setWellnessHistory(getWellnessByPlayer(player.id).slice(0, 7));
       setPlayerLoads(getPlayerRecentLoads(player.id, 28));
       setPlayerEvals(getPlayerEvals(player.id));
-      const cid = coach?.id ?? 'anon';
-      setMobilidadData(getMobilidadTobillo(cid, player.id));
     }
     loadData();
     const iv = setInterval(loadData, 30_000);
     window.addEventListener('storage', loadData);
+
+    // Try to load last mobility evaluation from Supabase
+    getEvaluations(player.id)
+      .then(evals => {
+        const lastMob = evals?.find(e => e.type === 'mobility');
+        if (!lastMob) return;
+        setLastSaved(lastMob.date);
+        const d = lastMob.data ?? {};
+        if (d.ankle)    setAnkle(prev => ({ ...MOBILITY_DEFAULTS.ankle,    ...d.ankle    }));
+        if (d.hip)      setHip(prev   => ({ ...MOBILITY_DEFAULTS.hip,      ...d.hip      }));
+        if (d.shoulder) setShoulder(prev => ({ ...MOBILITY_DEFAULTS.shoulder, ...d.shoulder }));
+        if (d.fms)      setFms(prev   => ({ ...MOBILITY_DEFAULTS.fms,      ...d.fms      }));
+      })
+      .catch(() => {});
+
     return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
   }, [player.id, coach?.id]);
+
+  async function handleSaveMobility() {
+    setSaving(true);
+    const payload = {
+      player_id: player.id,
+      coach_id:  coach?.id,
+      date:      new Date().toISOString().split('T')[0],
+      type:      'mobility',
+      data:      { ankle, hip, shoulder, fms },
+    };
+    try {
+      await saveEvaluation(payload);
+      setLastSaved(payload.date);
+      setSaveDone(true);
+      setTimeout(() => setSaveDone(false), 2500);
+    } catch {
+      // Fallback: save to localStorage
+      try {
+        const key = `fieldlab_mobility_${player.id}_${Date.now()}`;
+        localStorage.setItem(key, JSON.stringify(payload));
+        setLastSaved(payload.date);
+        setSaveDone(true);
+        setTimeout(() => setSaveDone(false), 2500);
+      } catch {}
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleSection(key) {
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  }
 
   // Derivados de carga
   const todayW        = latestWellness && isToday(latestWellness.timestamp) ? latestWellness : null;
@@ -265,7 +458,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const risk          = playerRisk(player, latestWellness);
   const sessionCount  = playerLoads.filter(d => d.load > 0).length;
 
-  // Datos para gráficos
   const wellnessChartData = [...wellnessHistory].reverse().map(r => ({
     date: formatDate(r.timestamp), score: r.score,
   }));
@@ -277,17 +469,19 @@ export default function PlayerProfile({ initialId, onNavigate }) {
 
   const { eval: ev } = player;
 
-  // Último registro real por tipo de salto (newest-first desde storage)
   const realByType = {};
   for (const e of playerEvals) {
     if (e.type === 'jump' && !realByType[e.jumpType]) realByType[e.jumpType] = e;
   }
-  const realSJ  = realByType['SJ']          ?? null;
-  const realCMJ = realByType['CMJ']         ?? null;
-  // IUE calculado con datos reales si hay ambos; sino mock
+  const realSJ  = realByType['SJ']  ?? null;
+  const realCMJ = realByType['CMJ'] ?? null;
   const iueHeight = (realSJ && realCMJ)
     ? ((realCMJ.height - realSJ.height) / realSJ.height) * 100
     : ev.cmj.iue;
+
+  // FMS derived
+  const fmsScore  = fmsTotal(fms);
+  const fmsSt     = fmsStatus(fmsScore);
 
   return (
     <div className="space-y-4">
@@ -354,7 +548,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'wellness' && (
         <>
-          {/* Reporte de hoy */}
           <Card title="Hoy" icon={Heart}>
             {todayW ? (
               <>
@@ -404,7 +597,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             )}
           </Card>
 
-          {/* Mapa de zonas de dolor — solo si tiene reporte con zonas activas */}
           {todayW && Object.keys(todayW.activeZones || {}).length > 0 && (
             <Card title="Zonas de dolor">
               <BodyHeatmapSimple
@@ -415,7 +607,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             </Card>
           )}
 
-          {/* Gráfico historial Hooper */}
           {wellnessChartData.length > 0 && (
             <Card title="Historial Hooper · 7 días" icon={Activity}>
               <ResponsiveContainer width="100%" height={150}>
@@ -440,7 +631,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             </Card>
           )}
 
-          {/* Tabla historial */}
           {wellnessHistory.length > 0 && (
             <Card title="Detalle">
               <div className="overflow-x-auto -mx-1">
@@ -455,7 +645,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {wellnessHistory.map((r, i) => {
+                    {wellnessHistory.map((r) => {
                       const st = hooperSt(r.score);
                       return (
                         <tr key={r.timestamp} className="border-b border-white/5 last:border-0">
@@ -482,7 +672,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'carga' && (
         <>
-          {/* Gauge ACWR + métricas */}
           <Card title="ACWR" icon={Zap}>
             <AcwrBar value={displayAcwr} />
             <div className="flex justify-center mt-1 mb-4">
@@ -513,7 +702,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             )}
           </Card>
 
-          {/* Gráfico de carga */}
           <Card title={`Carga diaria · últimas 2 semanas · ${sessionCount} sesiones en 28d`} icon={Activity}>
             <ResponsiveContainer width="100%" height={155}>
               <AreaChart data={loadChartData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
@@ -539,9 +727,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'evaluaciones' && (
         <>
-          {/* Salto — datos reales cuando existen, mock como fallback */}
           <Card title="Salto" icon={ClipboardList}>
-            {/* Banner si hay datos reales */}
             {(realSJ || realCMJ) && (
               <div className="mb-3 px-2 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5"
                 style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
@@ -590,7 +776,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             </div>
           </Card>
 
-          {/* Historial de saltos registrados */}
           {playerEvals.filter(e => e.type === 'jump').length > 0 && (
             <Card title="Historial de saltos registrados" icon={ClipboardList}>
               <div className="space-y-2">
@@ -622,7 +807,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             </Card>
           )}
 
-          {/* Velocidad */}
           <Card title="Velocidad" icon={ClipboardList}>
             <div className="grid grid-cols-2 gap-3">
               <ResultCard
@@ -644,13 +828,10 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             </div>
           </Card>
 
-          {/* Resistencia */}
           <Card title="Resistencia" icon={ClipboardList}>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 bg-background rounded-xl p-3 border border-white/5">
-                <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider font-semibold">
-                  Test
-                </p>
+                <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider font-semibold">Test</p>
                 <p className="text-base font-semibold text-slate-200">{ev.resistance.test}</p>
               </div>
               <ResultCard
@@ -666,7 +847,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             </div>
           </Card>
 
-          {/* LSI */}
           <Card title="LSI — Simetría de carga" icon={ClipboardList}>
             <ResultCard
               label="Asimetría"
@@ -689,82 +869,196 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       {/* TAB MOVILIDAD                                                      */}
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'movilidad' && (
-        <>
-          <Card title="Dorsiflexión de Tobillo — Lunge Test" icon={Footprints}>
-            {mobilidadData ? (
-              <>
-                {/* Date */}
-                <div className="mb-4 flex items-center justify-between">
-                  <p className="text-xs text-slate-500">
-                    Última evaluación:{' '}
-                    <span className="text-slate-300">
-                      {formatDate(mobilidadData.timestamp)}
-                    </span>
-                  </p>
-                  {mobilidadData.sport && mobilidadData.sport !== 'default' && (
-                    <span className="text-xs text-slate-500 capitalize">
-                      {mobilidadData.sport}
-                    </span>
-                  )}
-                </div>
+        <div className="space-y-3">
 
-                {/* Side-by-side angles */}
-                <div className="flex gap-3 mb-4">
-                  <AngleChip
-                    label="Izquierdo"
-                    angle={mobilidadData.izq}
-                    sport={mobilidadData.sport ?? 'default'}
-                  />
-                  <AngleChip
-                    label="Derecho"
-                    angle={mobilidadData.der}
-                    sport={mobilidadData.sport ?? 'default'}
-                  />
-                </div>
+          {/* Last saved indicator */}
+          {lastSaved && (
+            <p className="text-xs text-slate-500 text-right">
+              Última evaluación guardada: <span className="text-slate-300">{formatDate(lastSaved)}</span>
+            </p>
+          )}
 
-                {/* Asymmetry */}
-                {mobilidadData.asimetria != null && (
-                  <div className="rounded-xl p-3 flex items-center justify-between"
-                    style={{
-                      background: mobilidadData.asimetria >= 15
-                        ? 'rgba(239,68,68,0.1)'
-                        : mobilidadData.asimetria >= 10
-                        ? 'rgba(234,179,8,0.1)'
-                        : 'rgba(34,197,94,0.1)',
-                      border: `1px solid ${mobilidadData.asimetria >= 15 ? '#ef4444' : mobilidadData.asimetria >= 10 ? '#eab308' : '#22c55e'}`,
-                    }}>
-                    <p className="text-sm text-slate-300">Asimetría</p>
-                    <span style={{
-                      fontFamily: "'JetBrains Mono', monospace",
-                      fontSize: '20px',
-                      fontWeight: 700,
-                      color: mobilidadData.asimetria >= 15 ? '#ef4444'
-                        : mobilidadData.asimetria >= 10 ? '#eab308' : '#22c55e',
-                    }}>
-                      {mobilidadData.asimetria}%
-                    </span>
-                  </div>
+          {/* ── 1. TOBILLO ──────────────────────────────────────────── */}
+          <SectionCard
+            title="Tobillo — Dorsiflexión (Lunge Test)"
+            icon={Footprints}
+            open={openSections.ankle}
+            onToggle={() => toggleSection('ankle')}
+          >
+            <p className="text-[10px] text-slate-600 mb-2">Referencia: ≥35° óptimo · 25–34° aceptable · &lt;25° déficit</p>
+            <RowHeader />
+            <GonioRow
+              label="Dorsiflexión"
+              derVal={ankle.der}  onDer={v => setAnkle(p => ({ ...p, der: v }))}
+              izqVal={ankle.izq}  onIzq={v => setAnkle(p => ({ ...p, izq: v }))}
+              max={45}
+              statusFn={ankleStatus}
+            />
+            {/* Status chips */}
+            {(ankle.der !== '' || ankle.izq !== '') && (
+              <div className="flex gap-2 mt-2 pt-2 border-t border-white/5">
+                {ankle.der !== '' && ankle.der > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: STATUS_COLOR[ankleStatus(ankle.der)] + '22', color: STATUS_COLOR[ankleStatus(ankle.der)] }}>
+                    Der {ankle.der}° {ankleStatus(ankle.der) === 'safe' ? '✓' : ankleStatus(ankle.der) === 'warning' ? '⚠' : '✕'}
+                  </span>
                 )}
-              </>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-slate-400 text-sm mb-1">Sin evaluación registrada</p>
-                <p className="text-slate-600 text-xs mb-4 leading-relaxed">
-                  Realizá el Lunge Test para registrar la dorsiflexión de tobillo
-                </p>
+                {ankle.izq !== '' && ankle.izq > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: STATUS_COLOR[ankleStatus(ankle.izq)] + '22', color: STATUS_COLOR[ankleStatus(ankle.izq)] }}>
+                    Izq {ankle.izq}° {ankleStatus(ankle.izq) === 'safe' ? '✓' : ankleStatus(ankle.izq) === 'warning' ? '⚠' : '✕'}
+                  </span>
+                )}
               </div>
             )}
+          </SectionCard>
 
-            {/* Evaluate button */}
-            <button
-              onClick={() => onNavigate?.('goniometro')}
-              className="w-full mt-4 py-2.5 rounded-xl font-semibold text-sm"
-              style={{ background: '#38bdf8', color: '#0f172a' }}
-            >
-              {mobilidadData ? '↺ Re-evaluar tobillo' : '▶ Evaluar tobillo'}
-            </button>
-          </Card>
-        </>
+          {/* ── 2. CADERA ────────────────────────────────────────────── */}
+          <SectionCard
+            title="Cadera — Flexión / Extensión / Rotación"
+            open={openSections.hip}
+            onToggle={() => toggleSection('hip')}
+          >
+            <p className="text-[10px] text-slate-600 mb-2">Goniometría estándar — valores en grados</p>
+            <RowHeader />
+            <GonioRow
+              label="Flexión (0–120°)"
+              derVal={hip.flexDer}    onDer={v => setHip(p => ({ ...p, flexDer: v }))}
+              izqVal={hip.flexIzq}    onIzq={v => setHip(p => ({ ...p, flexIzq: v }))}
+              max={120}
+              statusFn={v => rangeStatus(v, 110, 90)}
+            />
+            <GonioRow
+              label="Extensión (0–30°)"
+              derVal={hip.extDer}     onDer={v => setHip(p => ({ ...p, extDer: v }))}
+              izqVal={hip.extIzq}     onIzq={v => setHip(p => ({ ...p, extIzq: v }))}
+              max={30}
+              statusFn={v => rangeStatus(v, 15, 10)}
+            />
+            <GonioRow
+              label="Rot. Interna (0–45°)"
+              derVal={hip.rotIntDer}  onDer={v => setHip(p => ({ ...p, rotIntDer: v }))}
+              izqVal={hip.rotIntIzq}  onIzq={v => setHip(p => ({ ...p, rotIntIzq: v }))}
+              max={45}
+              statusFn={v => rangeStatus(v, 40, 30)}
+            />
+            <GonioRow
+              label="Rot. Externa (0–45°)"
+              derVal={hip.rotExtDer}  onDer={v => setHip(p => ({ ...p, rotExtDer: v }))}
+              izqVal={hip.rotExtIzq}  onIzq={v => setHip(p => ({ ...p, rotExtIzq: v }))}
+              max={45}
+              statusFn={v => rangeStatus(v, 40, 30)}
+            />
+          </SectionCard>
+
+          {/* ── 3. HOMBRO ────────────────────────────────────────────── */}
+          <SectionCard
+            title="Hombro — Flexión / Abducción / Rotación"
+            open={openSections.shoulder}
+            onToggle={() => toggleSection('shoulder')}
+          >
+            <p className="text-[10px] text-slate-600 mb-2">Goniometría estándar — valores en grados</p>
+            <RowHeader />
+            <GonioRow
+              label="Flexión (0–180°)"
+              derVal={shoulder.flexDer}    onDer={v => setShoulder(p => ({ ...p, flexDer: v }))}
+              izqVal={shoulder.flexIzq}    onIzq={v => setShoulder(p => ({ ...p, flexIzq: v }))}
+              max={180}
+              statusFn={v => rangeStatus(v, 160, 140)}
+            />
+            <GonioRow
+              label="Abducción (0–180°)"
+              derVal={shoulder.abdDer}     onDer={v => setShoulder(p => ({ ...p, abdDer: v }))}
+              izqVal={shoulder.abdIzq}     onIzq={v => setShoulder(p => ({ ...p, abdIzq: v }))}
+              max={180}
+              statusFn={v => rangeStatus(v, 160, 140)}
+            />
+            <GonioRow
+              label="Rot. Interna (0–90°)"
+              derVal={shoulder.rotIntDer}  onDer={v => setShoulder(p => ({ ...p, rotIntDer: v }))}
+              izqVal={shoulder.rotIntIzq}  onIzq={v => setShoulder(p => ({ ...p, rotIntIzq: v }))}
+              max={90}
+              statusFn={v => rangeStatus(v, 70, 50)}
+            />
+            <GonioRow
+              label="Rot. Externa (0–90°)"
+              derVal={shoulder.rotExtDer}  onDer={v => setShoulder(p => ({ ...p, rotExtDer: v }))}
+              izqVal={shoulder.rotExtIzq}  onIzq={v => setShoulder(p => ({ ...p, rotExtIzq: v }))}
+              max={90}
+              statusFn={v => rangeStatus(v, 70, 50)}
+            />
+          </SectionCard>
+
+          {/* ── 4. FUNCIONAL (FMS) ───────────────────────────────────── */}
+          <SectionCard
+            title="Funcional — FMS Simplificado"
+            open={openSections.fms}
+            onToggle={() => toggleSection('fms')}
+          >
+            <p className="text-[10px] text-slate-600 mb-2">Puntuación: 3 = completo · 2 = parcial · 1 = compensatorio · 0 = dolor</p>
+            <div className="space-y-0.5">
+              <FmsItem
+                label="Deep Squat"
+                value={fms.deepSquat}
+                onChange={v => setFms(p => ({ ...p, deepSquat: v }))}
+              />
+              <FmsItem
+                label="Hurdle Step"
+                bilateral
+                derVal={fms.hurdleStepDer}  onDer={v => setFms(p => ({ ...p, hurdleStepDer: v }))}
+                izqVal={fms.hurdleStepIzq}  onIzq={v => setFms(p => ({ ...p, hurdleStepIzq: v }))}
+              />
+              <FmsItem
+                label="Inline Lunge"
+                bilateral
+                derVal={fms.inlineLungeDer}  onDer={v => setFms(p => ({ ...p, inlineLungeDer: v }))}
+                izqVal={fms.inlineLungeIzq}  onIzq={v => setFms(p => ({ ...p, inlineLungeIzq: v }))}
+              />
+              <FmsItem
+                label="ASLR"
+                bilateral
+                derVal={fms.aslrDer}  onDer={v => setFms(p => ({ ...p, aslrDer: v }))}
+                izqVal={fms.aslrIzq}  onIzq={v => setFms(p => ({ ...p, aslrIzq: v }))}
+              />
+            </div>
+
+            {/* FMS total score */}
+            {fmsScore != null && (
+              <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+                <span className="text-sm text-slate-400">Score total</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-black font-data"
+                    style={{ color: STATUS_COLOR[fmsSt] }}>
+                    {fmsScore}
+                  </span>
+                  <span className="text-sm text-slate-600">/21</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold ml-1"
+                    style={{ background: STATUS_COLOR[fmsSt] + '22', color: STATUS_COLOR[fmsSt] }}>
+                    {fmsSt === 'safe' ? 'Óptimo' : fmsSt === 'warning' ? 'Monitorear' : 'Riesgo'}
+                  </span>
+                </div>
+              </div>
+            )}
+            <p className="text-[10px] text-slate-600 mt-1">Referencia: ≥14 óptimo · 11–13 monitorear · ≤10 riesgo</p>
+          </SectionCard>
+
+          {/* ── Guardar ──────────────────────────────────────────────── */}
+          <button
+            type="button"
+            onClick={handleSaveMobility}
+            disabled={saving}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl
+              font-semibold text-sm transition-colors disabled:opacity-60"
+            style={{
+              background: saveDone ? 'rgba(34,197,94,0.15)' : '#38bdf8',
+              color:      saveDone ? '#22c55e' : '#0f172a',
+            }}
+          >
+            {saving  ? <span className="animate-spin text-base">⟳</span>
+            : saveDone ? <><Check size={16} /> Guardado</>
+            : <><Save size={16} /> Guardar evaluación</>}
+          </button>
+        </div>
       )}
 
     </div>

@@ -1,43 +1,66 @@
-import { createContext, useContext, useState } from 'react';
-import { DEFAULT_TEAMS } from '../data/teams';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from './AuthContext';
+import { getTeams, createTeam } from '../lib/db';
+
+const DEFAULT_TEAMS = [
+  { id: 'primera', name: 'Primera División', sport: 'football', category: 'senior', sex: 'male', color: '#3b82f6' },
+  { id: 'sub18',   name: 'Sub 18',           sport: 'football', category: 'sub18',  sex: 'male', color: '#8b5cf6' },
+];
 
 const TeamContext = createContext(null);
 
 export function TeamProvider({ children }) {
-  const [teams, setTeams] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fieldlab_teams');
-      return saved ? JSON.parse(saved) : DEFAULT_TEAMS;
-    } catch { return DEFAULT_TEAMS; }
-  });
+  const { coach } = useAuth();
+  const [teams, setTeams] = useState(DEFAULT_TEAMS);
+  const [activeTeamId, setActiveTeamId] = useState(
+    () => localStorage.getItem('fieldlab_active_team') ?? DEFAULT_TEAMS[0].id
+  );
 
-  const [activeTeamId, setActiveTeamId] = useState(() => {
-    return localStorage.getItem('fieldlab_activeTeam') ?? DEFAULT_TEAMS[0].id;
-  });
+  useEffect(() => {
+    if (!coach?.id) return;
+    getTeams(coach.id)
+      .then(rows => {
+        if (rows && rows.length > 0) {
+          setTeams(rows);
+          setActiveTeamId(prev =>
+            rows.find(t => t.id === prev) ? prev : rows[0].id
+          );
+        }
+      })
+      .catch(() => { /* keep DEFAULT_TEAMS */ });
+  }, [coach?.id]);
 
   const activeTeam = teams.find(t => t.id === activeTeamId) ?? teams[0];
 
-  function switchTeam(teamId) {
-    setActiveTeamId(teamId);
-    localStorage.setItem('fieldlab_activeTeam', teamId);
+  function switchTeam(id) {
+    setActiveTeamId(id);
+    localStorage.setItem('fieldlab_active_team', id);
   }
 
-  function addTeam(team) {
-    const updated = [...teams, team];
-    setTeams(updated);
-    localStorage.setItem('fieldlab_teams', JSON.stringify(updated));
+  async function addTeam(teamData) {
+    if (!coach?.id) return null;
+    try {
+      const newTeam = await createTeam({ ...teamData, coach_id: coach.id });
+      setTeams(prev => [...prev, newTeam]);
+      return newTeam;
+    } catch {
+      const local = { ...teamData, id: `local_${Date.now()}` };
+      setTeams(prev => [...prev, local]);
+      return local;
+    }
   }
 
-  function removeTeam(teamId) {
-    if (teams.length <= 1) return;
-    const updated = teams.filter(t => t.id !== teamId);
-    setTeams(updated);
-    localStorage.setItem('fieldlab_teams', JSON.stringify(updated));
-    if (activeTeamId === teamId) switchTeam(updated[0].id);
+  function removeTeam(id) {
+    setTeams(prev => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter(t => t.id !== id);
+      if (activeTeamId === id) switchTeam(next[0].id);
+      return next;
+    });
   }
 
   return (
-    <TeamContext.Provider value={{ teams, activeTeam, activeTeamId, switchTeam, addTeam, removeTeam }}>
+    <TeamContext.Provider value={{ teams, activeTeam, switchTeam, addTeam, removeTeam }}>
       {children}
     </TeamContext.Provider>
   );

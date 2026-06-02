@@ -6,9 +6,10 @@ export default defineConfig({
   retries: 1,
   timeout: 30000,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'https://field-lab-dun.vercel.app',
     headless: true,
     screenshot: 'only-on-failure',
+    ignoreHTTPSErrors: true,
   },
   projects: [
     {
@@ -16,10 +17,4 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: true,
-    timeout: 30000,
-  },
 });

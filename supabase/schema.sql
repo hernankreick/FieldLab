@@ -188,7 +188,7 @@ CREATE POLICY "loads_delete" ON public.loads
 DO $$
 DECLARE
   -- ▼ REPLACE with your auth user UUID ▼
-  v_coach uuid := '00000000-0000-0000-0000-000000000000';
+  v_coach uuid := '5b7d6d46-9da6-4aa4-bce5-c5e7b35fd51d';
 
   v_team uuid := 'aaaaaaaa-1111-0000-0000-000000000001';
 

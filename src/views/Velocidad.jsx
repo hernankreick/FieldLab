@@ -78,6 +78,7 @@ function TabVelocidad() {
 
   // Vision module state
   const [visionTarget, setVisionTarget] = useState(null); // 'sprint10' | 'sprint20' | 'sprint30'
+  const [showSprintVision, setShowSprintVision] = useState(false);
 
   const t10 = parseFloat(sprint10) || 0;
   const t20 = parseFloat(sprint20) || 0;
@@ -121,6 +122,14 @@ function TabVelocidad() {
       {shape === 'Lineal' && (
         <>
           <SegControl options={LINEAR_SEGS} active={seg} onChange={setSeg} />
+
+          <button
+            onClick={() => setShowSprintVision(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-accent/10 border border-accent/20 text-accent font-semibold text-sm hover:bg-accent/20 active:scale-95 transition-colors"
+          >
+            <Camera size={20} />
+            Medir con Cámara
+          </button>
 
           <Card title="Sprint" icon={Timer}>
             <div className="space-y-4">
@@ -274,12 +283,27 @@ function TabVelocidad() {
         </>
       )}
 
-      {/* Vision module — fullscreen overlay */}
+      {/* Vision module — per-row */}
       {visionTarget && (
         <SprintVisionModule
           testType={visionTarget}
           onResult={handleVisionResult}
           onClose={() => setVisionTarget(null)}
+        />
+      )}
+
+      {/* Vision module — top camera button (Lineal tab) */}
+      {showSprintVision && (
+        <SprintVisionModule
+          testType={seg === '20m' ? 'sprint20' : seg === '30m' ? 'sprint30' : 'sprint10'}
+          onResult={(t) => {
+            const val = t.toFixed(3);
+            if (seg === '20m') setSprint20(val);
+            else if (seg === '30m') setSprint30(val);
+            else setSprint10(val);
+            setShowSprintVision(false);
+          }}
+          onClose={() => setShowSprintVision(false)}
         />
       )}
     </div>

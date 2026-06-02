@@ -238,10 +238,10 @@ export default function EvaluacionesView() {
   const [t20, setT20]       = useState('');
   const [t30, setT30]       = useState('');
   const [curDer, setCurDer] = useState(''); const [curIzq, setCurIzq]   = useState('');
-  const [scDist, setScDist]     = useState(20);
-  const [scTiempo, setScTiempo] = useState('');
-  const [scSaving,  setScSaving]  = useState(false);
-  const [scSaveDone, setScSaveDone] = useState(false);
+  const [curvoDist, setCurvoDist] = useState(20);
+  const [curvoTime, setCurvoTime] = useState('');
+  const [curvoSaving, setCurvoSaving] = useState(false);
+  const [curvoDone,   setCurvoDone]   = useState(false);
 
   // Agilidad inputs (separate state per test to preserve values when switching)
   const [ag5Cod, setAg5Cod]   = useState(''); const [ag5Ref, setAg5Ref]   = useState('');
@@ -278,9 +278,9 @@ export default function EvaluacionesView() {
   const v0_10  = calcVelocity(10, t10v);
   const v10_20 = t10v > 0 && t20v > t10v ? calcVelocity(10, t20v - t10v) : 0;
   const v20_30 = t20v > 0 && t30v > t20v ? calcVelocity(10, t30v - t20v) : 0;
-  const asim     = calcCurvoAsim(parseFloat(curDer) || 0, parseFloat(curIzq) || 0);
-  const scTiempoV = parseFloat(scTiempo) || 0;
-  const scResult  = scTiempoV > 0 ? calcSprintCurvo(scDist, scTiempoV) : null;
+  const asim       = calcCurvoAsim(parseFloat(curDer) || 0, parseFloat(curIzq) || 0);
+  const curvoVel   = curvoTime > 0 ? ((curvoDist / curvoTime) * 3.6).toFixed(2) : null;
+  const curvoColor = curvoVel >= 22 ? '#22c55e' : curvoVel >= 18 ? '#eab308' : '#ef4444';
 
   // Agilidad calcs
   const cod5Raw    = ag5Cod && ag5Ref ? calcCodDeficit(parseFloat(ag5Cod), parseFloat(ag5Ref)) : null;
@@ -436,68 +436,65 @@ export default function EvaluacionesView() {
 
       {/* ── VELOCIDAD: Curvo ── */}
       {mainTab === 'Velocidad' && subTab === 'Curvo' && (
-        <Card title="Sprint Curvo" icon={ClipboardList}>
-          <div className="mb-4">
-            <p className="text-xs text-slate-400 mb-2 block">Distancia</p>
-            <div className="flex gap-2">
-              {[20, 30, 40].map(d => (
-                <button
-                  key={d}
-                  onClick={() => setScDist(d)}
-                  className={cn(
-                    'flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors',
-                    scDist === d
-                      ? 'bg-accent text-background border-accent'
-                      : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
-                  )}
-                >
-                  {d}m
-                </button>
-              ))}
+        <>
+          <Card title="SPRINT CURVO — VELOCIDAD" icon={ClipboardList}>
+            <div className="mb-4">
+              <p className="text-xs text-slate-400 mb-2 block">Distancia</p>
+              <div className="flex gap-2">
+                {[20, 30, 40].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setCurvoDist(d)}
+                    className={cn(
+                      'flex-1 py-2 rounded-full text-sm font-semibold border transition-colors',
+                      curvoDist === d
+                        ? 'bg-accent text-background border-accent'
+                        : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
+                    )}
+                  >
+                    {d}m
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          <NumInput label="Tiempo (s)" value={scTiempo} onChange={setScTiempo} />
-          {scResult && (() => {
-            const velStatus = scResult.velocidad >= 22 ? 'safe' : scResult.velocidad >= 18 ? 'warning' : 'danger';
-            return (
+            <NumInput label="Tiempo (s)" value={curvoTime} onChange={setCurvoTime} />
+            {curvoVel !== null && (
               <div className="mt-4 space-y-3">
-                <ResultCard
-                  label={`Velocidad ${scDist}m curvo`}
-                  value={scResult.velocidad.toFixed(2)}
-                  unit="km/h"
-                  status={velStatus}
-                  sub={`${scDist}m ÷ ${scTiempo}s × 3.6`}
-                />
+                <div className="px-4 py-4 rounded-xl bg-background border border-white/10 text-center">
+                  <span className="text-4xl font-data font-black" style={{ color: curvoColor }}>
+                    {curvoVel} km/h
+                  </span>
+                  <p className="text-xs text-slate-500 mt-1">{curvoDist}m ÷ {curvoTime}s × 3.6</p>
+                </div>
                 <button
                   onClick={async () => {
-                    if (scSaving || scSaveDone) return;
-                    setScSaving(true);
+                    if (curvoSaving || curvoDone) return;
+                    setCurvoSaving(true);
                     try {
                       await saveEvaluation({
                         player_id: athlete.id,
                         type: 'sprintCurvo',
-                        data: { distancia: scDist, tiempo: scTiempoV, velocidad: scResult.velocidad },
+                        data: { distancia: curvoDist, tiempo: Number(curvoTime), velocidad: Number(curvoVel) },
                       });
-                    } catch { /* sin Supabase, silenciar */ }
-                    setScSaving(false);
-                    setScSaveDone(true);
-                    setTimeout(() => setScSaveDone(false), 2000);
+                    } catch { /* sin Supabase */ }
+                    setCurvoSaving(false);
+                    setCurvoDone(true);
+                    setTimeout(() => setCurvoDone(false), 2000);
                   }}
                   className={cn(
                     'w-full py-2.5 rounded-xl text-sm font-bold transition-colors',
-                    scSaveDone
+                    curvoDone
                       ? 'bg-safe/20 text-safe border border-safe/30'
                       : 'bg-accent text-background hover:bg-accent/90 active:scale-95'
                   )}
                 >
-                  {scSaveDone ? '✓ Guardado' : scSaving ? 'Guardando…' : 'Guardar'}
+                  {curvoDone ? '✓ Guardado' : curvoSaving ? 'Guardando…' : 'Guardar'}
                 </button>
               </div>
-            );
-          })()}
-          {/* Asimetría de giro — opcional */}
-          <div className="pt-4 border-t border-white/5 mt-4">
-            <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Asimetría de giro — opcional</p>
+            )}
+          </Card>
+
+          <Card title="Asimetría de giro" icon={ClipboardList}>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <NumInput label="Giro Derecho (s)"   value={curDer} onChange={setCurDer} />
               <NumInput label="Giro Izquierdo (s)" value={curIzq} onChange={setCurIzq} />
@@ -506,8 +503,8 @@ export default function EvaluacionesView() {
               <ResultCard label="Asimetría de giro" value={asim.toFixed(1)} unit="%"
                 status={curvoAsimStatus(asim)} sub="< 3% óptimo · 3–5% monitoreo · > 5% riesgo biomecánico" />
             )}
-          </div>
-        </Card>
+          </Card>
+        </>
       )}
 
       {/* ── AGILIDAD ── */}

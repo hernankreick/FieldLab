@@ -174,6 +174,14 @@ function TabVelocidad() {
 
       {shape === 'Curvo' && (
         <>
+          <button
+            onClick={() => setShowSprintVision(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-accent/10 border border-accent/20 text-accent font-semibold text-sm hover:bg-accent/20 active:scale-95 transition-colors"
+          >
+            <Camera size={20} />
+            Medir con Cámara
+          </button>
+
           <Card title="SPRINT CURVO — VELOCIDAD" icon={Timer}>
             <div className="mb-4">
               <p className="text-xs text-slate-400 mb-2 block">Distancia</p>

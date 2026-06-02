@@ -81,6 +81,14 @@ function riskLabel(s) {
   return 'APTO';
 }
 
+function motivoRiesgo(player, todayW) {
+  if (player.tag === 'LESIÓN') return 'Lesión';
+  if (player.acwr > 1.5)       return 'ACWR alto';
+  if (!todayW)                 return 'Sin wellness';
+  if (player.acwr > 1.3)       return 'Carga elevada';
+  return '';
+}
+
 function fmtDate(isoStr) {
   if (!isoStr) return '—';
   return new Date(isoStr).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -484,16 +492,21 @@ export async function generateTeamReport(athletes) {
 
   y = drawTable(
     doc, y,
-    ['Jugador', 'Posición', 'ACWR', 'Zona ACWR', 'Hooper', 'Estado'],
+    ['Jugador', 'Posición', 'ACWR', 'Zona ACWR', 'Hooper', 'Estado', 'Motivo'],
     sorted.map(a => {
       const todayW = a.w && isToday(a.w.timestamp) ? a.w : null;
       return [
         a.name, a.position ?? '—', a.acwr.toFixed(2),
         acwrZone(a.acwr), todayW ? todayW.score : '—',
         riskLabel(computeRisk(a, todayW)),
+        motivoRiesgo(a, todayW),
       ];
     }),
-    { 0: { cellWidth: 46 }, 1: { cellWidth: 28 } },
+    {
+      0: { cellWidth: 40 }, 1: { cellWidth: 24 },
+      2: { cellWidth: 14 }, 3: { cellWidth: 22 },
+      4: { cellWidth: 12 }, 5: { cellWidth: 18 },
+    },
     (data) => {
       if (data.row.section !== 'body') return;
       if (data.column.index === 2 || data.column.index === 3) {
@@ -504,6 +517,11 @@ export async function generateTeamReport(athletes) {
         const raw = data.cell.raw;
         data.cell.styles.textColor = statusColor(raw==='RIESGO'?'danger':raw==='ALERTA'?'warning':'safe');
         data.cell.styles.fontStyle = 'bold';
+      }
+      if (data.column.index === 6) {
+        data.cell.styles.textColor = C.muted;
+        data.cell.styles.fontStyle = 'italic';
+        data.cell.styles.fontSize  = 7;
       }
     }
   );
@@ -539,25 +557,34 @@ export async function generateTeamReport(athletes) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.muted);
-    doc.text(a.position ?? '—', M + 60, y + detRowH / 2 + 1.2);
+    doc.text(a.position ?? '—', M + 57, y + detRowH / 2 + 1.2);
 
     // ACWR coloreado
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...statusColor(acwrSt(a.acwr)));
-    doc.text(`ACWR ${a.acwr.toFixed(2)}`, M + 92, y + detRowH / 2 + 1.2);
+    doc.text(`ACWR ${a.acwr.toFixed(2)}`, M + 88, y + detRowH / 2 + 1.2);
 
     // zona
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.muted);
-    doc.text(acwrZone(a.acwr), M + 122, y + detRowH / 2 + 1.2);
+    doc.text(acwrZone(a.acwr), M + 114, y + detRowH / 2 + 1.2);
 
     // estado
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...rCol);
-    doc.text(riskLabel(risk), M + 158, y + detRowH / 2 + 1.2);
+    doc.text(riskLabel(risk), M + 143, y + detRowH / 2 + 1.2);
+
+    // motivo (muted italic, inline)
+    const motivo = motivoRiesgo(a, todayW);
+    if (motivo) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(6);
+      doc.setTextColor(...C.muted);
+      doc.text(`· ${motivo}`, M + 158, y + detRowH / 2 + 1.2);
+    }
 
     y += detRowH;
   });

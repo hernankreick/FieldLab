@@ -6,6 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import SprintVisionModule from '../components/SprintVisionModule';
 import { cn } from '../utils/cn';
 import { calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus } from '../utils/speed';
+import { saveEvaluation } from '../lib/db';
 
 const SHAPE_TABS = ['Lineal', 'Curvo'];
 const LINEAR_SEGS = ['10m', '20m', '30m', '10/20/30m'];
@@ -70,6 +71,10 @@ function TabVelocidad() {
   const [sprint30, setSprint30] = useState('');
   const [curvoDer, setCurvoDer] = useState('');
   const [curvoIzq, setCurvoIzq] = useState('');
+  const [curvoDist, setCurvoDist] = useState(20);
+  const [curvoTime, setCurvoTime] = useState('');
+  const [curvoSaving, setCurvoSaving] = useState(false);
+  const [curvoDone,   setCurvoDone]   = useState(false);
 
   // Vision module state
   const [visionTarget, setVisionTarget] = useState(null); // 'sprint10' | 'sprint20' | 'sprint30'
@@ -90,6 +95,9 @@ function TabVelocidad() {
   const izq = parseFloat(curvoIzq) || 0;
   const curvoAsim = calcCurvoAsim(der, izq);
   const asimSt = curvoAsimStatus(curvoAsim);
+
+  const curvoVel   = curvoTime > 0 ? ((curvoDist / parseFloat(curvoTime)) * 3.6).toFixed(2) : null;
+  const curvoColor = curvoVel >= 22 ? '#22c55e' : curvoVel >= 18 ? '#eab308' : '#ef4444';
 
   const show = (s) => seg === s || seg === '10/20/30m';
 
@@ -157,6 +165,71 @@ function TabVelocidad() {
 
       {shape === 'Curvo' && (
         <>
+          <Card title="SPRINT CURVO — VELOCIDAD" icon={Timer}>
+            <div className="mb-4">
+              <p className="text-xs text-slate-400 mb-2 block">Distancia</p>
+              <div className="flex gap-2">
+                {[20, 30, 40].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setCurvoDist(d)}
+                    className={cn(
+                      'flex-1 py-2 rounded-full text-sm font-semibold border transition-colors',
+                      curvoDist === d
+                        ? 'bg-accent text-background border-accent'
+                        : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
+                    )}
+                  >
+                    {d}m
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Tiempo (s)</label>
+              <input
+                type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                value={curvoTime}
+                onChange={e => setCurvoTime(e.target.value)}
+                className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
+              />
+            </div>
+            {curvoVel !== null && (
+              <div className="mt-4 space-y-3">
+                <div className="px-4 py-4 rounded-xl bg-background border border-white/10 text-center">
+                  <span className="text-4xl font-data font-black" style={{ color: curvoColor }}>
+                    {curvoVel} km/h
+                  </span>
+                  <p className="text-xs text-slate-500 mt-1">{curvoDist}m ÷ {curvoTime}s × 3.6</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (curvoSaving || curvoDone) return;
+                    setCurvoSaving(true);
+                    try {
+                      await saveEvaluation({
+                        player_id: null,
+                        type: 'sprintCurvo',
+                        data: { distancia: curvoDist, tiempo: parseFloat(curvoTime), velocidad: Number(curvoVel) },
+                      });
+                    } catch { /* sin Supabase */ }
+                    setCurvoSaving(false);
+                    setCurvoDone(true);
+                    setTimeout(() => setCurvoDone(false), 2000);
+                  }}
+                  className={cn(
+                    'w-full py-2.5 rounded-xl text-sm font-bold transition-colors',
+                    curvoDone
+                      ? 'bg-safe/20 text-safe border border-safe/30'
+                      : 'bg-accent text-background hover:bg-accent/90 active:scale-95'
+                  )}
+                >
+                  {curvoDone ? '✓ Guardado' : curvoSaving ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </Card>
+
           <Card title="Sprint Curvo — Asimetría de giro" icon={Timer}>
             <div className="grid grid-cols-2 gap-3">
               <div>

@@ -1,28 +1,28 @@
-import { useState, useEffect } from 'react';
-import { AlertTriangle, Users, LogOut, Plus } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { AlertTriangle, Users, LogOut, Plus, Loader2 } from 'lucide-react';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import QRGenerator from '../components/QRGenerator';
 import ReportButton from '../components/ReportButton';
 import { acwrStatus, lsiStatus } from '../utils/biomechanics';
+import { calcACWR } from '../utils/calculations';
 import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
-import { useCoachStorage } from '../hooks/useCoachStorage';
 import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
+import { getPlayers, getWellness, getLoads } from '../lib/db';
 import { PLAYERS } from '../data/players';
 
-// Roster inicial derivado de PLAYERS: mismos IDs (1-8) para que PlayerProfile
-// y Wellness.jsx (que también usan esos IDs) funcionen sin cambios adicionales.
 const DEFAULT_ATHLETES = PLAYERS.map(p => ({
   id:       p.id,
   name:     p.name,
   position: p.position,
   number:   0,
   acwr:     p.acwr,
-  lsi:      p.lsi,
+  lsi:      p.lsi ?? 0,
 }));
 
-const DOT_COLOR  = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
-const KPI_COLOR  = { neutral: '#38bdf8', safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
+const DOT_COLOR = { danger: '#ef4444', warning: '#f59e0b', safe: '#22c55e' };
+const KPI_COLOR = { neutral: '#38bdf8', safe: '#22c55e', warning: '#f59e0b', danger: '#ef4444' };
 
 function wellnessRisk(w) {
   if (!w) return null;
@@ -32,9 +32,9 @@ function wellnessRisk(w) {
 }
 
 function athleteRisk(a, w) {
-  const loadRisk = a.acwr > 1.5 || a.lsi > 15             ? 'danger'
-                 : a.acwr > 1.3 || a.lsi > 8               ? 'warning'
-                 : a.acwr < 0.8                             ? 'warning'  // sub-entrenamiento
+  const loadRisk = a.acwr > 1.5 || a.lsi > 15 ? 'danger'
+                 : a.acwr > 1.3 || a.lsi > 8   ? 'warning'
+                 : a.acwr < 0.8                 ? 'warning'
                  : 'safe';
   const wr = wellnessRisk(w);
   if (loadRisk === 'danger' || wr === 'danger')   return 'danger';
@@ -53,7 +53,6 @@ function isToday(timestamp) {
   return new Date(timestamp).toDateString() === new Date().toDateString();
 }
 
-// 0 = rojo, 1 = amarillo/gris (warning o sin reporte), 2 = verde
 function dotPriority(a, w) {
   const hasToday = w && isToday(w.timestamp);
   if (a.acwr > 1.5 || (hasToday && w.score > 18)) return 0;
@@ -62,39 +61,93 @@ function dotPriority(a, w) {
   return 2;
 }
 
-export default function Dashboard({ onNavigate }) {
-  const { coach, logout } = useAuth();
-  const [athletes, setAthletes] = useCoachStorage('athletes', DEFAULT_ATHLETES);
-  const [showAdd,  setShowAdd]  = useState(false);
-  const [newName,  setNewName]  = useState('');
-  const [newPos,   setNewPos]   = useState('');
-  const [newNum,   setNewNum]   = useState('');
-  const [wellnessMap, setWellnessMap] = useState({});
+function normalizeWellness(row) {
+  return {
+    ...row,
+    score:     row.composite ?? 0,
+    timestamp: new Date(`${row.date}T12:00:00`).getTime(),
+  };
+}
 
+export default function Dashboard({ onNavigate }) {
+  const { coach, logout }  = useAuth();
+  const { activeTeam }     = useTeam();
+  const [athletes,    setAthletes]    = useState(DEFAULT_ATHLETES);
+  const [wellnessMap, setWellnessMap] = useState({});
+  const [dbLoading,   setDbLoading]   = useState(false);
+  const [usingLocal,  setUsingLocal]  = useState(false);
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [newName,     setNewName]     = useState('');
+  const [newPos,      setNewPos]      = useState('');
+  const [newNum,      setNewNum]      = useState('');
+
+  const loadFromDB = useCallback(async () => {
+    if (!activeTeam?.id) return;
+    setDbLoading(true);
+    setUsingLocal(false);
+    try {
+      const players = await getPlayers(activeTeam.id);
+      if (!players || players.length === 0) {
+        setAthletes(DEFAULT_ATHLETES);
+        setUsingLocal(true);
+        return;
+      }
+
+      const [wellnessResults, loadsResults] = await Promise.all([
+        Promise.all(players.map(p => getWellness(p.id, 1).catch(() => []))),
+        Promise.all(players.map(p => getLoads(p.id, 28).catch(() => []))),
+      ]);
+
+      const newWellnessMap = {};
+      const enriched = players.map((p, i) => {
+        const wRow = wellnessResults[i]?.[0] ?? null;
+        if (wRow) newWellnessMap[String(p.id)] = normalizeWellness(wRow);
+
+        const loadValues = (loadsResults[i] ?? [])
+          .slice().reverse()
+          .map(l => Number(l.value));
+        const acwrResult = loadValues.length > 0 ? calcACWR(loadValues) : null;
+
+        return {
+          ...p,
+          acwr: acwrResult?.ratio ?? 1.0,
+          lsi:  p.lsi ?? 0,
+        };
+      });
+
+      setAthletes(enriched);
+      setWellnessMap(newWellnessMap);
+    } catch {
+      setAthletes(DEFAULT_ATHLETES);
+      setUsingLocal(true);
+    } finally {
+      setDbLoading(false);
+    }
+  }, [activeTeam?.id]);
+
+  useEffect(() => { loadFromDB(); }, [loadFromDB]);
+
+  // Poll localStorage wellness when using local fallback
   useEffect(() => {
+    if (!usingLocal) return;
     clearOldRecords();
-    const loadData = () => setWellnessMap(getAllLatestWellness());
-    loadData();
-    const iv = setInterval(loadData, 30_000);
-    window.addEventListener('storage', loadData);
-    return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
-  }, []);
+    const load = () => setWellnessMap(getAllLatestWellness());
+    load();
+    const iv = setInterval(load, 30_000);
+    window.addEventListener('storage', load);
+    return () => { clearInterval(iv); window.removeEventListener('storage', load); };
+  }, [usingLocal]);
 
   function addAthlete() {
     if (!newName.trim()) return;
-    // NOTA: los atletas nuevos usan id=Date.now(). Esos IDs no existen en
-    // data/players.js ni en el ATHLETES hardcodeado de Wellness.jsx, por lo que
-    // PlayerProfile y la vista Wellness no los mostrarán hasta que esas vistas
-    // sean migradas a leer desde el coach storage (trabajo futuro).
-    const athlete = {
+    setAthletes(prev => [...prev, {
       id:       Date.now(),
       name:     newName.trim(),
       position: newPos.trim(),
       number:   Number(newNum) || 0,
       acwr:     1.0,
       lsi:      0,
-    };
-    setAthletes(prev => [...prev, athlete]);
+    }]);
     setNewName(''); setNewPos(''); setNewNum('');
     setShowAdd(false);
   }
@@ -118,11 +171,11 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div className="space-y-4">
-      {/* Header con nombre del coach, botón de informe y logout */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-slate-100">FieldLab</h1>
-          <p className="text-sm text-slate-400">{coach.name}</p>
+          <p className="text-sm text-slate-400">{coach?.name ?? coach?.email}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <ReportButton
@@ -136,13 +189,21 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </div>
 
+      {/* Loading spinner */}
+      {dbLoading && (
+        <div className="flex items-center justify-center gap-2 py-1 text-slate-500 text-xs">
+          <Loader2 size={12} className="animate-spin" />
+          Cargando plantel…
+        </div>
+      )}
+
       {/* KPI strip — 4 columnas compactas */}
       {(() => {
         const kpis = [
-          { value: athletesWithWellness.length, label: 'Atletas',    color: KPI_COLOR.neutral },
-          { value: alerts.length,   label: 'En riesgo',  color: alerts.length > 0 ? KPI_COLOR.danger  : KPI_COLOR.safe    },
-          { value: todayCount,      label: 'Hoy',        color: todayCount === athletesWithWellness.length ? KPI_COLOR.safe : todayCount > 0 ? KPI_COLOR.warning : KPI_COLOR.neutral },
-          { value: noReportCount,   label: 'Sin rep.',   color: noReportCount > 0 ? KPI_COLOR.warning : KPI_COLOR.safe    },
+          { value: athletesWithWellness.length, label: 'Atletas',   color: KPI_COLOR.neutral },
+          { value: alerts.length,   label: 'En riesgo', color: alerts.length > 0 ? KPI_COLOR.danger  : KPI_COLOR.safe    },
+          { value: todayCount,      label: 'Hoy',       color: todayCount === athletesWithWellness.length ? KPI_COLOR.safe : todayCount > 0 ? KPI_COLOR.warning : KPI_COLOR.neutral },
+          { value: noReportCount,   label: 'Sin rep.',  color: noReportCount > 0 ? KPI_COLOR.warning : KPI_COLOR.safe    },
         ];
         return (
           <div className="grid grid-cols-4 gap-2">
@@ -188,7 +249,6 @@ export default function Dashboard({ onNavigate }) {
           </button>
         }
       >
-        {/* Mini-form de alta de jugador */}
         {showAdd && (
           <div className="flex flex-col gap-2 mb-3 p-3 bg-background rounded-xl border border-white/10">
             <input

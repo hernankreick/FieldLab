@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { TeamProvider } from './context/TeamContext';
 import Login from './views/Login';
 import NavBar from './components/NavBar';
 import Dashboard from './views/Dashboard';
@@ -78,7 +79,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <TeamProvider>
+        <AppContent />
+      </TeamProvider>
     </AuthProvider>
   );
 }

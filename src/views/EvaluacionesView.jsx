@@ -16,6 +16,7 @@ import {
 import { getMetricStatus } from '../utils/thresholds';
 import { PLAYERS } from '../data/players';
 import { calcUNCa, calcNavette, calcSprintCurvo } from '../utils/calculations';
+import { saveEvaluation } from '../lib/db';
 const MAIN_TABS = ['Salto', 'Velocidad', 'Agilidad', 'Resistencia'];
 const SUB_TABS = {
   Salto:       ['SJ', 'CMJ', 'Drop Jump'],
@@ -239,6 +240,8 @@ export default function EvaluacionesView() {
   const [curDer, setCurDer] = useState(''); const [curIzq, setCurIzq]   = useState('');
   const [scDist, setScDist]     = useState(20);
   const [scTiempo, setScTiempo] = useState('');
+  const [scSaving,  setScSaving]  = useState(false);
+  const [scSaveDone, setScSaveDone] = useState(false);
 
   // Agilidad inputs (separate state per test to preserve values when switching)
   const [ag5Cod, setAg5Cod]   = useState(''); const [ag5Ref, setAg5Ref]   = useState('');
@@ -454,17 +457,44 @@ export default function EvaluacionesView() {
             </div>
           </div>
           <NumInput label="Tiempo (s)" value={scTiempo} onChange={setScTiempo} />
-          {scResult && (
-            <div className="mt-4">
-              <ResultCard
-                label={`Velocidad ${scDist}m curvo`}
-                value={scResult.velocidad.toFixed(2)}
-                unit="km/h"
-                status={getMetricStatus('sprintCurvo', scResult.velocidad, athlete.sport, athlete.category, athlete.sex)}
-                sub={`${scDist}m ÷ ${scTiempo}s × 3.6`}
-              />
-            </div>
-          )}
+          {scResult && (() => {
+            const velStatus = scResult.velocidad >= 22 ? 'safe' : scResult.velocidad >= 18 ? 'warning' : 'danger';
+            return (
+              <div className="mt-4 space-y-3">
+                <ResultCard
+                  label={`Velocidad ${scDist}m curvo`}
+                  value={scResult.velocidad.toFixed(2)}
+                  unit="km/h"
+                  status={velStatus}
+                  sub={`${scDist}m ÷ ${scTiempo}s × 3.6`}
+                />
+                <button
+                  onClick={async () => {
+                    if (scSaving || scSaveDone) return;
+                    setScSaving(true);
+                    try {
+                      await saveEvaluation({
+                        player_id: athlete.id,
+                        type: 'sprintCurvo',
+                        data: { distancia: scDist, tiempo: scTiempoV, velocidad: scResult.velocidad },
+                      });
+                    } catch { /* sin Supabase, silenciar */ }
+                    setScSaving(false);
+                    setScSaveDone(true);
+                    setTimeout(() => setScSaveDone(false), 2000);
+                  }}
+                  className={cn(
+                    'w-full py-2.5 rounded-xl text-sm font-bold transition-colors',
+                    scSaveDone
+                      ? 'bg-safe/20 text-safe border border-safe/30'
+                      : 'bg-accent text-background hover:bg-accent/90 active:scale-95'
+                  )}
+                >
+                  {scSaveDone ? '✓ Guardado' : scSaving ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+            );
+          })()}
           {/* Asimetría de giro — opcional */}
           <div className="pt-4 border-t border-white/5 mt-4">
             <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Asimetría de giro — opcional</p>

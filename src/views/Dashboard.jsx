@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, Users, LogOut, Plus } from 'lucide-react';
+import { AlertTriangle, Users, Plus } from 'lucide-react';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import QRGenerator from '../components/QRGenerator';
@@ -67,7 +67,7 @@ function dotPriority(a, w) {
 }
 
 export default function Dashboard({ onNavigate }) {
-  const { coach, logout } = useAuth();
+  const { coach } = useAuth();
   const { activeTeam }    = useTeam();
   const [athletes, setAthletes] = useCoachStorage('athletes', DEFAULT_ATHLETES);
   const [showAdd,  setShowAdd]  = useState(false);
@@ -131,7 +131,7 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div className="space-y-4">
-      {/* Header con nombre del coach, botón de informe y logout */}
+      {/* Header con nombre del coach y botón de informe */}
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-slate-100">FieldLab</h1>
@@ -143,9 +143,6 @@ export default function Dashboard({ onNavigate }) {
             players={athletesWithWellness}
             label="Informe Semanal"
           />
-          <button onClick={logout} className="text-slate-500 hover:text-slate-300 p-1 transition-colors">
-            <LogOut size={16} />
-          </button>
         </div>
       </div>
 

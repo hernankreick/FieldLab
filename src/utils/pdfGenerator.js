@@ -508,61 +508,61 @@ export async function generateTeamReport(athletes) {
     }
   );
 
-  // ── Página 2: Detalle compacto por jugador ───────────────────────────────
-  doc.addPage();
-  fillPage(doc);
-  let py = drawHeader(doc, 'Detalle por Jugador');
+  // ── Detalle compacto (misma página, sin salto) ──────────────────────────
+  y = checkBreak(doc, y, 20);
+  y = secBar(doc, 'Detalle por Jugador', y);
 
-  const colW  = (CW - 5) / 2;
-  const cardH = 32;
-  const rowGap = 4;
-  const rowsPerPage  = Math.floor((PAGE_H - py - 20) / (cardH + rowGap));
-  const cardsPerPage = rowsPerPage * 2;
-
+  const detRowH = 5;
   sorted.forEach((a, idx) => {
-    const localIdx = idx % cardsPerPage;
-    const col      = localIdx % 2;
-    const row      = Math.floor(localIdx / 2);
+    y = checkBreak(doc, y, detRowH + 2);
 
-    if (idx > 0 && localIdx === 0) {
-      doc.addPage();
-      fillPage(doc);
-      py = drawHeader(doc, 'Detalle por Jugador (cont.)');
-    }
-
-    const bx     = M + col * (colW + 5);
-    const by     = py + row * (cardH + rowGap);
     const todayW = a.w && isToday(a.w.timestamp) ? a.w : null;
     const risk   = computeRisk(a, todayW);
-    const evals  = getPlayerEvals(a.id);
-    const lastJump = evals.find(e => e.type === 'jump');
+    const rCol   = statusColor(risk);
 
-    doc.setFillColor(...C.surface);
-    doc.roundedRect(bx, by, colW, cardH, 2, 2, 'F');
+    if (idx % 2 === 0) {
+      doc.setFillColor(...C.alt);
+      doc.rect(M, y, CW, detRowH, 'F');
+    }
 
-    doc.setFillColor(...statusColor(risk));
-    doc.circle(bx + 6, by + 7, 2.5, 'F');
+    // dot
+    doc.setFillColor(...rCol);
+    doc.circle(M + 3, y + detRowH / 2, 1.5, 'F');
 
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...C.text);
-    doc.text(a.name, bx + 12, by + 9);
+    // nombre
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...C.text);
+    doc.text(a.name, M + 8, y + detRowH / 2 + 1.2);
 
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...C.muted);
-    doc.text(`${a.position ?? ''} · ${a.sport ?? ''}`, bx + 6, by + 15);
+    // posición
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.muted);
+    doc.text(a.position ?? '—', M + 60, y + detRowH / 2 + 1.2);
 
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    // ACWR coloreado
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
     doc.setTextColor(...statusColor(acwrSt(a.acwr)));
-    doc.text(`ACWR ${a.acwr.toFixed(2)}`, bx + 6, by + 22);
+    doc.text(`ACWR ${a.acwr.toFixed(2)}`, M + 92, y + detRowH / 2 + 1.2);
 
-    if (todayW) {
-      doc.setTextColor(...statusColor(hooperSt(todayW.score)));
-      doc.text(`Hooper ${todayW.score}`, bx + colW / 2 + 2, by + 22);
-    }
+    // zona
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.muted);
+    doc.text(acwrZone(a.acwr), M + 122, y + detRowH / 2 + 1.2);
 
-    if (lastJump) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...C.muted);
-      doc.text(`${lastJump.jumpType}: ${lastJump.height.toFixed(1)} cm`, bx + 6, by + 28);
-    }
+    // estado
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...rCol);
+    doc.text(riskLabel(risk), M + 158, y + detRowH / 2 + 1.2);
+
+    y += detRowH;
   });
+
+  y += 4;
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) { doc.setPage(i); drawFooter(doc); }

@@ -45,10 +45,13 @@ function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo
       </div>
       <div className="flex gap-2">
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
-          min="0"
-          step="0.01"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
+          pattern="\d*\.?\d*"
           placeholder="0.00"
           value={value}
           onChange={e => onChange(e.target.value)}
@@ -244,7 +247,7 @@ function TabVelocidad() {
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 20m (s)</label>
                 <input
                   key="input-curvo-20"
-                  type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
+                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
                   value={curvoTime20}
                   onChange={e => setCurvoTime20(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -256,7 +259,7 @@ function TabVelocidad() {
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 30m (s)</label>
                 <input
                   key="input-curvo-30"
-                  type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
+                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
                   value={curvoTime30}
                   onChange={e => setCurvoTime30(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -268,7 +271,7 @@ function TabVelocidad() {
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 40m (s)</label>
                 <input
                   key="input-curvo-40"
-                  type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
+                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
                   value={curvoTime40}
                   onChange={e => setCurvoTime40(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -316,7 +319,7 @@ function TabVelocidad() {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Giro Derecho (s)</label>
                 <input
-                  type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
+                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
                   value={curvoDer}
                   onChange={e => setCurvoDer(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -325,7 +328,7 @@ function TabVelocidad() {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Giro Izquierdo (s)</label>
                 <input
-                  type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
+                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
                   value={curvoIzq}
                   onChange={e => setCurvoIzq(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"

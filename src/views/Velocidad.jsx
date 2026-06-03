@@ -13,6 +13,8 @@ import { TEST_INFO } from '../utils/testInfo';
 const SHAPE_TABS = ['Lineal', 'Curvo'];
 const LINEAR_SEGS = ['10m', '20m', '30m', '10/20/30m'];
 
+const parseTime = (val) => parseFloat(String(val).replace(',', '.')) || 0;
+
 function SegControl({ options, active, onChange }) {
   return (
     <div className="flex rounded-lg bg-surface border border-white/5 p-1 gap-1">
@@ -96,9 +98,9 @@ function TabVelocidad() {
   const [showSprintVision, setShowSprintVision] = useState(false);
   const [infoKey, setInfoKey] = useState(null);
 
-  const t10 = parseFloat(sprint10) || 0;
-  const t20 = parseFloat(sprint20) || 0;
-  const t30 = parseFloat(sprint30) || 0;
+  const t10 = parseTime(sprint10);
+  const t20 = parseTime(sprint20);
+  const t30 = parseTime(sprint30);
 
   const v10 = calcVelocity(10, t10);
   const v20 = calcVelocity(20, t20);
@@ -108,13 +110,13 @@ function TabVelocidad() {
   const st20 = sprintStatus(t20, sprintRef.sprint20);
   const st30 = sprintStatus(t30, sprintRef.sprint30);
 
-  const der = parseFloat(curvoDer) || 0;
-  const izq = parseFloat(curvoIzq) || 0;
+  const der = parseTime(curvoDer);
+  const izq = parseTime(curvoIzq);
   const curvoAsim = calcCurvoAsim(der, izq);
   const asimSt = curvoAsimStatus(curvoAsim);
 
   const activeTime = curvoDist === 20 ? curvoTime20 : curvoDist === 30 ? curvoTime30 : curvoTime40;
-  const activeTimeParsed = parseFloat(activeTime) || 0;
+  const activeTimeParsed = parseTime(activeTime);
   const curvoVel   = activeTimeParsed > 0 ? ((curvoDist / activeTimeParsed) * 3.6).toFixed(2) : null;
   const curvoColor = curvoVel >= 22 ? '#22c55e' : curvoVel >= 18 ? '#eab308' : '#ef4444';
 
@@ -294,7 +296,7 @@ function TabVelocidad() {
                       await saveEvaluation({
                         player_id: null,
                         type: 'sprintCurvo',
-                        data: { distancia: curvoDist, tiempo: parseFloat(activeTime), velocidad: Number(curvoVel) },
+                        data: { distancia: curvoDist, tiempo: parseTime(activeTime), velocidad: Number(curvoVel) },
                       });
                     } catch { /* sin Supabase */ }
                     setCurvoSaving(false);

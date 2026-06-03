@@ -9,6 +9,7 @@ import { cn } from '../utils/cn';
 import { calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus } from '../utils/speed';
 import { saveEvaluation } from '../lib/db';
 import { TEST_INFO } from '../utils/testInfo';
+import { PLAYERS } from '../data/players';
 
 const SHAPE_TABS = ['Lineal', 'Curvo'];
 const LINEAR_SEGS = ['10m', '20m', '30m', '10/20/30m'];
@@ -36,10 +37,10 @@ function DecimalPad({ value, onChange, placeholder = '0.00' }) {
         {value || <span className="text-slate-500">{placeholder}</span>}
       </div>
       {active && (
-        <div className="grid grid-cols-3 gap-1 mt-1 bg-slate-800 rounded-lg p-2 border border-slate-700">
+        <div className="grid grid-cols-3 gap-2 mt-1 bg-slate-800 rounded-lg p-2 border border-slate-700">
           {keys.map(k => (
             <button key={k} onClick={() => press(k)}
-              className="bg-slate-700 hover:bg-slate-600 text-white rounded py-2 text-sm font-mono active:bg-slate-500">
+              className="bg-slate-700 hover:bg-slate-600 text-white rounded py-4 text-lg font-mono active:bg-slate-500">
               {k}
             </button>
           ))}
@@ -109,6 +110,7 @@ function TabVelocidad() {
   const [curvoSaving, setCurvoSaving] = useState(false);
   const [curvoDone,   setCurvoDone]   = useState(false);
 
+  const [athlete, setAthlete] = useState(PLAYERS[0]);
   const [visionTarget, setVisionTarget] = useState(null);
   const [showSprintVision, setShowSprintVision] = useState(false);
   const [infoKey, setInfoKey] = useState(null);
@@ -150,6 +152,19 @@ function TabVelocidad() {
       <div>
         <h2 className="text-xl font-bold text-slate-100">Velocidad</h2>
         <p className="text-sm text-slate-400">Tests de Sprint · COD Curvo</p>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {PLAYERS.map(p => (
+          <button key={p.id} onClick={() => setAthlete(p)}
+            className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors',
+              athlete.id === p.id
+                ? 'bg-accent text-background border-accent'
+                : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
+            )}>
+            {p.name.split(' ')[0]} {p.name.split(' ')[1]?.[0]}.
+          </button>
+        ))}
       </div>
 
       <SegControl options={SHAPE_TABS} active={shape} onChange={setShape} />
@@ -291,7 +306,7 @@ function TabVelocidad() {
                     setCurvoSaving(true);
                     try {
                       await saveEvaluation({
-                        player_id: null,
+                        player_id: athlete.id,
                         type: 'sprintCurvo',
                         data: { distancia: curvoDist, tiempo: parseTime(activeTime), velocidad: Number(curvoVel) },
                       });

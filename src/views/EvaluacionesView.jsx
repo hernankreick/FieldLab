@@ -407,39 +407,41 @@ export default function EvaluacionesView() {
       {/* ── VELOCIDAD: Lineal ── */}
       {mainTab === 'Velocidad' && subTab === 'Lineal' && (
         <Card title="Sprint Lineal" icon={ClipboardList}>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <NumInput label="T 10m (s)" value={t10} onChange={setT10} />
-            <NumInput label="T 20m (s)" value={t20} onChange={setT20} />
-            <NumInput label="T 30m (s)" value={t30} onChange={setT30} />
-          </div>
-          {(v0_10 > 0 || v10_20 > 0 || v20_30 > 0) && (
-            <>
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                {v0_10  > 0 && <ResultCard label="V 0–10m"  value={v0_10.toFixed(2)}  unit="m/s" status={sprintStatus(t10v, sprintRef.sprint10)} />}
-                {v10_20 > 0 && <ResultCard label="V 10–20m" value={v10_20.toFixed(2)} unit="m/s" status={sprintStatus(t20v, sprintRef.sprint20)} />}
-                {v20_30 > 0 && <ResultCard label="V 20–30m" value={v20_30.toFixed(2)} unit="m/s" status={sprintStatus(t30v, sprintRef.sprint30)} />}
-              </div>
-              {v0_10 > 0 && (v10_20 > 0 || v20_30 > 0) && (
-                <div className="pt-3 border-t border-white/5">
-                  <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Perfil de velocidad</p>
-                  {[
-                    v0_10  > 0 && ['Aceleración', v0_10,  10, '#38bdf8'],
-                    v10_20 > 0 && ['Acc. máxima', v10_20, 12, '#f59e0b'],
-                    v20_30 > 0 && ['Vel. máxima', v20_30, 12, '#22c55e'],
-                  ].filter(Boolean).map(([lbl, val, max, color]) => (
-                    <div key={lbl} className="flex items-center gap-3 mb-2">
-                      <span className="text-xs text-slate-400 w-24">{lbl}</span>
-                      <div className="flex-1 bg-white/5 rounded-full h-2">
-                        <div className="h-2 rounded-full transition-all"
-                          style={{ width: `${Math.min(val / max * 100, 100)}%`, background: color }} />
-                      </div>
-                      <span className="text-xs font-data text-slate-300 w-14 text-right">{val.toFixed(2)} m/s</span>
-                    </div>
-                  ))}
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <NumInput label="T 10m (s)" value={t10} onChange={setT10} />
+              <NumInput label="T 20m (s)" value={t20} onChange={setT20} />
+              <NumInput label="T 30m (s)" value={t30} onChange={setT30} />
+            </div>
+            {(v0_10 > 0 || v10_20 > 0 || v20_30 > 0) && (
+              <div className="pt-4 border-t border-white/5 space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {v0_10  > 0 && <ResultCard label="V 0–10m"  value={v0_10.toFixed(2)}  unit="m/s" status={sprintStatus(t10v, sprintRef.sprint10)} />}
+                  {v10_20 > 0 && <ResultCard label="V 10–20m" value={v10_20.toFixed(2)} unit="m/s" status={sprintStatus(t20v, sprintRef.sprint20)} />}
+                  {v20_30 > 0 && <ResultCard label="V 20–30m" value={v20_30.toFixed(2)} unit="m/s" status={sprintStatus(t30v, sprintRef.sprint30)} />}
                 </div>
-              )}
-            </>
-          )}
+                {v0_10 > 0 && (v10_20 > 0 || v20_30 > 0) && (
+                  <div className="pt-3 border-t border-white/5">
+                    <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Perfil de velocidad</p>
+                    {[
+                      v0_10  > 0 && ['Aceleración', v0_10,  10, '#38bdf8'],
+                      v10_20 > 0 && ['Acc. máxima', v10_20, 12, '#f59e0b'],
+                      v20_30 > 0 && ['Vel. máxima', v20_30, 12, '#22c55e'],
+                    ].filter(Boolean).map(([lbl, val, max, color]) => (
+                      <div key={lbl} className="flex items-center gap-3 mb-2">
+                        <span className="text-xs text-slate-400 w-24">{lbl}</span>
+                        <div className="flex-1 bg-white/5 rounded-full h-2">
+                          <div className="h-2 rounded-full transition-all"
+                            style={{ width: `${Math.min(val / max * 100, 100)}%`, background: color }} />
+                        </div>
+                        <span className="text-xs font-data text-slate-300 w-14 text-right">{val.toFixed(2)} m/s</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </Card>
       )}
 

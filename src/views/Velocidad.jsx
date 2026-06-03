@@ -8,6 +8,7 @@ import InfoSheet from '../components/InfoSheet';
 import { cn } from '../utils/cn';
 import { calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus } from '../utils/speed';
 import { saveEvaluation } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { TEST_INFO } from '../utils/testInfo';
 import { usePlayers } from '../hooks/usePlayers';
 
@@ -200,12 +201,12 @@ function TabVelocidad() {
         ))}
       </div>
 
-      {debugInfo !== null && (
-        <div className="mt-2 p-2 bg-slate-950 rounded text-xs font-mono text-slate-400 break-all">
-          <div>Selected player: {athlete?.name ?? 'null'} / {athlete?.id ?? 'null'}</div>
+      <div className="p-2 bg-slate-950 rounded text-xs font-mono text-slate-400 break-all">
+        <div>Selected player: {athlete?.name ?? 'null'} / {athlete?.id ?? 'null'}</div>
+        {debugInfo !== null && (
           <div className="mt-1 whitespace-pre-wrap">{JSON.stringify(debugInfo, null, 2)}</div>
-        </div>
-      )}
+        )}
+      </div>
 
       <SegControl options={SHAPE_TABS} active={shape} onChange={setShape} />
 
@@ -231,18 +232,10 @@ function TabVelocidad() {
                   onMeasure={() => setVisionTarget('sprint10')}
                   onInfo={() => setInfoKey('sprint10')}
                   onSave={async () => {
-                    console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
-                    if (!athlete?.id) { setDebugInfo({ player: null, error: 'athlete is null' }); return false; }
-                    try {
-                      const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } });
-                      console.log('SUPABASE RESULT', { data, error: null });
-                      setDebugInfo({ player: athlete?.id, data, error: null });
-                      return true;
-                    } catch (error) {
-                      console.log('SUPABASE RESULT', { data: null, error });
-                      setDebugInfo({ player: athlete?.id, data: null, error: error?.message });
-                      return false;
-                    }
+                    if (!athlete?.id) { setDebugInfo({ player: null, t10, error: 'athlete is null — players not loaded' }); return false; }
+                    const { data, error } = await supabase.from('evaluations').insert({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } }).select().single();
+                    setDebugInfo({ player: athlete.id, type: 'sprint10', t10, data, error: error?.message ?? null });
+                    return !error;
                   }}
                 />
               )}
@@ -253,18 +246,10 @@ function TabVelocidad() {
                   velocity={v20} status={st20}
                   onMeasure={() => setVisionTarget('sprint20')}
                   onSave={async () => {
-                    console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
-                    if (!athlete?.id) { setDebugInfo({ player: null, error: 'athlete is null' }); return false; }
-                    try {
-                      const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } });
-                      console.log('SUPABASE RESULT', { data, error: null });
-                      setDebugInfo({ player: athlete?.id, data, error: null });
-                      return true;
-                    } catch (error) {
-                      console.log('SUPABASE RESULT', { data: null, error });
-                      setDebugInfo({ player: athlete?.id, data: null, error: error?.message });
-                      return false;
-                    }
+                    if (!athlete?.id) { setDebugInfo({ player: null, t20, error: 'athlete is null — players not loaded' }); return false; }
+                    const { data, error } = await supabase.from('evaluations').insert({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } }).select().single();
+                    setDebugInfo({ player: athlete.id, type: 'sprint20', t20, data, error: error?.message ?? null });
+                    return !error;
                   }}
                 />
               )}
@@ -276,18 +261,10 @@ function TabVelocidad() {
                   onMeasure={() => setVisionTarget('sprint30')}
                   onInfo={() => setInfoKey('sprint30')}
                   onSave={async () => {
-                    console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
-                    if (!athlete?.id) { setDebugInfo({ player: null, error: 'athlete is null' }); return false; }
-                    try {
-                      const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } });
-                      console.log('SUPABASE RESULT', { data, error: null });
-                      setDebugInfo({ player: athlete?.id, data, error: null });
-                      return true;
-                    } catch (error) {
-                      console.log('SUPABASE RESULT', { data: null, error });
-                      setDebugInfo({ player: athlete?.id, data: null, error: error?.message });
-                      return false;
-                    }
+                    if (!athlete?.id) { setDebugInfo({ player: null, t30, error: 'athlete is null — players not loaded' }); return false; }
+                    const { data, error } = await supabase.from('evaluations').insert({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } }).select().single();
+                    setDebugInfo({ player: athlete.id, type: 'sprint30', t30, data, error: error?.message ?? null });
+                    return !error;
                   }}
                 />
               )}

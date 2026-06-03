@@ -81,7 +81,9 @@ function TabVelocidad() {
   const [curvoDer, setCurvoDer] = useState('');
   const [curvoIzq, setCurvoIzq] = useState('');
   const [curvoDist, setCurvoDist] = useState(20);
-  const [curvoTime, setCurvoTime] = useState('');
+  const [curvoTime20, setCurvoTime20] = useState('');
+  const [curvoTime30, setCurvoTime30] = useState('');
+  const [curvoTime40, setCurvoTime40] = useState('');
   const [curvoSaving, setCurvoSaving] = useState(false);
   const [curvoDone,   setCurvoDone]   = useState(false);
 
@@ -107,7 +109,8 @@ function TabVelocidad() {
   const curvoAsim = calcCurvoAsim(der, izq);
   const asimSt = curvoAsimStatus(curvoAsim);
 
-  const curvoVel   = curvoTime > 0 ? ((curvoDist / parseFloat(curvoTime)) * 3.6).toFixed(2) : null;
+  const activeTime = curvoDist === 20 ? curvoTime20 : curvoDist === 30 ? curvoTime30 : curvoTime40;
+  const curvoVel   = activeTime > 0 ? ((curvoDist / activeTime) * 3.6).toFixed(2) : null;
   const curvoColor = curvoVel >= 22 ? '#22c55e' : curvoVel >= 18 ? '#eab308' : '#ef4444';
 
   const show = (s) => seg === s || seg === '10/20/30m';
@@ -141,7 +144,7 @@ function TabVelocidad() {
             Medir con Cámara
           </button>
 
-          <Card title="Sprint" icon={Timer}>
+          <Card title="Sprint Lineal" icon={Timer}>
             <div className="space-y-4">
               {show('10m') && (
                 <SprintRow
@@ -170,17 +173,35 @@ function TabVelocidad() {
                 />
               )}
             </div>
-          </Card>
-
-          {seg === '10/20/30m' && (v10 > 0 || v20 > 0 || v30 > 0) && (
-            <Card title="Resumen protocolo completo">
-              <div className="grid grid-cols-3 gap-3">
-                {v10 > 0 && <MetricDisplay value={v10.toFixed(2)} unit="m/s" label="10m" status={st10} />}
-                {v20 > 0 && <MetricDisplay value={v20.toFixed(2)} unit="m/s" label="20m" status={st20} />}
-                {v30 > 0 && <MetricDisplay value={v30.toFixed(2)} unit="m/s" label="30m" status={st30} />}
+            {seg === '10/20/30m' && (v10 > 0 || v20 > 0 || v30 > 0) && (
+              <div className="pt-4 border-t border-white/5 mt-4 space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {v10 > 0 && <MetricDisplay value={v10.toFixed(2)} unit="m/s" label="V 0–10m" status={st10} />}
+                  {v20 > 0 && <MetricDisplay value={v20.toFixed(2)} unit="m/s" label="V 10–20m" status={st20} />}
+                  {v30 > 0 && <MetricDisplay value={v30.toFixed(2)} unit="m/s" label="V 20–30m" status={st30} />}
+                </div>
+                {v10 > 0 && (v20 > 0 || v30 > 0) && (
+                  <div>
+                    <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Perfil de velocidad</p>
+                    {[
+                      v10 > 0 && ['Aceleración',  v10, 10, '#38bdf8'],
+                      v20 > 0 && ['Acc. máxima',  v20, 12, '#f59e0b'],
+                      v30 > 0 && ['Vel. máxima',  v30, 12, '#22c55e'],
+                    ].filter(Boolean).map(([lbl, val, max, color]) => (
+                      <div key={lbl} className="flex items-center gap-3 mb-2">
+                        <span className="text-xs text-slate-400 w-24">{lbl}</span>
+                        <div className="flex-1 bg-white/5 rounded-full h-2">
+                          <div className="h-2 rounded-full transition-all"
+                            style={{ width: `${Math.min(val / max * 100, 100)}%`, background: color }} />
+                        </div>
+                        <span className="text-xs font-data text-slate-300 w-14 text-right">{val.toFixed(2)} m/s</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </Card>
-          )}
+            )}
+          </Card>
         </>
       )}
 
@@ -220,8 +241,12 @@ function TabVelocidad() {
               <label className="text-xs text-slate-400 mb-1 block">Tiempo (s)</label>
               <input
                 type="number" inputMode="decimal" step="0.01" placeholder="0.00"
-                value={curvoTime}
-                onChange={e => setCurvoTime(e.target.value)}
+                value={activeTime}
+                onChange={e => {
+                  if (curvoDist === 20) setCurvoTime20(e.target.value);
+                  else if (curvoDist === 30) setCurvoTime30(e.target.value);
+                  else setCurvoTime40(e.target.value);
+                }}
                 className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
               />
             </div>
@@ -231,7 +256,7 @@ function TabVelocidad() {
                   <span className="text-4xl font-data font-black" style={{ color: curvoColor }}>
                     {curvoVel} km/h
                   </span>
-                  <p className="text-xs text-slate-500 mt-1">{curvoDist}m ÷ {curvoTime}s × 3.6</p>
+                  <p className="text-xs text-slate-500 mt-1">{curvoDist}m ÷ {activeTime}s × 3.6</p>
                 </div>
                 <button
                   onClick={async () => {
@@ -241,7 +266,7 @@ function TabVelocidad() {
                       await saveEvaluation({
                         player_id: null,
                         type: 'sprintCurvo',
-                        data: { distancia: curvoDist, tiempo: parseFloat(curvoTime), velocidad: Number(curvoVel) },
+                        data: { distancia: curvoDist, tiempo: parseFloat(activeTime), velocidad: Number(curvoVel) },
                       });
                     } catch { /* sin Supabase */ }
                     setCurvoSaving(false);

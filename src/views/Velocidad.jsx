@@ -45,10 +45,10 @@ function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo
       </div>
       <div className="flex gap-2">
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
-          step="0.01"
-          placeholder="0.00 s"
+          pattern="[0-9]*\.?[0-9]*"
+          placeholder="0.00"
           value={value}
           onChange={e => onChange(e.target.value)}
           className="flex-1 bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
@@ -110,7 +110,8 @@ function TabVelocidad() {
   const asimSt = curvoAsimStatus(curvoAsim);
 
   const activeTime = curvoDist === 20 ? curvoTime20 : curvoDist === 30 ? curvoTime30 : curvoTime40;
-  const curvoVel   = activeTime > 0 ? ((curvoDist / activeTime) * 3.6).toFixed(2) : null;
+  const activeTimeParsed = parseFloat(activeTime) || 0;
+  const curvoVel   = activeTimeParsed > 0 ? ((curvoDist / activeTimeParsed) * 3.6).toFixed(2) : null;
   const curvoColor = curvoVel >= 22 ? '#22c55e' : curvoVel >= 18 ? '#eab308' : '#ef4444';
 
   const show = (s) => seg === s || seg === '10/20/30m';
@@ -174,10 +175,10 @@ function TabVelocidad() {
               )}
               {seg === '10/20/30m' && (v10 > 0 || v20 > 0 || v30 > 0) && (
                 <div className="pt-4 border-t border-white/5 space-y-4">
-                  <div className="grid grid-cols-3 gap-3">
-                    {v10 > 0 && <MetricDisplay value={v10.toFixed(2)} unit="m/s" label="V 0–10m" status={st10} />}
-                    {v20 > 0 && <MetricDisplay value={v20.toFixed(2)} unit="m/s" label="V 10–20m" status={st20} />}
-                    {v30 > 0 && <MetricDisplay value={v30.toFixed(2)} unit="m/s" label="V 20–30m" status={st30} />}
+                  <div className="grid grid-cols-3 gap-3 overflow-hidden">
+                    {v10 > 0 && <MetricDisplay value={v10.toFixed(2)} unit="m/s" label="V 0–10m" status={st10} size="text-xl" />}
+                    {v20 > 0 && <MetricDisplay value={v20.toFixed(2)} unit="m/s" label="V 10–20m" status={st20} size="text-xl" />}
+                    {v30 > 0 && <MetricDisplay value={v30.toFixed(2)} unit="m/s" label="V 20–30m" status={st30} size="text-xl" />}
                   </div>
                   {v10 > 0 && (v20 > 0 || v30 > 0) && (
                     <div>
@@ -241,7 +242,8 @@ function TabVelocidad() {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 20m (s)</label>
                 <input
-                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  key="input-curvo-20"
+                  type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" placeholder="0.00"
                   value={curvoTime20}
                   onChange={e => setCurvoTime20(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -252,7 +254,8 @@ function TabVelocidad() {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 30m (s)</label>
                 <input
-                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  key="input-curvo-30"
+                  type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" placeholder="0.00"
                   value={curvoTime30}
                   onChange={e => setCurvoTime30(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -263,7 +266,8 @@ function TabVelocidad() {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 40m (s)</label>
                 <input
-                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  key="input-curvo-40"
+                  type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" placeholder="0.00"
                   value={curvoTime40}
                   onChange={e => setCurvoTime40(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -311,7 +315,7 @@ function TabVelocidad() {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Giro Derecho (s)</label>
                 <input
-                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" placeholder="0.00"
                   value={curvoDer}
                   onChange={e => setCurvoDer(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
@@ -320,7 +324,7 @@ function TabVelocidad() {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Giro Izquierdo (s)</label>
                 <input
-                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" placeholder="0.00"
                   value={curvoIzq}
                   onChange={e => setCurvoIzq(e.target.value)}
                   className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"

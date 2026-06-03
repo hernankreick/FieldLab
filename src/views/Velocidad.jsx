@@ -83,14 +83,6 @@ function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo
         <div className="flex-1">
           <DecimalPad value={value} onChange={onChange} />
         </div>
-        <button
-          onClick={onMeasure}
-          title="Medir con cámara"
-          className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/20 text-accent text-xs font-semibold whitespace-nowrap hover:bg-accent/20 transition-colors min-h-[44px]"
-        >
-          <Camera size={14} />
-          <span className="hidden sm:inline">Cámara</span>
-        </button>
       </div>
       {velocity > 0 && (
         <div className="flex items-center gap-2 mt-1.5">

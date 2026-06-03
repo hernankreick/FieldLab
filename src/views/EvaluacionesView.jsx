@@ -3,6 +3,7 @@ import { ClipboardList, Info } from 'lucide-react';
 import InfoSheet from '../components/InfoSheet';
 import { TEST_INFO } from '../utils/testInfo';
 import Card from '../components/Card';
+import MetricDisplay from '../components/MetricDisplay';
 import ResultCard from '../components/ResultCard';
 import TestHistoryTable from '../components/TestHistoryTable';
 import StatusBadge from '../components/StatusBadge';
@@ -415,10 +416,10 @@ export default function EvaluacionesView() {
             </div>
             {(v0_10 > 0 || v10_20 > 0 || v20_30 > 0) && (
               <div className="pt-4 border-t border-white/5 space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  {v0_10  > 0 && <ResultCard label="V 0–10m"  value={v0_10.toFixed(2)}  unit="m/s" status={sprintStatus(t10v, sprintRef.sprint10)}  size="text-xl" />}
-                  {v10_20 > 0 && <ResultCard label="V 10–20m" value={v10_20.toFixed(2)} unit="m/s" status={sprintStatus(t20v, sprintRef.sprint20)} size="text-xl" />}
-                  {v20_30 > 0 && <ResultCard label="V 20–30m" value={v20_30.toFixed(2)} unit="m/s" status={sprintStatus(t30v, sprintRef.sprint30)} size="text-xl" />}
+                <div className="grid grid-cols-3 gap-3 overflow-hidden">
+                  {v0_10  > 0 && <MetricDisplay value={v0_10.toFixed(2)}  unit="m/s" label="V 0–10m"  status={sprintStatus(t10v, sprintRef.sprint10)}  size="text-xl" />}
+                  {v10_20 > 0 && <MetricDisplay value={v10_20.toFixed(2)} unit="m/s" label="V 10–20m" status={sprintStatus(t20v, sprintRef.sprint20)} size="text-xl" />}
+                  {v20_30 > 0 && <MetricDisplay value={v20_30.toFixed(2)} unit="m/s" label="V 20–30m" status={sprintStatus(t30v, sprintRef.sprint30)} size="text-xl" />}
                 </div>
                 {v0_10 > 0 && (v10_20 > 0 || v20_30 > 0) && (
                   <div className="pt-3 border-t border-white/5">

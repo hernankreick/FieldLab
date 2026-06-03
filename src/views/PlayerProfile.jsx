@@ -388,6 +388,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const [lastSaved, setLastSaved] = useState(null);
   const [saving,   setSaving]   = useState(false);
   const [saveDone, setSaveDone] = useState(false);
+  const [sprintData, setSprintData] = useState(null);
 
   useEffect(() => {
     function loadData() {
@@ -404,13 +405,20 @@ export default function PlayerProfile({ initialId, onNavigate }) {
     getEvaluations(player.id)
       .then(evals => {
         const lastMob = evals?.find(e => e.type === 'mobility');
-        if (!lastMob) return;
-        setLastSaved(lastMob.date);
-        const d = lastMob.data ?? {};
-        if (d.ankle)    setAnkle(prev => ({ ...MOBILITY_DEFAULTS.ankle,    ...d.ankle    }));
-        if (d.hip)      setHip(prev   => ({ ...MOBILITY_DEFAULTS.hip,      ...d.hip      }));
-        if (d.shoulder) setShoulder(prev => ({ ...MOBILITY_DEFAULTS.shoulder, ...d.shoulder }));
-        if (d.fms)      setFms(prev   => ({ ...MOBILITY_DEFAULTS.fms,      ...d.fms      }));
+        if (lastMob) {
+          setLastSaved(lastMob.date);
+          const d = lastMob.data ?? {};
+          if (d.ankle)    setAnkle(prev => ({ ...MOBILITY_DEFAULTS.ankle,    ...d.ankle    }));
+          if (d.hip)      setHip(prev   => ({ ...MOBILITY_DEFAULTS.hip,      ...d.hip      }));
+          if (d.shoulder) setShoulder(prev => ({ ...MOBILITY_DEFAULTS.shoulder, ...d.shoulder }));
+          if (d.fms)      setFms(prev   => ({ ...MOBILITY_DEFAULTS.fms,      ...d.fms      }));
+        }
+        const sprints = {};
+        for (const type of ['sprint10', 'sprint20', 'sprint30']) {
+          const found = evals?.find(e => e.type === type);
+          if (found?.data) sprints[type] = found.data;
+        }
+        if (Object.keys(sprints).length > 0) setSprintData(sprints);
       })
       .catch(() => {});
 
@@ -468,6 +476,10 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   }));
 
   const { eval: ev } = player;
+
+  const sprint10Time = sprintData?.sprint10?.tiempo  ?? ev.sprint10.time;
+  const sprint30Time = sprintData?.sprint30?.tiempo  ?? ev.sprint30.time;
+  const topSpeedVal  = sprintData?.sprint30?.velocidad ?? ev.topSpeed;
 
   const realByType = {};
   for (const e of playerEvals) {
@@ -811,17 +823,17 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             <div className="grid grid-cols-2 gap-3">
               <ResultCard
                 label="Sprint 10m"
-                value={ev.sprint10.time.toFixed(2)} unit="s"
-                status={getMetricStatus('sprint10', ev.sprint10.time, player.sport, player.category, player.sex)}
+                value={sprint10Time.toFixed(2)} unit="s"
+                status={getMetricStatus('sprint10', sprint10Time, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label="Sprint 30m"
-                value={ev.sprint30.time.toFixed(2)} unit="s"
-                status={getMetricStatus('sprint30', ev.sprint30.time, player.sport, player.category, player.sex)}
+                value={sprint30Time.toFixed(2)} unit="s"
+                status={getMetricStatus('sprint30', sprint30Time, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label="Top Speed"
-                value={ev.topSpeed.toFixed(1)} unit="m/s"
+                value={topSpeedVal.toFixed(1)} unit="m/s"
                 status="neutral"
                 className="col-span-2"
               />

@@ -237,19 +237,39 @@ function TabVelocidad() {
                 ))}
               </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Tiempo (s)</label>
-              <input
-                type="number" inputMode="decimal" step="0.01" placeholder="0.00"
-                value={activeTime}
-                onChange={e => {
-                  if (curvoDist === 20) setCurvoTime20(e.target.value);
-                  else if (curvoDist === 30) setCurvoTime30(e.target.value);
-                  else setCurvoTime40(e.target.value);
-                }}
-                className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
-              />
-            </div>
+            {curvoDist === 20 && (
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Tiempo 20m (s)</label>
+                <input
+                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  value={curvoTime20}
+                  onChange={e => setCurvoTime20(e.target.value)}
+                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
+                />
+              </div>
+            )}
+            {curvoDist === 30 && (
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Tiempo 30m (s)</label>
+                <input
+                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  value={curvoTime30}
+                  onChange={e => setCurvoTime30(e.target.value)}
+                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
+                />
+              </div>
+            )}
+            {curvoDist === 40 && (
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Tiempo 40m (s)</label>
+                <input
+                  type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                  value={curvoTime40}
+                  onChange={e => setCurvoTime40(e.target.value)}
+                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
+                />
+              </div>
+            )}
             {curvoVel !== null && (
               <div className="mt-4 space-y-3">
                 <div className="px-4 py-4 rounded-xl bg-background border border-white/10 text-center">

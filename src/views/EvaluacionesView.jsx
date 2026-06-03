@@ -17,9 +17,9 @@ import {
   calcCodDeficit, codDeficitType,
 } from '../utils/speed';
 import { getMetricStatus } from '../utils/thresholds';
-import { PLAYERS } from '../data/players';
 import { calcUNCa, calcNavette, calcSprintCurvo } from '../utils/calculations';
-import { saveEvaluation } from '../lib/db';
+import { saveEvaluation, getPlayers } from '../lib/db';
+import { useTeam } from '../context/TeamContext';
 const MAIN_TABS = ['Salto', 'Velocidad', 'Agilidad', 'Resistencia'];
 const SUB_TABS = {
   Salto:       ['SJ', 'CMJ', 'Drop Jump'],
@@ -253,7 +253,9 @@ function NavetteTimer({ onStop }) {
 }
 
 export default function EvaluacionesView() {
-  const [athlete, setAthlete] = useState(PLAYERS[0]);
+  const { activeTeam } = useTeam();
+  const [players, setPlayers] = useState([]);
+  const [athlete, setAthlete] = useState(null);
   const [mainTab, setMainTab] = useState('Salto');
   const [subTab, setSubTab] = useState('SJ');
   const [infoKey, setInfoKey] = useState(null);
@@ -292,6 +294,13 @@ export default function EvaluacionesView() {
   const [uncaVfa, setUncaVfa] = useState('');
   const [navPal,  setNavPal]  = useState('');
   const [navShut, setNavShut] = useState('');
+
+  useEffect(() => {
+    if (!activeTeam?.id) return;
+    getPlayers(activeTeam.id)
+      .then(data => { if (data?.length) { setPlayers(data); setAthlete(a => a ?? data[0]); } })
+      .catch(() => {});
+  }, [activeTeam?.id]);
 
   function switchMain(tab) { setMainTab(tab); setSubTab(SUB_TABS[tab][0]); }
 
@@ -352,10 +361,10 @@ export default function EvaluacionesView() {
 
       {/* Athlete selector */}
       <div className="flex gap-2 flex-wrap">
-        {PLAYERS.map(p => (
+        {players.map(p => (
           <button key={p.id} onClick={() => setAthlete(p)}
             className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors',
-              athlete.id === p.id
+              athlete?.id === p.id
                 ? 'bg-accent text-background border-accent'
                 : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
             )}>
@@ -379,7 +388,7 @@ export default function EvaluacionesView() {
           </div>
           {sjH > 0 && (
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <ResultCard label="Altura SJ" value={sjH.toFixed(1)} unit="cm" status={getMetricStatus('sj', sjH, athlete.sport, athlete.category, athlete.sex)} />
+              <ResultCard label="Altura SJ" value={sjH.toFixed(1)} unit="cm" status={getMetricStatus('sj', sjH, athlete?.sport, athlete?.category, athlete?.sex)} />
               {sjW > 0 && <ResultCard label="Potencia Sayers" value={Math.round(sjW)} unit="W" status="neutral" />}
             </div>
           )}
@@ -401,7 +410,7 @@ export default function EvaluacionesView() {
           </div>
           {cmjH > 0 && (
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <ResultCard label="Altura CMJ" value={cmjH.toFixed(1)} unit="cm" status={getMetricStatus('cmj', cmjH, athlete.sport, athlete.category, athlete.sex)} />
+              <ResultCard label="Altura CMJ" value={cmjH.toFixed(1)} unit="cm" status={getMetricStatus('cmj', cmjH, athlete?.sport, athlete?.category, athlete?.sex)} />
               {cmjW > 0 && <ResultCard label="Potencia Sayers" value={Math.round(cmjW)} unit="W" status="neutral" />}
               {iue !== null && (
                 <ResultCard label="IUE" value={iue.toFixed(1)} unit="%" status={iueStatus(iue)}
@@ -424,9 +433,9 @@ export default function EvaluacionesView() {
           </div>
           {djH > 0 && (
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <ResultCard label="Altura DJ" value={djH.toFixed(1)} unit="cm" status={getMetricStatus('dj', djH, athlete.sport, athlete.category, athlete.sex)} />
+              <ResultCard label="Altura DJ" value={djH.toFixed(1)} unit="cm" status={getMetricStatus('dj', djH, athlete?.sport, athlete?.category, athlete?.sex)} />
               {rsi > 0 && (
-                <ResultCard label="RSI" value={rsi.toFixed(2)} status={getMetricStatus('rsi', rsi, athlete.sport, athlete.category, athlete.sex)}
+                <ResultCard label="RSI" value={rsi.toFixed(2)} status={getMetricStatus('rsi', rsi, athlete?.sport, athlete?.category, athlete?.sex)}
                   sub="≥ 2.0 élite · ≥ 1.5 aceptable" />
               )}
             </div>
@@ -514,7 +523,7 @@ export default function EvaluacionesView() {
                     setCurvoSaving(true);
                     try {
                       await saveEvaluation({
-                        player_id: athlete.id,
+                        player_id: athlete?.id,
                         type: 'sprintCurvo',
                         data: { distancia: curvoDist, tiempo: Number(curvoTime), velocidad: Number(curvoVel) },
                       });
@@ -581,7 +590,7 @@ export default function EvaluacionesView() {
           </div>
           {yyVo2 > 0 && (
             <ResultCard label="VO₂ máx estimado" value={yyVo2.toFixed(1)} unit="ml/kg/min"
-              status={getMetricStatus('vo2max', yyVo2, athlete.sport, athlete.category, athlete.sex)} sub="(dist × 0.0084) + 36.4" />
+              status={getMetricStatus('vo2max', yyVo2, athlete?.sport, athlete?.category, athlete?.sex)} sub="(dist × 0.0084) + 36.4" />
           )}
         </Card>
       )}
@@ -602,7 +611,7 @@ export default function EvaluacionesView() {
             <div className="grid grid-cols-2 gap-3">
               <ResultCard label="VAM" value={navResult.vam.toFixed(1)} unit="km/h" status="neutral" />
               <ResultCard label="VO₂ máx estimado" value={navResult.vo2max.toFixed(1)} unit="ml/kg/min"
-                status={getMetricStatus('vo2max', navResult.vo2max, athlete.sport, athlete.category, athlete.sex)}
+                status={getMetricStatus('vo2max', navResult.vo2max, athlete?.sport, athlete?.category, athlete?.sex)}
                 className="col-span-2" />
             </div>
           )}
@@ -643,7 +652,7 @@ export default function EvaluacionesView() {
           </div>
           {coopVo2 > 0 && (
             <ResultCard label="VO₂ máx estimado" value={coopVo2.toFixed(1)} unit="ml/kg/min"
-              status={getMetricStatus('vo2max', coopVo2, athlete.sport, athlete.category, athlete.sex)} sub="(dist − 504.9) / 44.73" />
+              status={getMetricStatus('vo2max', coopVo2, athlete?.sport, athlete?.category, athlete?.sex)} sub="(dist − 504.9) / 44.73" />
           )}
         </Card>
       )}

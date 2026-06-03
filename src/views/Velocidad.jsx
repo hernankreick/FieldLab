@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Timer, Camera, Info } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
@@ -7,9 +7,9 @@ import SprintVisionModule from '../components/SprintVisionModule';
 import InfoSheet from '../components/InfoSheet';
 import { cn } from '../utils/cn';
 import { calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus } from '../utils/speed';
-import { saveEvaluation } from '../lib/db';
+import { saveEvaluation, getPlayers } from '../lib/db';
 import { TEST_INFO } from '../utils/testInfo';
-import { PLAYERS } from '../data/players';
+import { useTeam } from '../context/TeamContext';
 
 const SHAPE_TABS = ['Lineal', 'Curvo'];
 const LINEAR_SEGS = ['10m', '20m', '30m', '10/20/30m'];
@@ -134,7 +134,17 @@ function TabVelocidad() {
   const [curvoSaving, setCurvoSaving] = useState(false);
   const [curvoDone,   setCurvoDone]   = useState(false);
 
-  const [athlete, setAthlete] = useState(PLAYERS[0]);
+  const { activeTeam } = useTeam();
+  const [players, setPlayers] = useState([]);
+  const [athlete, setAthlete] = useState(null);
+
+  useEffect(() => {
+    if (!activeTeam?.id) return;
+    getPlayers(activeTeam.id)
+      .then(data => { if (data?.length) { setPlayers(data); setAthlete(a => a ?? data[0]); } })
+      .catch(() => {});
+  }, [activeTeam?.id]);
+
   const [visionTarget, setVisionTarget] = useState(null);
   const [showSprintVision, setShowSprintVision] = useState(false);
   const [infoKey, setInfoKey] = useState(null);
@@ -179,10 +189,10 @@ function TabVelocidad() {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        {PLAYERS.map(p => (
+        {players.map(p => (
           <button key={p.id} onClick={() => setAthlete(p)}
             className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors',
-              athlete.id === p.id
+              athlete?.id === p.id
                 ? 'bg-accent text-background border-accent'
                 : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
             )}>

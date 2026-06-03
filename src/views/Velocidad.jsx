@@ -15,6 +15,40 @@ const LINEAR_SEGS = ['10m', '20m', '30m', '10/20/30m'];
 
 const parseTime = (val) => parseFloat(String(val).replace(',', '.')) || 0;
 
+function DecimalPad({ value, onChange, placeholder = '0.00' }) {
+  const [active, setActive] = useState(false);
+
+  const press = (k) => {
+    if (k === '⌫') { onChange(String(value).slice(0, -1) || ''); return; }
+    if (k === '.' && String(value).includes('.')) return;
+    if (k === '.' && value === '') { onChange('0.'); return; }
+    onChange(String(value) + k);
+  };
+
+  const keys = ['1','2','3','4','5','6','7','8','9','.','0','⌫'];
+
+  return (
+    <div>
+      <div
+        onClick={() => setActive(!active)}
+        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm cursor-pointer min-h-[40px] flex items-center"
+      >
+        {value || <span className="text-slate-500">{placeholder}</span>}
+      </div>
+      {active && (
+        <div className="grid grid-cols-3 gap-1 mt-1 bg-slate-800 rounded-lg p-2 border border-slate-700">
+          {keys.map(k => (
+            <button key={k} onClick={() => press(k)}
+              className="bg-slate-700 hover:bg-slate-600 text-white rounded py-2 text-sm font-mono active:bg-slate-500">
+              {k}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SegControl({ options, active, onChange }) {
   return (
     <div className="flex rounded-lg bg-surface border border-white/5 p-1 gap-1">
@@ -46,19 +80,9 @@ function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo
         )}
       </div>
       <div className="flex gap-2">
-        <input
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck="false"
-          pattern="\d*\.?\d*"
-          placeholder="0.00"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          className="flex-1 bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
-        />
+        <div className="flex-1">
+          <DecimalPad value={value} onChange={onChange} />
+        </div>
         <button
           onClick={onMeasure}
           title="Medir con cámara"
@@ -93,8 +117,7 @@ function TabVelocidad() {
   const [curvoSaving, setCurvoSaving] = useState(false);
   const [curvoDone,   setCurvoDone]   = useState(false);
 
-  // Vision module state
-  const [visionTarget, setVisionTarget] = useState(null); // 'sprint10' | 'sprint20' | 'sprint30'
+  const [visionTarget, setVisionTarget] = useState(null);
   const [showSprintVision, setShowSprintVision] = useState(false);
   const [infoKey, setInfoKey] = useState(null);
 
@@ -247,37 +270,19 @@ function TabVelocidad() {
             {curvoDist === 20 && (
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 20m (s)</label>
-                <input
-                  key="input-curvo-20"
-                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
-                  value={curvoTime20}
-                  onChange={e => setCurvoTime20(e.target.value)}
-                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
-                />
+                <DecimalPad key="curvo-20" value={curvoTime20} onChange={setCurvoTime20} />
               </div>
             )}
             {curvoDist === 30 && (
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 30m (s)</label>
-                <input
-                  key="input-curvo-30"
-                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
-                  value={curvoTime30}
-                  onChange={e => setCurvoTime30(e.target.value)}
-                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
-                />
+                <DecimalPad key="curvo-30" value={curvoTime30} onChange={setCurvoTime30} />
               </div>
             )}
             {curvoDist === 40 && (
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Tiempo 40m (s)</label>
-                <input
-                  key="input-curvo-40"
-                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
-                  value={curvoTime40}
-                  onChange={e => setCurvoTime40(e.target.value)}
-                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
-                />
+                <DecimalPad key="curvo-40" value={curvoTime40} onChange={setCurvoTime40} />
               </div>
             )}
             {curvoVel !== null && (
@@ -320,21 +325,11 @@ function TabVelocidad() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Giro Derecho (s)</label>
-                <input
-                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
-                  value={curvoDer}
-                  onChange={e => setCurvoDer(e.target.value)}
-                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
-                />
+                <DecimalPad value={curvoDer} onChange={setCurvoDer} />
               </div>
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Giro Izquierdo (s)</label>
-                <input
-                  type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" pattern="\d*\.?\d*" placeholder="0.00"
-                  value={curvoIzq}
-                  onChange={e => setCurvoIzq(e.target.value)}
-                  className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 focus:outline-none focus:border-accent"
-                />
+                <DecimalPad value={curvoIzq} onChange={setCurvoIzq} />
               </div>
             </div>
 
@@ -367,7 +362,6 @@ function TabVelocidad() {
         content={infoKey ? TEST_INFO[infoKey] : null}
       />
 
-      {/* Vision module — per-row */}
       {visionTarget && (
         <SprintVisionModule
           testType={visionTarget}
@@ -376,7 +370,6 @@ function TabVelocidad() {
         />
       )}
 
-      {/* Vision module — top camera button (Lineal tab) */}
       {showSprintVision && (
         <SprintVisionModule
           testType={seg === '20m' ? 'sprint20' : seg === '30m' ? 'sprint30' : 'sprint10'}

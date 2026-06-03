@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Heart, Zap, ClipboardList, Activity, Footprints,
   ChevronDown, ChevronUp, Save, Check,
@@ -17,8 +17,8 @@ import { cn } from '../utils/cn';
 import { getLatestWellness, getWellnessByPlayer, getPlayerRecentLoads, getPlayerEvals } from '../utils/storage';
 import { PLAYERS } from '../data/players';
 import { getMetricStatus } from '../utils/thresholds';
-import { saveEvaluation, getEvaluations, getPlayers } from '../lib/db';
-import { useTeam } from '../context/TeamContext';
+import { saveEvaluation, getEvaluations } from '../lib/db';
+import { usePlayers } from '../hooks/usePlayers';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -367,19 +367,26 @@ function RowHeader() {
 
 export default function PlayerProfile({ initialId, onNavigate }) {
   const { coach } = useAuth();
-  const { activeTeam } = useTeam();
+  const { players: sbPlayers } = usePlayers();
 
-  // initialId can be a numeric string (static) or a UUID (from Supabase via Dashboard)
+  // initialId is either a UUID (from Dashboard with Supabase loaded)
+  // or a numeric string (from Dashboard with static fallback)
   const isUUID = String(initialId).includes('-');
-  const [player, setPlayer] = useState(
-    isUUID
-      ? PLAYERS[0]
-      : (PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0])
-  );
-  // UUID for Supabase queries — set immediately if initialId is already a UUID
-  const [supabasePlayerId, setSupabasePlayerId] = useState(isUUID ? String(initialId) : null);
-  // Stable ref to the initial static player for name-based Supabase lookup
-  const initialPlayerRef = useRef(player);
+
+  // Supabase player record (for name resolution)
+  const sbPlayer = isUUID
+    ? sbPlayers.find(p => p.id === String(initialId))
+    : sbPlayers.find(p => p.name === (PLAYERS.find(sp => sp.id === Number(initialId))?.name ?? ''));
+
+  // UUID for all Supabase queries — available immediately for UUID initialId
+  const supabasePlayerId = isUUID ? String(initialId) : (sbPlayer?.id ?? null);
+
+  // Static player — provides eval reference values, sport/category/sex, localStorage key
+  const player = (() => {
+    if (sbPlayer?.name) return PLAYERS.find(p => p.name === sbPlayer.name) ?? PLAYERS[0];
+    if (!isUUID)        return PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
+    return PLAYERS[0];
+  })();
 
   const [activeTab,       setActiveTab]       = useState('wellness');
   const [latestWellness,  setLatestWellness]  = useState(null);
@@ -403,23 +410,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const [saveDone, setSaveDone] = useState(false);
   const [sprintData, setSprintData] = useState(null);
 
-  // Resolve the real Supabase UUID and correct static player by name-matching
-  useEffect(() => {
-    if (!activeTeam?.id) return;
-    getPlayers(activeTeam.id)
-      .then(list => {
-        if (!list?.length) return;
-        const sbPlayer = isUUID
-          ? list.find(p => p.id === String(initialId))
-          : list.find(p => p.name === initialPlayerRef.current?.name);
-        if (!sbPlayer) return;
-        if (!isUUID) setSupabasePlayerId(sbPlayer.id);
-        const staticMatch = PLAYERS.find(p => p.name === sbPlayer.name);
-        if (staticMatch) setPlayer(staticMatch);
-      })
-      .catch(() => {});
-  }, [activeTeam?.id, initialId]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  // localStorage-based data (wellness, loads, jump evals)
   useEffect(() => {
     function loadData() {
       setLatestWellness(getLatestWellness(player.id));
@@ -430,9 +421,13 @@ export default function PlayerProfile({ initialId, onNavigate }) {
     loadData();
     const iv = setInterval(loadData, 30_000);
     window.addEventListener('storage', loadData);
+    return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
+  }, [player.id, coach?.id]);
 
-    // Try to load last mobility evaluation from Supabase
-    getEvaluations(supabasePlayerId ?? player.id)
+  // Supabase evaluations — re-runs as soon as supabasePlayerId is resolved
+  useEffect(() => {
+    if (!supabasePlayerId) return;
+    getEvaluations(supabasePlayerId)
       .then(evals => {
         const lastMob = evals?.find(e => e.type === 'mobility');
         if (lastMob) {
@@ -451,9 +446,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
         if (Object.keys(sprints).length > 0) setSprintData(sprints);
       })
       .catch(() => {});
-
-    return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
-  }, [player.id, coach?.id, supabasePlayerId]);
+  }, [supabasePlayerId]);
 
   async function handleSaveMobility() {
     setSaving(true);

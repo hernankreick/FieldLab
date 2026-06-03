@@ -7,9 +7,9 @@ import SprintVisionModule from '../components/SprintVisionModule';
 import InfoSheet from '../components/InfoSheet';
 import { cn } from '../utils/cn';
 import { calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus } from '../utils/speed';
-import { saveEvaluation, getPlayers } from '../lib/db';
+import { saveEvaluation } from '../lib/db';
 import { TEST_INFO } from '../utils/testInfo';
-import { useTeam } from '../context/TeamContext';
+import { usePlayers } from '../hooks/usePlayers';
 
 const SHAPE_TABS = ['Lineal', 'Curvo'];
 const LINEAR_SEGS = ['10m', '20m', '30m', '10/20/30m'];
@@ -136,16 +136,12 @@ function TabVelocidad() {
   const [curvoSaving, setCurvoSaving] = useState(false);
   const [curvoDone,   setCurvoDone]   = useState(false);
 
-  const { activeTeam } = useTeam();
-  const [players, setPlayers] = useState([]);
+  const { players } = usePlayers();
   const [athlete, setAthlete] = useState(null);
 
   useEffect(() => {
-    if (!activeTeam?.id) return;
-    getPlayers(activeTeam.id)
-      .then(data => { if (data?.length) { setPlayers(data); setAthlete(a => a ?? data[0]); } })
-      .catch(() => {});
-  }, [activeTeam?.id]);
+    if (players.length > 0) setAthlete(a => a ?? players[0]);
+  }, [players]);
 
   const [visionTarget, setVisionTarget] = useState(null);
   const [showSprintVision, setShowSprintVision] = useState(false);

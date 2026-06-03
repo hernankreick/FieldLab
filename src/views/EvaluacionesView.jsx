@@ -18,8 +18,8 @@ import {
 } from '../utils/speed';
 import { getMetricStatus } from '../utils/thresholds';
 import { calcUNCa, calcNavette, calcSprintCurvo } from '../utils/calculations';
-import { saveEvaluation, getPlayers } from '../lib/db';
-import { useTeam } from '../context/TeamContext';
+import { saveEvaluation } from '../lib/db';
+import { usePlayers } from '../hooks/usePlayers';
 const MAIN_TABS = ['Salto', 'Velocidad', 'Agilidad', 'Resistencia'];
 const SUB_TABS = {
   Salto:       ['SJ', 'CMJ', 'Drop Jump'],
@@ -253,8 +253,7 @@ function NavetteTimer({ onStop }) {
 }
 
 export default function EvaluacionesView() {
-  const { activeTeam } = useTeam();
-  const [players, setPlayers] = useState([]);
+  const { players } = usePlayers();
   const [athlete, setAthlete] = useState(null);
   const [mainTab, setMainTab] = useState('Salto');
   const [subTab, setSubTab] = useState('SJ');
@@ -296,11 +295,8 @@ export default function EvaluacionesView() {
   const [navShut, setNavShut] = useState('');
 
   useEffect(() => {
-    if (!activeTeam?.id) return;
-    getPlayers(activeTeam.id)
-      .then(data => { if (data?.length) { setPlayers(data); setAthlete(a => a ?? data[0]); } })
-      .catch(() => {});
-  }, [activeTeam?.id]);
+    if (players.length > 0) setAthlete(a => a ?? players[0]);
+  }, [players]);
 
   function switchMain(tab) { setMainTab(tab); setSubTab(SUB_TABS[tab][0]); }
 

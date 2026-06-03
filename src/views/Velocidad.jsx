@@ -69,7 +69,19 @@ function SegControl({ options, active, onChange }) {
   );
 }
 
-function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo }) {
+function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo, onSave }) {
+  const [saving, setSaving] = useState(false);
+  const [done,   setDone]   = useState(false);
+
+  async function handleSave() {
+    if (saving || done || !onSave) return;
+    setSaving(true);
+    await onSave();
+    setSaving(false);
+    setDone(true);
+    setTimeout(() => setDone(false), 2000);
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
@@ -86,9 +98,21 @@ function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo
         </div>
       </div>
       {velocity > 0 && (
-        <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-xs font-data text-slate-400">{velocity.toFixed(2)} m/s</span>
-          <StatusBadge status={status} />
+        <div className="mt-2 space-y-2">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold font-data text-slate-200">{velocity.toFixed(2)}</span>
+            <span className="text-xl font-data text-slate-400">m/s</span>
+            <StatusBadge status={status} />
+          </div>
+          <button
+            onClick={handleSave}
+            className={cn(
+              'w-full py-3 rounded-xl font-bold text-sm transition-colors active:scale-95',
+              done ? 'bg-green-500 text-white' : 'bg-cyan-500 text-black hover:bg-cyan-400'
+            )}
+          >
+            {done ? '✓ Guardado' : saving ? 'Guardando…' : 'Guardar'}
+          </button>
         </div>
       )}
     </div>
@@ -190,6 +214,7 @@ function TabVelocidad() {
                   velocity={v10} status={st10}
                   onMeasure={() => setVisionTarget('sprint10')}
                   onInfo={() => setInfoKey('sprint10')}
+                  onSave={async () => { try { await saveEvaluation({ player_id: athlete.id, type: 'sprint10', data: { tiempo: t10, velocidad: v10 } }); } catch { /* sin Supabase */ } }}
                 />
               )}
               {show('20m') && (
@@ -198,6 +223,7 @@ function TabVelocidad() {
                   value={sprint20} onChange={setSprint20}
                   velocity={v20} status={st20}
                   onMeasure={() => setVisionTarget('sprint20')}
+                  onSave={async () => { try { await saveEvaluation({ player_id: athlete.id, type: 'sprint20', data: { tiempo: t20, velocidad: v20 } }); } catch { /* sin Supabase */ } }}
                 />
               )}
               {show('30m') && (
@@ -207,6 +233,7 @@ function TabVelocidad() {
                   velocity={v30} status={st30}
                   onMeasure={() => setVisionTarget('sprint30')}
                   onInfo={() => setInfoKey('sprint30')}
+                  onSave={async () => { try { await saveEvaluation({ player_id: athlete.id, type: 'sprint30', data: { tiempo: t30, velocidad: v30 } }); } catch { /* sin Supabase */ } }}
                 />
               )}
               {seg === '10/20/30m' && (v10 > 0 || v20 > 0 || v30 > 0) && (

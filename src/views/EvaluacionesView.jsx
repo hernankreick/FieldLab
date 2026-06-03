@@ -34,23 +34,45 @@ const COD_META = {
 };
 
 
+function DecimalPad({ value, onChange, placeholder = '0.00' }) {
+  const [active, setActive] = useState(false);
+
+  const press = (k) => {
+    if (k === '⌫') { onChange(String(value).slice(0, -1) || ''); return; }
+    if (k === '.' && String(value).includes('.')) return;
+    if (k === '.' && value === '') { onChange('0.'); return; }
+    onChange(String(value) + k);
+  };
+
+  const keys = ['1','2','3','4','5','6','7','8','9','.','0','⌫'];
+
+  return (
+    <div>
+      <div
+        onClick={() => setActive(!active)}
+        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm cursor-pointer min-h-[40px] flex items-center"
+      >
+        {value || <span className="text-slate-500">{placeholder}</span>}
+      </div>
+      {active && (
+        <div className="grid grid-cols-3 gap-1 mt-1 bg-slate-800 rounded-lg p-2 border border-slate-700">
+          {keys.map(k => (
+            <button key={k} onClick={() => press(k)}
+              className="bg-slate-700 hover:bg-slate-600 text-white rounded py-2 text-sm font-mono active:bg-slate-500">
+              {k}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NumInput({ label, value, onChange, placeholder = '0.00' }) {
   return (
     <div>
       <label className="text-xs text-slate-400 mb-1 block">{label}</label>
-      <input
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck="false"
-        pattern="\d*\.?\d*"
-        placeholder={placeholder}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
-      />
+      <DecimalPad value={value} onChange={onChange} placeholder={placeholder} />
     </div>
   );
 }

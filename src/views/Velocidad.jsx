@@ -138,6 +138,7 @@ function TabVelocidad() {
 
   const { players } = usePlayers();
   const [athlete, setAthlete] = useState(null);
+  const [debugInfo, setDebugInfo] = useState(null);
 
   useEffect(() => {
     if (players.length > 0) setAthlete(a => a ?? players[0]);
@@ -199,6 +200,13 @@ function TabVelocidad() {
         ))}
       </div>
 
+      {debugInfo !== null && (
+        <div className="mt-2 p-2 bg-slate-950 rounded text-xs font-mono text-slate-400 break-all">
+          <div>Selected player: {athlete?.name ?? 'null'} / {athlete?.id ?? 'null'}</div>
+          <div className="mt-1 whitespace-pre-wrap">{JSON.stringify(debugInfo, null, 2)}</div>
+        </div>
+      )}
+
       <SegControl options={SHAPE_TABS} active={shape} onChange={setShape} />
 
       {shape === 'Lineal' && (
@@ -224,13 +232,15 @@ function TabVelocidad() {
                   onInfo={() => setInfoKey('sprint10')}
                   onSave={async () => {
                     console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
-                    if (!athlete?.id) return false;
+                    if (!athlete?.id) { setDebugInfo({ player: null, error: 'athlete is null' }); return false; }
                     try {
                       const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } });
                       console.log('SUPABASE RESULT', { data, error: null });
+                      setDebugInfo({ player: athlete?.id, data, error: null });
                       return true;
                     } catch (error) {
                       console.log('SUPABASE RESULT', { data: null, error });
+                      setDebugInfo({ player: athlete?.id, data: null, error: error?.message });
                       return false;
                     }
                   }}
@@ -244,13 +254,15 @@ function TabVelocidad() {
                   onMeasure={() => setVisionTarget('sprint20')}
                   onSave={async () => {
                     console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
-                    if (!athlete?.id) return false;
+                    if (!athlete?.id) { setDebugInfo({ player: null, error: 'athlete is null' }); return false; }
                     try {
                       const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } });
                       console.log('SUPABASE RESULT', { data, error: null });
+                      setDebugInfo({ player: athlete?.id, data, error: null });
                       return true;
                     } catch (error) {
                       console.log('SUPABASE RESULT', { data: null, error });
+                      setDebugInfo({ player: athlete?.id, data: null, error: error?.message });
                       return false;
                     }
                   }}
@@ -265,13 +277,15 @@ function TabVelocidad() {
                   onInfo={() => setInfoKey('sprint30')}
                   onSave={async () => {
                     console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
-                    if (!athlete?.id) return false;
+                    if (!athlete?.id) { setDebugInfo({ player: null, error: 'athlete is null' }); return false; }
                     try {
                       const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } });
                       console.log('SUPABASE RESULT', { data, error: null });
+                      setDebugInfo({ player: athlete?.id, data, error: null });
                       return true;
                     } catch (error) {
                       console.log('SUPABASE RESULT', { data: null, error });
+                      setDebugInfo({ player: athlete?.id, data: null, error: error?.message });
                       return false;
                     }
                   }}

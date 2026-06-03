@@ -519,18 +519,19 @@ export default function EvaluacionesView() {
                 </div>
                 <button
                   onClick={async () => {
-                    if (curvoSaving || curvoDone) return;
+                    if (curvoSaving || curvoDone || !athlete?.id) return;
                     setCurvoSaving(true);
                     try {
                       await saveEvaluation({
                         player_id: athlete?.id,
+                        date: new Date().toISOString().split('T')[0],
                         type: 'sprintCurvo',
                         data: { distancia: curvoDist, tiempo: Number(curvoTime), velocidad: Number(curvoVel) },
                       });
+                      setCurvoDone(true);
+                      setTimeout(() => setCurvoDone(false), 2000);
                     } catch { /* sin Supabase */ }
                     setCurvoSaving(false);
-                    setCurvoDone(true);
-                    setTimeout(() => setCurvoDone(false), 2000);
                   }}
                   className={cn(
                     'w-full py-2.5 rounded-xl text-sm font-bold transition-colors',

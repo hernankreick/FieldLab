@@ -76,10 +76,12 @@ function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo
   async function handleSave() {
     if (saving || done || !onSave) return;
     setSaving(true);
-    await onSave();
+    const ok = await onSave();
     setSaving(false);
-    setDone(true);
-    setTimeout(() => setDone(false), 2000);
+    if (ok) {
+      setDone(true);
+      setTimeout(() => setDone(false), 2000);
+    }
   }
 
   return (
@@ -224,7 +226,13 @@ function TabVelocidad() {
                   velocity={v10} status={st10}
                   onMeasure={() => setVisionTarget('sprint10')}
                   onInfo={() => setInfoKey('sprint10')}
-                  onSave={async () => { try { await saveEvaluation({ player_id: athlete.id, type: 'sprint10', data: { tiempo: t10, velocidad: v10 } }); } catch { /* sin Supabase */ } }}
+                  onSave={async () => {
+                    if (!athlete?.id) return false;
+                    try {
+                      await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } });
+                      return true;
+                    } catch { return false; }
+                  }}
                 />
               )}
               {show('20m') && (
@@ -233,7 +241,13 @@ function TabVelocidad() {
                   value={sprint20} onChange={setSprint20}
                   velocity={v20} status={st20}
                   onMeasure={() => setVisionTarget('sprint20')}
-                  onSave={async () => { try { await saveEvaluation({ player_id: athlete.id, type: 'sprint20', data: { tiempo: t20, velocidad: v20 } }); } catch { /* sin Supabase */ } }}
+                  onSave={async () => {
+                    if (!athlete?.id) return false;
+                    try {
+                      await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } });
+                      return true;
+                    } catch { return false; }
+                  }}
                 />
               )}
               {show('30m') && (
@@ -243,7 +257,13 @@ function TabVelocidad() {
                   velocity={v30} status={st30}
                   onMeasure={() => setVisionTarget('sprint30')}
                   onInfo={() => setInfoKey('sprint30')}
-                  onSave={async () => { try { await saveEvaluation({ player_id: athlete.id, type: 'sprint30', data: { tiempo: t30, velocidad: v30 } }); } catch { /* sin Supabase */ } }}
+                  onSave={async () => {
+                    if (!athlete?.id) return false;
+                    try {
+                      await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } });
+                      return true;
+                    } catch { return false; }
+                  }}
                 />
               )}
               {seg === '10/20/30m' && (v10 > 0 || v20 > 0 || v30 > 0) && (
@@ -339,18 +359,19 @@ function TabVelocidad() {
                 </div>
                 <button
                   onClick={async () => {
-                    if (curvoSaving || curvoDone) return;
+                    if (curvoSaving || curvoDone || !athlete?.id) return;
                     setCurvoSaving(true);
                     try {
                       await saveEvaluation({
                         player_id: athlete.id,
+                        date: new Date().toISOString().split('T')[0],
                         type: 'sprintCurvo',
                         data: { distancia: curvoDist, tiempo: parseTime(activeTime), velocidad: Number(curvoVel) },
                       });
+                      setCurvoDone(true);
+                      setTimeout(() => setCurvoDone(false), 2000);
                     } catch { /* sin Supabase */ }
                     setCurvoSaving(false);
-                    setCurvoDone(true);
-                    setTimeout(() => setCurvoDone(false), 2000);
                   }}
                   className={cn(
                     'w-full py-2.5 rounded-xl text-sm font-bold transition-colors',

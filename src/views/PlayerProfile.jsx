@@ -18,6 +18,7 @@ import { getLatestWellness, getWellnessByPlayer, getPlayerRecentLoads, getPlayer
 import { PLAYERS } from '../data/players';
 import { getMetricStatus } from '../utils/thresholds';
 import { saveEvaluation, getEvaluations } from '../lib/db';
+import { usePlayers } from '../hooks/usePlayers';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -366,7 +367,26 @@ function RowHeader() {
 
 export default function PlayerProfile({ initialId, onNavigate }) {
   const { coach } = useAuth();
-  const player = PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
+  const { players: sbPlayers } = usePlayers();
+
+  // initialId is either a UUID (from Dashboard with Supabase loaded)
+  // or a numeric string (from Dashboard with static fallback)
+  const isUUID = String(initialId).includes('-');
+
+  // Supabase player record (for name resolution)
+  const sbPlayer = isUUID
+    ? sbPlayers.find(p => p.id === String(initialId))
+    : sbPlayers.find(p => p.name === (PLAYERS.find(sp => sp.id === Number(initialId))?.name ?? ''));
+
+  // UUID for all Supabase queries — available immediately for UUID initialId
+  const supabasePlayerId = isUUID ? String(initialId) : (sbPlayer?.id ?? null);
+
+  // Static player — provides eval reference values, sport/category/sex, localStorage key
+  const player = (() => {
+    if (sbPlayer?.name) return PLAYERS.find(p => p.name === sbPlayer.name) ?? PLAYERS[0];
+    if (!isUUID)        return PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
+    return PLAYERS[0];
+  })();
 
   const [activeTab,       setActiveTab]       = useState('wellness');
   const [latestWellness,  setLatestWellness]  = useState(null);
@@ -388,7 +408,9 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const [lastSaved, setLastSaved] = useState(null);
   const [saving,   setSaving]   = useState(false);
   const [saveDone, setSaveDone] = useState(false);
+  const [sprintData, setSprintData] = useState(null);
 
+  // localStorage-based data (wellness, loads, jump evals)
   useEffect(() => {
     function loadData() {
       setLatestWellness(getLatestWellness(player.id));
@@ -399,28 +421,37 @@ export default function PlayerProfile({ initialId, onNavigate }) {
     loadData();
     const iv = setInterval(loadData, 30_000);
     window.addEventListener('storage', loadData);
-
-    // Try to load last mobility evaluation from Supabase
-    getEvaluations(player.id)
-      .then(evals => {
-        const lastMob = evals?.find(e => e.type === 'mobility');
-        if (!lastMob) return;
-        setLastSaved(lastMob.date);
-        const d = lastMob.data ?? {};
-        if (d.ankle)    setAnkle(prev => ({ ...MOBILITY_DEFAULTS.ankle,    ...d.ankle    }));
-        if (d.hip)      setHip(prev   => ({ ...MOBILITY_DEFAULTS.hip,      ...d.hip      }));
-        if (d.shoulder) setShoulder(prev => ({ ...MOBILITY_DEFAULTS.shoulder, ...d.shoulder }));
-        if (d.fms)      setFms(prev   => ({ ...MOBILITY_DEFAULTS.fms,      ...d.fms      }));
-      })
-      .catch(() => {});
-
     return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
   }, [player.id, coach?.id]);
+
+  // Supabase evaluations — re-runs as soon as supabasePlayerId is resolved
+  useEffect(() => {
+    if (!supabasePlayerId) return;
+    getEvaluations(supabasePlayerId)
+      .then(evals => {
+        const lastMob = evals?.find(e => e.type === 'mobility');
+        if (lastMob) {
+          setLastSaved(lastMob.date);
+          const d = lastMob.data ?? {};
+          if (d.ankle)    setAnkle(prev => ({ ...MOBILITY_DEFAULTS.ankle,    ...d.ankle    }));
+          if (d.hip)      setHip(prev   => ({ ...MOBILITY_DEFAULTS.hip,      ...d.hip      }));
+          if (d.shoulder) setShoulder(prev => ({ ...MOBILITY_DEFAULTS.shoulder, ...d.shoulder }));
+          if (d.fms)      setFms(prev   => ({ ...MOBILITY_DEFAULTS.fms,      ...d.fms      }));
+        }
+        const sprints = {};
+        for (const type of ['sprint10', 'sprint20', 'sprint30']) {
+          const found = evals?.find(e => e.type === type);
+          if (found?.data) sprints[type] = found.data;
+        }
+        if (Object.keys(sprints).length > 0) setSprintData(sprints);
+      })
+      .catch(() => {});
+  }, [supabasePlayerId]);
 
   async function handleSaveMobility() {
     setSaving(true);
     const payload = {
-      player_id: player.id,
+      player_id: supabasePlayerId ?? player.id,
       coach_id:  coach?.id,
       date:      new Date().toISOString().split('T')[0],
       type:      'mobility',
@@ -468,6 +499,10 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   }));
 
   const { eval: ev } = player;
+
+  const sprint10Time = sprintData?.sprint10?.tiempo  ?? ev.sprint10.time;
+  const sprint30Time = sprintData?.sprint30?.tiempo  ?? ev.sprint30.time;
+  const topSpeedVal  = sprintData?.sprint30?.velocidad ?? ev.topSpeed;
 
   const realByType = {};
   for (const e of playerEvals) {
@@ -811,17 +846,17 @@ export default function PlayerProfile({ initialId, onNavigate }) {
             <div className="grid grid-cols-2 gap-3">
               <ResultCard
                 label="Sprint 10m"
-                value={ev.sprint10.time.toFixed(2)} unit="s"
-                status={getMetricStatus('sprint10', ev.sprint10.time, player.sport, player.category, player.sex)}
+                value={sprint10Time.toFixed(2)} unit="s"
+                status={getMetricStatus('sprint10', sprint10Time, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label="Sprint 30m"
-                value={ev.sprint30.time.toFixed(2)} unit="s"
-                status={getMetricStatus('sprint30', ev.sprint30.time, player.sport, player.category, player.sex)}
+                value={sprint30Time.toFixed(2)} unit="s"
+                status={getMetricStatus('sprint30', sprint30Time, player.sport, player.category, player.sex)}
               />
               <ResultCard
                 label="Top Speed"
-                value={ev.topSpeed.toFixed(1)} unit="m/s"
+                value={topSpeedVal.toFixed(1)} unit="m/s"
                 status="neutral"
                 className="col-span-2"
               />

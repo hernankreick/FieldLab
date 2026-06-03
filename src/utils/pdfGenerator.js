@@ -81,6 +81,14 @@ function riskLabel(s) {
   return 'APTO';
 }
 
+function motivoRiesgo(player, todayW) {
+  if (player.tag === 'LESIÓN') return 'Lesión';
+  if (player.acwr > 1.5)       return 'ACWR alto';
+  if (!todayW)                 return 'Sin wellness';
+  if (player.acwr > 1.3)       return 'Carga elevada';
+  return '';
+}
+
 function fmtDate(isoStr) {
   if (!isoStr) return '—';
   return new Date(isoStr).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -484,16 +492,21 @@ export async function generateTeamReport(athletes) {
 
   y = drawTable(
     doc, y,
-    ['Jugador', 'Posición', 'ACWR', 'Zona ACWR', 'Hooper', 'Estado'],
+    ['Jugador', 'Posición', 'ACWR', 'Zona ACWR', 'Hooper', 'Estado', 'Motivo'],
     sorted.map(a => {
       const todayW = a.w && isToday(a.w.timestamp) ? a.w : null;
       return [
         a.name, a.position ?? '—', a.acwr.toFixed(2),
         acwrZone(a.acwr), todayW ? todayW.score : '—',
         riskLabel(computeRisk(a, todayW)),
+        motivoRiesgo(a, todayW),
       ];
     }),
-    { 0: { cellWidth: 46 }, 1: { cellWidth: 28 } },
+    {
+      0: { cellWidth: 40 }, 1: { cellWidth: 24 },
+      2: { cellWidth: 14 }, 3: { cellWidth: 22 },
+      4: { cellWidth: 12 }, 5: { cellWidth: 18 },
+    },
     (data) => {
       if (data.row.section !== 'body') return;
       if (data.column.index === 2 || data.column.index === 3) {
@@ -505,64 +518,78 @@ export async function generateTeamReport(athletes) {
         data.cell.styles.textColor = statusColor(raw==='RIESGO'?'danger':raw==='ALERTA'?'warning':'safe');
         data.cell.styles.fontStyle = 'bold';
       }
+      if (data.column.index === 6) {
+        data.cell.styles.textColor = C.muted;
+        data.cell.styles.fontStyle = 'italic';
+        data.cell.styles.fontSize  = 7;
+      }
     }
   );
 
-  // ── Página 2: Detalle compacto por jugador ───────────────────────────────
-  doc.addPage();
-  fillPage(doc);
-  let py = drawHeader(doc, 'Detalle por Jugador');
+  // ── Detalle compacto (misma página, sin salto) ──────────────────────────
+  y = checkBreak(doc, y, 20);
+  y = secBar(doc, 'Detalle por Jugador', y);
 
-  const colW  = (CW - 5) / 2;
-  const cardH = 32;
-  const rowGap = 4;
-  const rowsPerPage  = Math.floor((PAGE_H - py - 20) / (cardH + rowGap));
-  const cardsPerPage = rowsPerPage * 2;
-
+  const detRowH = 5;
   sorted.forEach((a, idx) => {
-    const localIdx = idx % cardsPerPage;
-    const col      = localIdx % 2;
-    const row      = Math.floor(localIdx / 2);
+    y = checkBreak(doc, y, detRowH + 2);
 
-    if (idx > 0 && localIdx === 0) {
-      doc.addPage();
-      fillPage(doc);
-      py = drawHeader(doc, 'Detalle por Jugador (cont.)');
-    }
-
-    const bx     = M + col * (colW + 5);
-    const by     = py + row * (cardH + rowGap);
     const todayW = a.w && isToday(a.w.timestamp) ? a.w : null;
     const risk   = computeRisk(a, todayW);
-    const evals  = getPlayerEvals(a.id);
-    const lastJump = evals.find(e => e.type === 'jump');
+    const rCol   = statusColor(risk);
 
-    doc.setFillColor(...C.surface);
-    doc.roundedRect(bx, by, colW, cardH, 2, 2, 'F');
+    if (idx % 2 === 0) {
+      doc.setFillColor(...C.alt);
+      doc.rect(M, y, CW, detRowH, 'F');
+    }
 
-    doc.setFillColor(...statusColor(risk));
-    doc.circle(bx + 6, by + 7, 2.5, 'F');
+    // dot
+    doc.setFillColor(...rCol);
+    doc.circle(M + 3, y + detRowH / 2, 1.5, 'F');
 
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...C.text);
-    doc.text(a.name, bx + 12, by + 9);
+    // nombre
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...C.text);
+    doc.text(a.name, M + 8, y + detRowH / 2 + 1.2);
 
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...C.muted);
-    doc.text(`${a.position ?? ''} · ${a.sport ?? ''}`, bx + 6, by + 15);
+    // posición
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.muted);
+    doc.text(a.position ?? '—', M + 57, y + detRowH / 2 + 1.2);
 
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    // ACWR coloreado
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
     doc.setTextColor(...statusColor(acwrSt(a.acwr)));
-    doc.text(`ACWR ${a.acwr.toFixed(2)}`, bx + 6, by + 22);
+    doc.text(`ACWR ${a.acwr.toFixed(2)}`, M + 88, y + detRowH / 2 + 1.2);
 
-    if (todayW) {
-      doc.setTextColor(...statusColor(hooperSt(todayW.score)));
-      doc.text(`Hooper ${todayW.score}`, bx + colW / 2 + 2, by + 22);
+    // zona
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.muted);
+    doc.text(acwrZone(a.acwr), M + 114, y + detRowH / 2 + 1.2);
+
+    // estado
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...rCol);
+    doc.text(riskLabel(risk), M + 143, y + detRowH / 2 + 1.2);
+
+    // motivo (muted italic, inline)
+    const motivo = motivoRiesgo(a, todayW);
+    if (motivo) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(6);
+      doc.setTextColor(...C.muted);
+      doc.text(`· ${motivo}`, M + 158, y + detRowH / 2 + 1.2);
     }
 
-    if (lastJump) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...C.muted);
-      doc.text(`${lastJump.jumpType}: ${lastJump.height.toFixed(1)} cm`, bx + 6, by + 28);
-    }
+    y += detRowH;
   });
+
+  y += 4;
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) { doc.setPage(i); drawFooter(doc); }

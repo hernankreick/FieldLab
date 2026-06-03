@@ -3,7 +3,7 @@ import { cn } from '../utils/cn';
 export default function Card({ children, className, title, icon: Icon, action }) {
   return (
     <div className={cn(
-      'bg-surface rounded-fieldlab p-6 border border-white/5 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.4)]',
+      'bg-surface rounded-fieldlab p-6 border border-white/5 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.4)] overflow-hidden',
       className
     )}>
       {(title || Icon || action) && (

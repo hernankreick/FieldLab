@@ -80,3 +80,33 @@ export function yoyoIR2(level) {
   };
   return table[level] ?? { vam: null, vo2max: null };
 }
+
+// UNCa Test — García, Cappa y Secchi (2013)
+// vfa = Velocidad Final Alcanzada (km/h); returns 5 training intensity zones as % of VFA
+export function calcUNCa(vfa) {
+  return {
+    vfa,
+    zones: {
+      regenerativo:       { min: Math.round(vfa * 0.60), max: Math.round(vfa * 0.69), label: 'Regenerativo'        },
+      aerobicoBase:       { min: Math.round(vfa * 0.70), max: Math.round(vfa * 0.79), label: 'Aeróbico Base'       },
+      aerobicoDesarrollo: { min: Math.round(vfa * 0.80), max: Math.round(vfa * 0.89), label: 'Aeróbico Desarrollo' },
+      umbralAnaer:        { min: Math.round(vfa * 0.90), max: Math.round(vfa * 0.99), label: 'Umbral Anaeróbico'   },
+      hiit:               { min: Math.round(vfa * 1.00), max: Math.round(vfa * 1.10), label: 'HIIT / Supramáximo'  },
+    },
+  };
+}
+
+// Course Navette — Léger & Boucher
+// palier = last level reached; shuttle = last shuttle completed within that level
+export function calcNavette(palier, shuttle) {
+  const vam    = 8.5 + (0.5 * palier);
+  const vo2max = (vam * 3.5) - 3.5;
+  return { palier, shuttle, vam: +vam.toFixed(1), vo2max: +vo2max.toFixed(1) };
+}
+
+// Sprint Curvo — velocidad media en curva
+// distancia (m), tiempo (s) → velocidad (km/h)
+export function calcSprintCurvo(distancia, tiempo) {
+  const velocidad = (distancia / tiempo) * 3.6;
+  return { distancia, tiempo, velocidad: +velocidad.toFixed(2) };
+}

@@ -1,45 +1,56 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 const AuthContext = createContext(null);
 
-const COACHES_DB = {
-  'hernan@fieldlab.com': { password: 'demo1234', name: 'Hernán Kreick' },
-};
-
 export function AuthProvider({ children }) {
-  const [coach, setCoach] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fieldlab_session');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
+  const [user,    setUser]    = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  function login(email, password) {
-    const found = COACHES_DB[email.toLowerCase()];
-    if (!found || found.password !== password) {
-      throw new Error('Credenciales incorrectas');
-    }
-    const session = {
-      id:    email.toLowerCase().replace(/[@.]/g, '_'),
-      email: email.toLowerCase(),
-      name:  found.name,
-    };
-    localStorage.setItem('fieldlab_session', JSON.stringify(session));
-    setCoach(session);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function signIn(email, password) {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
   }
 
-  function logout() {
-    localStorage.removeItem('fieldlab_session');
-    setCoach(null);
+  async function signUp(email, password) {
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
   }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+  }
+
+  // Backward-compat aliases — Dashboard, PlayerProfile and other views use
+  // coach/logout/login; keep them so existing code compiles without changes.
+  const coach  = user ? { id: user.id, email: user.email, name: user.email } : null;
+  const logout = signOut;
+  const login  = signIn;
 
   return (
-    <AuthContext.Provider value={{ coach, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, coach, logout, login }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
+  return ctx;
 }

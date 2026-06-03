@@ -34,13 +34,21 @@ const COD_META = {
 };
 
 
-function NumInput({ label, value, onChange, placeholder = '0.00', step = '0.01' }) {
+function NumInput({ label, value, onChange, placeholder = '0.00' }) {
   return (
     <div>
       <label className="text-xs text-slate-400 mb-1 block">{label}</label>
       <input
-        type="number" inputMode="decimal" step={step} placeholder={placeholder}
-        value={value} onChange={e => onChange(e.target.value)}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck="false"
+        pattern="\d*\.?\d*"
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
         className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm font-data text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-accent"
       />
     </div>

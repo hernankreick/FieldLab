@@ -172,35 +172,35 @@ function TabVelocidad() {
                   onInfo={() => setInfoKey('sprint30')}
                 />
               )}
-            </div>
-            {seg === '10/20/30m' && (v10 > 0 || v20 > 0 || v30 > 0) && (
-              <div className="pt-4 border-t border-white/5 mt-4 space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  {v10 > 0 && <MetricDisplay value={v10.toFixed(2)} unit="m/s" label="V 0–10m" status={st10} />}
-                  {v20 > 0 && <MetricDisplay value={v20.toFixed(2)} unit="m/s" label="V 10–20m" status={st20} />}
-                  {v30 > 0 && <MetricDisplay value={v30.toFixed(2)} unit="m/s" label="V 20–30m" status={st30} />}
-                </div>
-                {v10 > 0 && (v20 > 0 || v30 > 0) && (
-                  <div>
-                    <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Perfil de velocidad</p>
-                    {[
-                      v10 > 0 && ['Aceleración',  v10, 10, '#38bdf8'],
-                      v20 > 0 && ['Acc. máxima',  v20, 12, '#f59e0b'],
-                      v30 > 0 && ['Vel. máxima',  v30, 12, '#22c55e'],
-                    ].filter(Boolean).map(([lbl, val, max, color]) => (
-                      <div key={lbl} className="flex items-center gap-3 mb-2">
-                        <span className="text-xs text-slate-400 w-24">{lbl}</span>
-                        <div className="flex-1 bg-white/5 rounded-full h-2">
-                          <div className="h-2 rounded-full transition-all"
-                            style={{ width: `${Math.min(val / max * 100, 100)}%`, background: color }} />
-                        </div>
-                        <span className="text-xs font-data text-slate-300 w-14 text-right">{val.toFixed(2)} m/s</span>
-                      </div>
-                    ))}
+              {seg === '10/20/30m' && (v10 > 0 || v20 > 0 || v30 > 0) && (
+                <div className="pt-4 border-t border-white/5 space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    {v10 > 0 && <MetricDisplay value={v10.toFixed(2)} unit="m/s" label="V 0–10m" status={st10} />}
+                    {v20 > 0 && <MetricDisplay value={v20.toFixed(2)} unit="m/s" label="V 10–20m" status={st20} />}
+                    {v30 > 0 && <MetricDisplay value={v30.toFixed(2)} unit="m/s" label="V 20–30m" status={st30} />}
                   </div>
-                )}
-              </div>
-            )}
+                  {v10 > 0 && (v20 > 0 || v30 > 0) && (
+                    <div>
+                      <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Perfil de velocidad</p>
+                      {[
+                        v10 > 0 && ['Aceleración',  v10, 10, '#38bdf8'],
+                        v20 > 0 && ['Acc. máxima',  v20, 12, '#f59e0b'],
+                        v30 > 0 && ['Vel. máxima',  v30, 12, '#22c55e'],
+                      ].filter(Boolean).map(([lbl, val, max, color]) => (
+                        <div key={lbl} className="flex items-center gap-3 mb-2">
+                          <span className="text-xs text-slate-400 w-24">{lbl}</span>
+                          <div className="flex-1 bg-white/5 rounded-full h-2">
+                            <div className="h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(val / max * 100, 100)}%`, background: color }} />
+                          </div>
+                          <span className="text-xs font-data text-slate-300 w-14 text-right">{val.toFixed(2)} m/s</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </Card>
         </>
       )}

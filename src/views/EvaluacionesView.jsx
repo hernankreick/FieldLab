@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Info } from 'lucide-react';
+import InfoSheet from '../components/InfoSheet';
+import { TEST_INFO } from '../utils/testInfo';
 import Card from '../components/Card';
 import ResultCard from '../components/ResultCard';
 import TestHistoryTable from '../components/TestHistoryTable';
@@ -223,6 +225,7 @@ export default function EvaluacionesView() {
   const [athlete, setAthlete] = useState(PLAYERS[0]);
   const [mainTab, setMainTab] = useState('Salto');
   const [subTab, setSubTab] = useState('SJ');
+  const [infoKey, setInfoKey] = useState(null);
 
   // Salto inputs
   const [sjTv, setSjTv]     = useState(''); const [sjMasa, setSjMasa]   = useState('');
@@ -336,7 +339,9 @@ export default function EvaluacionesView() {
 
       {/* ── SALTO: SJ ── */}
       {mainTab === 'Salto' && subTab === 'SJ' && (
-        <Card title="Squat Jump" icon={ClipboardList}>
+        <Card title="Squat Jump" icon={ClipboardList}
+          action={<button onClick={() => setInfoKey('sj')} className="text-slate-400 hover:text-slate-200 transition-colors"><Info size={16} /></button>}
+        >
           <div className="grid grid-cols-2 gap-3 mb-4">
             <NumInput label="Tiempo de vuelo (s)" value={sjTv}   onChange={setSjTv} />
             <NumInput label="Masa (kg)"            value={sjMasa} onChange={setSjMasa} step="0.5" placeholder="70" />
@@ -353,7 +358,9 @@ export default function EvaluacionesView() {
 
       {/* ── SALTO: CMJ ── */}
       {mainTab === 'Salto' && subTab === 'CMJ' && (
-        <Card title="Counter Movement Jump" icon={ClipboardList}>
+        <Card title="Counter Movement Jump" icon={ClipboardList}
+          action={<button onClick={() => setInfoKey('cmj')} className="text-slate-400 hover:text-slate-200 transition-colors"><Info size={16} /></button>}
+        >
           <div className="grid grid-cols-2 gap-3 mb-4">
             <NumInput label="TV SJ referencia (s)" value={cmjRef}  onChange={setCmjRef} />
             <NumInput label="TV CMJ (s)"            value={cmjTv}   onChange={setCmjTv} />
@@ -377,7 +384,9 @@ export default function EvaluacionesView() {
 
       {/* ── SALTO: Drop Jump ── */}
       {mainTab === 'Salto' && subTab === 'Drop Jump' && (
-        <Card title="Drop Jump" icon={ClipboardList}>
+        <Card title="Drop Jump" icon={ClipboardList}
+          action={<button onClick={() => setInfoKey('dropJump')} className="text-slate-400 hover:text-slate-200 transition-colors"><Info size={16} /></button>}
+        >
           <div className="grid grid-cols-2 gap-3 mb-4">
             <NumInput label="Tiempo de vuelo (s)"    value={djTv} onChange={setDjTv} />
             <NumInput label="Tiempo de contacto (s)" value={djTc} onChange={setDjTc} />
@@ -610,6 +619,13 @@ export default function EvaluacionesView() {
       <Card title="Historial reciente">
         <TestHistoryTable />
       </Card>
+
+      <InfoSheet
+        isOpen={infoKey !== null}
+        onClose={() => setInfoKey(null)}
+        title={infoKey ? TEST_INFO[infoKey]?.title : ''}
+        content={infoKey ? TEST_INFO[infoKey] : null}
+      />
     </div>
   );
 }

@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Timer, Camera } from 'lucide-react';
+import { Timer, Camera, Info } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
 import SprintVisionModule from '../components/SprintVisionModule';
+import InfoSheet from '../components/InfoSheet';
 import { cn } from '../utils/cn';
 import { calcVelocity, sprintRef, sprintStatus, calcCurvoAsim, curvoAsimStatus } from '../utils/speed';
 import { saveEvaluation } from '../lib/db';
+import { TEST_INFO } from '../utils/testInfo';
 
 const SHAPE_TABS = ['Lineal', 'Curvo'];
 const LINEAR_SEGS = ['10m', '20m', '30m', '10/20/30m'];
@@ -30,10 +32,17 @@ function SegControl({ options, active, onChange }) {
   );
 }
 
-function SprintRow({ label, value, onChange, velocity, status, onMeasure }) {
+function SprintRow({ label, value, onChange, velocity, status, onMeasure, onInfo }) {
   return (
     <div>
-      <label className="text-xs text-slate-400 mb-1 block">{label}</label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-xs text-slate-400">{label}</label>
+        {onInfo && (
+          <button onClick={onInfo} className="text-slate-500 hover:text-slate-300 transition-colors p-0.5">
+            <Info size={14} />
+          </button>
+        )}
+      </div>
       <div className="flex gap-2">
         <input
           type="number"
@@ -79,6 +88,7 @@ function TabVelocidad() {
   // Vision module state
   const [visionTarget, setVisionTarget] = useState(null); // 'sprint10' | 'sprint20' | 'sprint30'
   const [showSprintVision, setShowSprintVision] = useState(false);
+  const [infoKey, setInfoKey] = useState(null);
 
   const t10 = parseFloat(sprint10) || 0;
   const t20 = parseFloat(sprint20) || 0;
@@ -139,6 +149,7 @@ function TabVelocidad() {
                   value={sprint10} onChange={setSprint10}
                   velocity={v10} status={st10}
                   onMeasure={() => setVisionTarget('sprint10')}
+                  onInfo={() => setInfoKey('sprint10')}
                 />
               )}
               {show('20m') && (
@@ -155,6 +166,7 @@ function TabVelocidad() {
                   value={sprint30} onChange={setSprint30}
                   velocity={v30} status={st30}
                   onMeasure={() => setVisionTarget('sprint30')}
+                  onInfo={() => setInfoKey('sprint30')}
                 />
               )}
             </div>
@@ -182,7 +194,9 @@ function TabVelocidad() {
             Medir con Cámara
           </button>
 
-          <Card title="SPRINT CURVO — VELOCIDAD" icon={Timer}>
+          <Card title="SPRINT CURVO — VELOCIDAD" icon={Timer}
+            action={<button onClick={() => setInfoKey('sprintCurvo')} className="text-slate-400 hover:text-slate-200 transition-colors"><Info size={16} /></button>}
+          >
             <div className="mb-4">
               <p className="text-xs text-slate-400 mb-2 block">Distancia</p>
               <div className="flex gap-2">
@@ -290,6 +304,13 @@ function TabVelocidad() {
           </Card>
         </>
       )}
+
+      <InfoSheet
+        isOpen={infoKey !== null}
+        onClose={() => setInfoKey(null)}
+        title={infoKey ? TEST_INFO[infoKey]?.title : ''}
+        content={infoKey ? TEST_INFO[infoKey] : null}
+      />
 
       {/* Vision module — per-row */}
       {visionTarget && (

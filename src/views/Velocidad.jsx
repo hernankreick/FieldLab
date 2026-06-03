@@ -223,11 +223,16 @@ function TabVelocidad() {
                   onMeasure={() => setVisionTarget('sprint10')}
                   onInfo={() => setInfoKey('sprint10')}
                   onSave={async () => {
+                    console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
                     if (!athlete?.id) return false;
                     try {
-                      await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } });
+                      const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } });
+                      console.log('SUPABASE RESULT', { data, error: null });
                       return true;
-                    } catch { return false; }
+                    } catch (error) {
+                      console.log('SUPABASE RESULT', { data: null, error });
+                      return false;
+                    }
                   }}
                 />
               )}
@@ -238,11 +243,16 @@ function TabVelocidad() {
                   velocity={v20} status={st20}
                   onMeasure={() => setVisionTarget('sprint20')}
                   onSave={async () => {
+                    console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
                     if (!athlete?.id) return false;
                     try {
-                      await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } });
+                      const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } });
+                      console.log('SUPABASE RESULT', { data, error: null });
                       return true;
-                    } catch { return false; }
+                    } catch (error) {
+                      console.log('SUPABASE RESULT', { data: null, error });
+                      return false;
+                    }
                   }}
                 />
               )}
@@ -254,11 +264,16 @@ function TabVelocidad() {
                   onMeasure={() => setVisionTarget('sprint30')}
                   onInfo={() => setInfoKey('sprint30')}
                   onSave={async () => {
+                    console.log('SAVE CALLED', { selectedPlayer: athlete, t10, t20, t30 });
                     if (!athlete?.id) return false;
                     try {
-                      await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } });
+                      const data = await saveEvaluation({ player_id: athlete.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } });
+                      console.log('SUPABASE RESULT', { data, error: null });
                       return true;
-                    } catch { return false; }
+                    } catch (error) {
+                      console.log('SUPABASE RESULT', { data: null, error });
+                      return false;
+                    }
                   }}
                 />
               )}

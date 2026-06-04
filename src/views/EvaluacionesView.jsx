@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { ClipboardList, Info } from 'lucide-react';
 import InfoSheet from '../components/InfoSheet';
 import { TEST_INFO } from '../utils/testInfo';
@@ -253,6 +254,7 @@ function NavetteTimer({ onStop }) {
 }
 
 export default function EvaluacionesView() {
+  const { coach } = useAuth();
   const { players } = usePlayers();
   const [athlete, setAthlete] = useState(null);
   const [mainTab, setMainTab] = useState('Salto');
@@ -520,6 +522,7 @@ export default function EvaluacionesView() {
                     try {
                       await saveEvaluation({
                         player_id: athlete?.id,
+                        coach_id: coach?.id,
                         date: new Date().toISOString().split('T')[0],
                         type: 'sprintCurvo',
                         data: { distancia: curvoDist, tiempo: Number(curvoTime), velocidad: Number(curvoVel) },

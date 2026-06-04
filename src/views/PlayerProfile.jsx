@@ -544,6 +544,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const { eval: ev } = player;
 
   const sprint10Time = sprintData?.sprint10?.tiempo  ?? ev.sprint10.time;
+  const sprint20Time = sprintData?.sprint20?.tiempo  ?? ev.sprint20?.time ?? null;
   const sprint30Time = sprintData?.sprint30?.tiempo  ?? ev.sprint30.time;
   const topSpeedVal  = sprintData?.sprint30?.velocidad ?? ev.topSpeed;
 
@@ -892,6 +893,13 @@ export default function PlayerProfile({ initialId, onNavigate }) {
                 value={sprint10Time.toFixed(2)} unit="s"
                 status={getMetricStatus('sprint10', sprint10Time, player.sport, player.category, player.sex)}
               />
+              {sprint20Time !== null && (
+                <ResultCard
+                  label="Sprint 20m"
+                  value={sprint20Time.toFixed(2)} unit="s"
+                  status={getMetricStatus('sprint20', sprint20Time, player.sport, player.category, player.sex)}
+                />
+              )}
               <ResultCard
                 label="Sprint 30m"
                 value={sprint30Time.toFixed(2)} unit="s"

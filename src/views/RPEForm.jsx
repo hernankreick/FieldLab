@@ -1,18 +1,6 @@
-import { useState, useRef } from 'react';
-import { saveRPE } from '../utils/storage';
+import { useState, useRef, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
-const TEAM_PLAYERS = [
-  { id: 1, name: 'Ramiro Sánchez',   position: 'Fullback'      },
-  { id: 2, name: 'Leandro Martínez', position: 'Apertura'      },
-  { id: 3, name: 'Tomás Ruiz',       position: 'Hooker'        },
-  { id: 4, name: 'Facundo Benítez',  position: 'Ala'           },
-  { id: 5, name: 'Agustín Torres',   position: 'Centro'        },
-  { id: 6, name: 'Lucía Fernández',  position: 'Mediocampista' },
-  { id: 7, name: 'Valentina López',  position: 'Delantera'     },
-  { id: 8, name: 'Martín González',  position: 'Delantero'     },
-];
-
-// Escala visual 1-5. Internamente se guarda v × 2 para compatibilidad con ACWR.
 const RPE_SCALE = [
   { v: 1, label: 'Recuperación',    color: '#22c55e' },
   { v: 2, label: 'Suave',           color: '#84cc16' },
@@ -30,23 +18,45 @@ export default function RPEForm({ teamId }) {
   const [player,   setPlayer]   = useState(null);
   const [search,   setSearch]   = useState('');
   const [pressing, setPressing] = useState(null);
-  const [sentItem, setSentItem] = useState(null); // { v, label, color }
-  // Ref sincrónico para bloquear taps dobles dentro del intervalo de animación (140ms)
+  const [sentItem, setSentItem] = useState(null);
+  const [players,       setPlayers]       = useState([]);
+  const [loadingPlayers, setLoadingPlayers] = useState(false);
+  const [saveError,     setSaveError]     = useState(null);
   const submittingRef = useRef(false);
 
-  function selectRPE(item) {
+  const isValidTeam = teamId && String(teamId).includes('-');
+
+  useEffect(() => {
+    if (!isValidTeam) return;
+    setLoadingPlayers(true);
+    supabase
+      .from('players')
+      .select('id, name, position')
+      .eq('team_id', teamId)
+      .order('name')
+      .then(({ data }) => setPlayers(data ?? []))
+      .finally(() => setLoadingPlayers(false));
+  }, [teamId]);
+
+  async function selectRPE(item) {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setPressing(item.v);
     navigator.vibrate?.(60);
-    setTimeout(() => {
-      saveRPE({
-        playerId:   player.id,
-        playerName: player.name,
-        timestamp:  new Date().toISOString(),
-        rpe:        item.v * 2, // conversión interna × 2 para compatibilidad 1-10
-        date:       todayDate(),
+    setTimeout(async () => {
+      const { error } = await supabase.from('loads').insert({
+        player_id: player.id,
+        date:      todayDate(),
+        rpe:       item.v * 2,
+        load:      0,
       });
+      if (error) {
+        console.error('RPE insert error:', error);
+        setSaveError('No se pudo guardar. Intentá de nuevo.');
+        submittingRef.current = false;
+        setPressing(null);
+        return;
+      }
       setSentItem(item);
       setPressing(null);
     }, 140);
@@ -59,13 +69,26 @@ export default function RPEForm({ teamId }) {
     setSearch('');
     setSentItem(null);
     setPressing(null);
+    setSaveError(null);
   }
 
-  const filtered = TEAM_PLAYERS.filter(p =>
+  const filtered = players.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const BG = 'linear-gradient(160deg, #0a0f1a 0%, #0d1627 100%)';
+
+  // QR inválido o antiguo
+  if (!isValidTeam) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-8 pb-12"
+        style={{ background: BG }}>
+        <p className="text-slate-400 text-center text-sm leading-relaxed">
+          QR inválido. Pedile el link actualizado al entrenador.
+        </p>
+      </div>
+    );
+  }
 
   // ── Pantalla de confirmación ──────────────────────────────────────────────────
   if (sentItem) {
@@ -159,7 +182,15 @@ export default function RPEForm({ teamId }) {
               />
 
               <div className="grid grid-cols-2 gap-3">
-                {filtered.map(p => (
+                {loadingPlayers ? (
+                  <p className="col-span-2 text-center text-slate-500 text-sm py-8">
+                    Cargando jugadores…
+                  </p>
+                ) : filtered.length === 0 ? (
+                  <p className="col-span-2 text-center text-slate-500 text-sm py-8">
+                    Sin resultados
+                  </p>
+                ) : filtered.map(p => (
                   <button
                     key={p.id}
                     onClick={() => { setPlayer(p); setStep(1); }}
@@ -176,11 +207,6 @@ export default function RPEForm({ teamId }) {
                     <span className="text-xs text-slate-500 mt-0.5">{p.position}</span>
                   </button>
                 ))}
-                {filtered.length === 0 && (
-                  <p className="col-span-2 text-center text-slate-500 text-sm py-8">
-                    Sin resultados
-                  </p>
-                )}
               </div>
             </>
           )}
@@ -197,6 +223,10 @@ export default function RPEForm({ teamId }) {
                 </h2>
                 <p className="text-slate-500 text-sm">Tocá tu percepción de esfuerzo</p>
               </div>
+
+              {saveError && (
+                <p className="text-sm text-red-400 text-center">{saveError}</p>
+              )}
 
               <div className="flex flex-col gap-3">
                 {RPE_SCALE.map((item) => {

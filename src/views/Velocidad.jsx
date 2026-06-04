@@ -358,6 +358,7 @@ function TabVelocidad() {
                     try {
                       await saveEvaluation({
                         player_id: athlete.id,
+                        coach_id:  coach?.id,
                         date: new Date().toISOString().split('T')[0],
                         type: 'sprintCurvo',
                         data: { distancia: curvoDist, tiempo: parseTime(activeTime), velocidad: Number(curvoVel) },

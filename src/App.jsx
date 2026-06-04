@@ -4,7 +4,7 @@ import Login from './views/Login';
 import NavBar from './components/NavBar';
 import Dashboard from './views/Dashboard';
 import ACWR from './views/ACWR';
-import Bosco from './views/Bosco';
+import BoscoView from './views/BoscoView';
 import Wellness from './views/Wellness';
 import VBT from './views/VBT';
 import TabVelocidad from './views/Velocidad';
@@ -25,7 +25,7 @@ const RPE_MATCH    = window.location.pathname.match(/^\/rpe\/([^/]+)/);
 const views = {
   dashboard:       Dashboard,
   acwr:            ACWR,
-  bosco:           Bosco,
+  bosco:           BoscoView,
   velocidad:       TabVelocidad,
   agilidad:        TabAgilidad,
   evaluaciones:    EvaluacionesView,

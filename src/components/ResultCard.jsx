@@ -16,7 +16,7 @@ export default function ResultCard({ label, value, unit, status = 'neutral', sub
         <span className={cn('font-data text-2xl font-bold', valueColor[status])}>{value}</span>
         {unit && <span className="text-xs text-slate-500 font-data">{unit}</span>}
       </div>
-      <StatusBadge status={status} />
+      {status && <StatusBadge status={status} />}
       {sub && <p className="text-xs text-slate-500 mt-2 leading-relaxed">{sub}</p>}
     </div>
   );

@@ -897,7 +897,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
                 label="Sprint 20m"
                 value={sprint20Time !== null ? sprint20Time.toFixed(2) : '—'}
                 unit={sprint20Time !== null ? 's' : ''}
-                status={sprint20Time !== null ? getMetricStatus('sprint20', sprint20Time, player.sport, player.category, player.sex) : 'neutral'}
+                status={sprint20Time !== null ? getMetricStatus('sprint20', sprint20Time, player.sport, player.category, player.sex) : null}
               />
               <ResultCard
                 label="Sprint 30m"

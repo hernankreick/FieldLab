@@ -6,8 +6,9 @@ import {
 import Card from '../components/Card';
 import { jumpHeightFromFlightTime, sayersPower } from '../utils/biomechanics';
 import { usePoseEstimation } from '../hooks/usePoseEstimation';
-import { PLAYERS } from '../data/players';
-import { savePlayerEval } from '../utils/storage';
+import { usePlayers } from '../hooks/usePlayers';
+import { useAuth } from '../context/AuthContext';
+import { saveEvaluation } from '../lib/db';
 
 const JUMP_TYPES = ['SJ', 'CMJ', 'Drop Jump'];
 
@@ -185,6 +186,8 @@ function JumpResult({ result, massKg, onSave, onDiscard }) {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function JumpAnalysis({ onNavigate }) {
+  const { coach }   = useAuth();
+  const { players } = usePlayers();
   const [mode,       setMode]       = useState('realtime');
   const [jumpType,   setJumpType]   = useState('CMJ');
   const [massInput,  setMassInput]  = useState('70'); // string para edición libre
@@ -357,25 +360,31 @@ export default function JumpAnalysis({ onNavigate }) {
   }
 
   // Guarda el resultado para el jugador seleccionado y vuelve al estado inicial
-  function handleSaveForPlayer(player) {
+  async function handleSaveForPlayer(player) {
     if (!jumpResult) return;
     const power = sayersPower(jumpResult.heightCm, massKg);
-    savePlayerEval({
-      playerId:   player.id,
-      date:       new Date().toISOString(),
-      type:       'jump',
-      jumpType:   jumpResult.type,
-      height:     jumpResult.heightCm,
-      flightTime: jumpResult.flightMs,
-      power:      Math.round(power),
-      kneeAngle:  jumpResult.maxKneeAngle ?? null,
-    });
-    // Guardar también en el historial global de resultados (sin jugador)
-    saveJumpResult({ ...jumpResult, massKg });
+    try {
+      await saveEvaluation({
+        player_id: player.id,
+        coach_id:  coach?.id,
+        date:      new Date().toISOString().split('T')[0],
+        type:      'jump',
+        data: {
+          jumpType:   jumpResult.type,
+          height:     jumpResult.heightCm,
+          flightTime: jumpResult.flightMs,
+          power:      Math.round(power),
+          kneeAngle:  jumpResult.maxKneeAngle ?? null,
+        },
+      });
+    } catch {
+      // Fallback local si Supabase falla
+      saveJumpResult({ ...jumpResult, massKg, playerName: player.name });
+    }
     setShowPlayerModal(false);
     setSavedPlayerName(player.name);
     setSaved(true);
-    setJumpResult(null); // volver a pantalla inicial de JumpAnalysis
+    setJumpResult(null);
   }
 
   function handleDiscard() {
@@ -913,7 +922,12 @@ export default function JumpAnalysis({ onNavigate }) {
 
           {/* Lista de jugadores */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-            {PLAYERS.map(p => (
+            {players.length === 0 && (
+              <p className="text-slate-500 text-sm text-center py-8">
+                No hay jugadores cargados en el equipo activo
+              </p>
+            )}
+            {players.map(p => (
               <button
                 key={p.id}
                 onClick={() => handleSaveForPlayer(p)}
@@ -924,7 +938,6 @@ export default function JumpAnalysis({ onNavigate }) {
                   border:     '1px solid rgba(255,255,255,0.07)',
                 }}
               >
-                {/* Avatar con iniciales */}
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center
                     text-sm font-bold flex-shrink-0"
@@ -934,7 +947,7 @@ export default function JumpAnalysis({ onNavigate }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-slate-100 truncate">{p.name}</p>
-                  <p className="text-xs text-slate-500">{p.position} · {p.sport}</p>
+                  <p className="text-xs text-slate-500">{p.position}</p>
                 </div>
                 <Save size={14} className="text-accent flex-shrink-0" />
               </button>

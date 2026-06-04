@@ -14,7 +14,6 @@ import ResultCard from '../components/ResultCard';
 import StatusBadge from '../components/StatusBadge';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
 import { cn } from '../utils/cn';
-import { getPlayerEvals } from '../utils/storage';
 import { PLAYERS } from '../data/players';
 import { getMetricStatus } from '../utils/thresholds';
 import { saveEvaluation, getEvaluations, getWellness } from '../lib/db';
@@ -455,7 +454,6 @@ export default function PlayerProfile({ initialId, onNavigate }) {
         })
       );
 
-      setPlayerEvals(getPlayerEvals(player.id));
     }
 
     loadData();
@@ -483,6 +481,12 @@ export default function PlayerProfile({ initialId, onNavigate }) {
           if (found?.data) sprints[type] = found.data;
         }
         if (Object.keys(sprints).length > 0) setSprintData(sprints);
+
+        // Saltos: desanida data:{jumpType,height,...} al formato plano que usa el render
+        const jumps = (evals ?? [])
+          .filter(e => e.type === 'jump' && e.data)
+          .map(e => ({ type: 'jump', date: e.date, ...e.data }));
+        setPlayerEvals(jumps);
       })
       .catch(() => {});
   }, [supabasePlayerId]);

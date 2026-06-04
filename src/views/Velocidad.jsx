@@ -141,7 +141,6 @@ function TabVelocidad() {
 
   const { players } = usePlayers();
   const [athlete, setAthlete] = useState(null);
-  const [debugInfo, setDebugInfo] = useState(null);
 
   useEffect(() => {
     if (players.length > 0) setAthlete(a => a ?? players[0]);
@@ -203,11 +202,6 @@ function TabVelocidad() {
         ))}
       </div>
 
-      {debugInfo !== null && (
-        <div className="p-2 bg-slate-950 rounded text-xs font-mono text-slate-400 break-all whitespace-pre-wrap">
-          {JSON.stringify(debugInfo, null, 2)}
-        </div>
-      )}
 
       <SegControl options={SHAPE_TABS} active={shape} onChange={setShape} />
 
@@ -233,9 +227,8 @@ function TabVelocidad() {
                   onMeasure={() => setVisionTarget('sprint10')}
                   onInfo={() => setInfoKey('sprint10')}
                   onSave={async () => {
-                    if (!athlete?.id) { setDebugInfo({ player: null, t10, error: 'athlete is null — players not loaded' }); return false; }
-                    const { data, error } = await supabase.from('evaluations').insert({ player_id: athlete.id, coach_id: coach?.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } }).select().single();
-                    setDebugInfo({ player: athlete.id, type: 'sprint10', t10, data, error: error?.message ?? null });
+                    if (!athlete?.id) return false;
+                    const { error } = await supabase.from('evaluations').insert({ player_id: athlete.id, coach_id: coach?.id, date: new Date().toISOString().split('T')[0], type: 'sprint10', data: { tiempo: t10, velocidad: v10 } });
                     return !error;
                   }}
                 />
@@ -247,9 +240,8 @@ function TabVelocidad() {
                   velocity={v20} status={st20}
                   onMeasure={() => setVisionTarget('sprint20')}
                   onSave={async () => {
-                    if (!athlete?.id) { setDebugInfo({ player: null, t20, error: 'athlete is null — players not loaded' }); return false; }
-                    const { data, error } = await supabase.from('evaluations').insert({ player_id: athlete.id, coach_id: coach?.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } }).select().single();
-                    setDebugInfo({ player: athlete.id, type: 'sprint20', t20, data, error: error?.message ?? null });
+                    if (!athlete?.id) return false;
+                    const { error } = await supabase.from('evaluations').insert({ player_id: athlete.id, coach_id: coach?.id, date: new Date().toISOString().split('T')[0], type: 'sprint20', data: { tiempo: t20, velocidad: v20 } });
                     return !error;
                   }}
                 />
@@ -262,9 +254,8 @@ function TabVelocidad() {
                   onMeasure={() => setVisionTarget('sprint30')}
                   onInfo={() => setInfoKey('sprint30')}
                   onSave={async () => {
-                    if (!athlete?.id) { setDebugInfo({ player: null, t30, error: 'athlete is null — players not loaded' }); return false; }
-                    const { data, error } = await supabase.from('evaluations').insert({ player_id: athlete.id, coach_id: coach?.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } }).select().single();
-                    setDebugInfo({ player: athlete.id, type: 'sprint30', t30, data, error: error?.message ?? null });
+                    if (!athlete?.id) return false;
+                    const { error } = await supabase.from('evaluations').insert({ player_id: athlete.id, coach_id: coach?.id, date: new Date().toISOString().split('T')[0], type: 'sprint30', data: { tiempo: t30, velocidad: v30 } });
                     return !error;
                   }}
                 />

@@ -383,8 +383,13 @@ export default function PlayerProfile({ initialId, onNavigate }) {
 
   // Static player — provides eval reference values, sport/category/sex, localStorage key
   const player = (() => {
-    if (sbPlayer?.name) return PLAYERS.find(p => p.name === sbPlayer.name) ?? PLAYERS[0];
-    if (!isUUID)        return PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
+    if (sbPlayer?.name) {
+      const match = PLAYERS.find(p => p.name === sbPlayer.name);
+      if (match) return match;
+      // Supabase player with no static counterpart — synthesize from Supabase data
+      return { ...PLAYERS[0], id: sbPlayer.id, name: sbPlayer.name, position: sbPlayer.position ?? PLAYERS[0].position };
+    }
+    if (!isUUID) return PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
     return PLAYERS[0];
   })();
 

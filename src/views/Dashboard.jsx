@@ -13,6 +13,58 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { getPlayers, getWellness, getLoads, createPlayer } from '../lib/db';
 import { PLAYERS } from '../data/players';
+import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
+
+const LEVEL_IDX = { normal: 0, leve: 1, moderado: 2, alto: 3, muy_alto: 4 };
+const IDX_LEVEL = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
+const ZONE_LABELS = {
+  f_hombro_der: 'Hombro der', f_hombro_izq: 'Hombro izq',
+  f_pectoral_der: 'Pectoral der', f_pectoral_izq: 'Pectoral izq',
+  f_bicep_der: 'Bícep der', f_bicep_izq: 'Bícep izq',
+  f_abdomen: 'Abdomen',
+  f_antebrazo_der: 'Antebrazo der', f_antebrazo_izq: 'Antebrazo izq',
+  f_ingle_der: 'Ingle der', f_ingle_izq: 'Ingle izq',
+  f_cuadricep_der: 'Cuádricep der', f_cuadricep_izq: 'Cuádricep izq',
+  f_aductor_der: 'Aductor der', f_aductor_izq: 'Aductor izq',
+  f_rodilla_der: 'Rodilla der', f_rodilla_izq: 'Rodilla izq',
+  f_tibial_der: 'Tibial ant. der', f_tibial_izq: 'Tibial ant. izq',
+  f_tobillo_der: 'Tobillo der', f_tobillo_izq: 'Tobillo izq',
+  p_trapecio_sup: 'Trapecio superior', p_trapecio_inf: 'Trapecio inferior',
+  p_deltoides_izq: 'Deltoides izq', p_deltoides_der: 'Deltoides der',
+  p_tricep_izq: 'Trícep izq', p_tricep_der: 'Trícep der',
+  p_dorsal_izq: 'Dorsal izq', p_dorsal_der: 'Dorsal der',
+  p_antebrazo_izq: 'Antebrazo post izq', p_antebrazo_der: 'Antebrazo post der',
+  p_lumbar: 'Lumbar',
+  p_gluteo_medio_izq: 'Glúteo medio izq', p_gluteo_medio_der: 'Glúteo medio der',
+  p_gluteo_mayor_izq: 'Glúteo mayor izq', p_gluteo_mayor_der: 'Glúteo mayor der',
+  p_isquio_izq: 'Isquiotibial izq', p_isquio_der: 'Isquiotibial der',
+  p_rodilla_izq: 'Rodilla post izq', p_rodilla_der: 'Rodilla post der',
+  p_gemelo_izq: 'Gemelo izq', p_gemelo_der: 'Gemelo der',
+  p_talon_izq: 'Talón izq', p_talon_der: 'Talón der',
+};
+
+function buildTeamHeatmap(wellnessMap) {
+  const entries = Object.values(wellnessMap);
+  if (!entries.length) return { aggregated: {}, counts: {} };
+  const scores = {};
+  const counts = {};
+  entries.forEach(w => {
+    Object.entries(w.activeZones ?? {}).forEach(([zone, level]) => {
+      const s = LEVEL_IDX[level] ?? 0;
+      if (s > 0) {
+        scores[zone] = (scores[zone] ?? 0) + s;
+        counts[zone] = (counts[zone] ?? 0) + 1;
+      }
+    });
+  });
+  const aggregated = {};
+  Object.keys(counts).forEach(zone => {
+    const avg = scores[zone] / entries.length;
+    const idx = Math.min(4, Math.ceil(avg));
+    if (idx > 0) aggregated[zone] = IDX_LEVEL[idx];
+  });
+  return { aggregated, counts };
+}
 
 const DEFAULT_ATHLETES = PLAYERS.map(p => ({
   id:       p.id,
@@ -83,6 +135,7 @@ export default function Dashboard({ onNavigate }) {
   const [newPos,      setNewPos]      = useState('');
   const [newNum,      setNewNum]      = useState('');
   const [addingPlayer, setAddingPlayer] = useState(false);
+  const [activeTab,    setActiveTab]    = useState('roster');
 
   const loadFromDB = useCallback(async () => {
     if (!activeTeam?.id) return;
@@ -245,114 +298,170 @@ export default function Dashboard({ onNavigate }) {
         );
       })()}
 
-      {/* Alertas críticas */}
-      {alerts.length > 0 && (
-        <Card title="Alertas críticas" icon={AlertTriangle} className="border-danger/20">
-          <div className="space-y-3">
-            {alerts.map(a => (
-              <div key={a.id} className="flex items-center justify-between">
-                <span className="text-sm text-slate-200 font-medium">{a.name}</span>
-                <div className="flex gap-2 flex-wrap justify-end">
-                  {acwrStatus(a.acwr) === 'danger' &&
-                    <StatusBadge status="danger" label={`ACWR ${a.acwr.toFixed(2)}`} />}
-                  {lsiStatus(a.lsi) === 'danger' &&
-                    <StatusBadge status="danger" label={`LSI ${a.lsi.toFixed(1)}%`} />}
-                  {a.w && isToday(a.w.timestamp) && a.w.score > 18 &&
-                    <StatusBadge status="danger" label={`Hooper ${a.w.score}`} />}
-                </div>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-white/[0.04] p-1 rounded-xl">
+        <button
+          onClick={() => setActiveTab('roster')}
+          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            activeTab === 'roster' ? 'bg-accent text-background' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Plantel
+        </button>
+        <button
+          onClick={() => setActiveTab('heatmap')}
+          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            activeTab === 'heatmap' ? 'bg-accent text-background' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Mapa de dolor
+        </button>
+      </div>
+
+      {activeTab === 'roster' && (
+        <>
+          {/* Alertas críticas */}
+          {alerts.length > 0 && (
+            <Card title="Alertas críticas" icon={AlertTriangle} className="border-danger/20">
+              <div className="space-y-3">
+                {alerts.map(a => (
+                  <div key={a.id} className="flex items-center justify-between">
+                    <span className="text-sm text-slate-200 font-medium">{a.name}</span>
+                    <div className="flex gap-2 flex-wrap justify-end">
+                      {acwrStatus(a.acwr) === 'danger' &&
+                        <StatusBadge status="danger" label={`ACWR ${a.acwr.toFixed(2)}`} />}
+                      {lsiStatus(a.lsi) === 'danger' &&
+                        <StatusBadge status="danger" label={`LSI ${a.lsi.toFixed(1)}%`} />}
+                      {a.w && isToday(a.w.timestamp) && a.w.score > 18 &&
+                        <StatusBadge status="danger" label={`Hooper ${a.w.score}`} />}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
+          )}
+
+          {/* Estado del plantel */}
+          <Card title="Estado del plantel" icon={Users}
+            action={
+              <button
+                onClick={() => setShowAdd(s => !s)}
+                className="text-xs text-accent font-semibold flex items-center gap-1 hover:text-accent/80 transition-colors"
+              >
+                <Plus size={12} /> Jugador
+              </button>
+            }
+          >
+            {showAdd && (
+              <div className="flex flex-col gap-2 mb-3 p-3 bg-background rounded-xl border border-white/10">
+                <input
+                  placeholder="Nombre"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
+                />
+                <input
+                  placeholder="Posición"
+                  value={newPos}
+                  onChange={e => setNewPos(e.target.value)}
+                  className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
+                />
+                <input
+                  placeholder="Número"
+                  type="number"
+                  value={newNum}
+                  onChange={e => setNewNum(e.target.value)}
+                  className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
+                />
+                <button
+                  onClick={addAthlete}
+                  disabled={addingPlayer}
+                  className="bg-accent text-background font-bold py-2 rounded-lg text-sm hover:bg-accent/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {addingPlayer ? <><Loader2 size={14} className="animate-spin" />Guardando…</> : 'Agregar'}
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-0">
+              {sortedAthletes.length === 0 && (
+                <p className="text-sm text-slate-500 text-center py-4">
+                  No hay jugadores — usá el botón + para agregar
+                </p>
+              )}
+              {sortedAthletes.map(a => {
+                const hasToday = a.w && isToday(a.w.timestamp);
+                const dotColor = a.acwr > 1.5 || (hasToday && a.w.score > 18) ? DOT_COLOR.danger
+                               : a.acwr > 1.3                                  ? DOT_COLOR.warning
+                               : hasToday                                       ? DOT_COLOR.safe
+                               : '#475569';
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => onNavigate?.('player', a.id)}
+                    className="w-full flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg
+                      border-b border-white/5 last:border-0 hover:bg-white/[0.04]
+                      active:bg-white/[0.07] transition-colors text-left"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-200">{a.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-xs font-data" style={{ color: acwrColor(a.acwr) }}>
+                          ACWR {a.acwr.toFixed(2)}
+                        </span>
+                        <span className="text-slate-600 text-xs">·</span>
+                        {hasToday
+                          ? <span className="text-xs text-slate-400 font-data">Hooper {a.w.score}</span>
+                          : <span className="text-xs text-slate-600">Sin reporte</span>
+                        }
+                      </div>
+                    </div>
+                    <span
+                      className="w-3 h-3 rounded-full flex-shrink-0 ml-3"
+                      style={{ background: dotColor }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* QR para el formulario de wellness diario */}
+          <QRGenerator />
+        </>
       )}
 
-      {/* Estado del plantel */}
-      <Card title="Estado del plantel" icon={Users}
-        action={
-          <button
-            onClick={() => setShowAdd(s => !s)}
-            className="text-xs text-accent font-semibold flex items-center gap-1 hover:text-accent/80 transition-colors"
-          >
-            <Plus size={12} /> Jugador
-          </button>
-        }
-      >
-        {showAdd && (
-          <div className="flex flex-col gap-2 mb-3 p-3 bg-background rounded-xl border border-white/10">
-            <input
-              placeholder="Nombre"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
-            />
-            <input
-              placeholder="Posición"
-              value={newPos}
-              onChange={e => setNewPos(e.target.value)}
-              className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
-            />
-            <input
-              placeholder="Número"
-              type="number"
-              value={newNum}
-              onChange={e => setNewNum(e.target.value)}
-              className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-accent/50"
-            />
-            <button
-              onClick={addAthlete}
-              disabled={addingPlayer}
-              className="bg-accent text-background font-bold py-2 rounded-lg text-sm hover:bg-accent/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {addingPlayer ? <><Loader2 size={14} className="animate-spin" />Guardando…</> : 'Agregar'}
-            </button>
-          </div>
-        )}
-
-        <div className="space-y-0">
-          {sortedAthletes.length === 0 && (
-            <p className="text-sm text-slate-500 text-center py-4">
-              No hay jugadores — usá el botón + para agregar
-            </p>
-          )}
-          {sortedAthletes.map(a => {
-            const hasToday = a.w && isToday(a.w.timestamp);
-            const dotColor = a.acwr > 1.5 || (hasToday && a.w.score > 18) ? DOT_COLOR.danger
-                           : a.acwr > 1.3                                  ? DOT_COLOR.warning
-                           : hasToday                                       ? DOT_COLOR.safe
-                           : '#475569';
-            return (
-              <button
-                key={a.id}
-                onClick={() => onNavigate?.('player', a.id)}
-                className="w-full flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg
-                  border-b border-white/5 last:border-0 hover:bg-white/[0.04]
-                  active:bg-white/[0.07] transition-colors text-left"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-200">{a.name}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-xs font-data" style={{ color: acwrColor(a.acwr) }}>
-                      ACWR {a.acwr.toFixed(2)}
-                    </span>
-                    <span className="text-slate-600 text-xs">·</span>
-                    {hasToday
-                      ? <span className="text-xs text-slate-400 font-data">Hooper {a.w.score}</span>
-                      : <span className="text-xs text-slate-600">Sin reporte</span>
-                    }
-                  </div>
+      {activeTab === 'heatmap' && (() => {
+        const { aggregated, counts } = buildTeamHeatmap(wellnessMap);
+        const top3 = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+        const anyData = top3.length > 0;
+        return (
+          <Card title="Mapa de dolor del plantel">
+            {!anyData ? (
+              <p className="text-sm text-slate-500 text-center py-8">
+                Sin datos de dolor reportados
+              </p>
+            ) : (
+              <>
+                <BodyHeatmapSimple selectedZones={aggregated} interactive={false} />
+                <div className="mt-4 space-y-2">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+                    Zonas más afectadas
+                  </p>
+                  {top3.map(([zone, count]) => (
+                    <div key={zone} className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
+                      <span className="text-sm text-slate-300">{ZONE_LABELS[zone] ?? zone}</span>
+                      <span className="text-xs text-slate-400 font-data">
+                        {count} jugador{count !== 1 ? 'es' : ''}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <span
-                  className="w-3 h-3 rounded-full flex-shrink-0 ml-3"
-                  style={{ background: dotColor }}
-                />
-              </button>
-            );
-          })}
-        </div>
-      </Card>
-
-      {/* QR para el formulario de wellness diario */}
-      <QRGenerator />
+              </>
+            )}
+          </Card>
+        );
+      })()}
     </div>
   );
 }

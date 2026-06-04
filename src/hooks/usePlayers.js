@@ -19,7 +19,7 @@ export function usePlayers() {
 
     supabase
       .from('players')
-      .select('id, name, position, number, team_id')
+      .select('id, name, position, team_id')
       .eq('team_id', teamId)
       .order('name')
       .then(({ data, error }) => {

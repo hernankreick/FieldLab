@@ -1,42 +1,42 @@
 import { useState, useEffect } from 'react';
-import { useTeam } from '../context/TeamContext';
-import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export function usePlayers() {
-  const { activeTeam } = useTeam();
   const { user } = useAuth();
   const [players, setPlayers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
-    const teamId = activeTeam?.id;
-    const hasRealTeamId = teamId && String(teamId).includes('-');
+    async function fetchPlayers() {
+      setLoading(true);
 
-    setLoading(true);
-    setError(null);
-    setPlayers([]);
+      const { data: teams } = await supabase
+        .from('teams')
+        .select('id')
+        .eq('coach_id', user.id);
 
-    // If we have a real team UUID, filter by it.
-    // Otherwise rely on RLS: players_select policy returns only players whose
-    // team_id belongs to the logged-in coach — no coach_id column needed.
-    let query = supabase
-      .from('players')
-      .select('id, name, position, number, team_id')
-      .order('name');
+      if (!teams?.length) {
+        setLoading(false);
+        return;
+      }
 
-    if (hasRealTeamId) query = query.eq('team_id', teamId);
+      const teamIds = teams.map(t => t.id);
 
-    query
-      .then(({ data, error: sbError }) => {
-        if (sbError) { setError(sbError); return; }
-        setPlayers(data ?? []);
-      })
-      .finally(() => setLoading(false));
-  }, [activeTeam?.id, user?.id]);
+      const { data } = await supabase
+        .from('players')
+        .select('id, name, position, number, team_id')
+        .in('team_id', teamIds)
+        .order('name');
 
-  return { players, loading, error };
+      setPlayers(data || []);
+      setLoading(false);
+    }
+
+    fetchPlayers();
+  }, [user?.id]);
+
+  return { players, loading };
 }

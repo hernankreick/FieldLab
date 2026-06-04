@@ -14,10 +14,11 @@ import ResultCard from '../components/ResultCard';
 import StatusBadge from '../components/StatusBadge';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
 import { cn } from '../utils/cn';
-import { getLatestWellness, getWellnessByPlayer, getPlayerRecentLoads, getPlayerEvals } from '../utils/storage';
+import { getPlayerEvals } from '../utils/storage';
 import { PLAYERS } from '../data/players';
 import { getMetricStatus } from '../utils/thresholds';
-import { saveEvaluation, getEvaluations } from '../lib/db';
+import { saveEvaluation, getEvaluations, getWellness } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { usePlayers } from '../hooks/usePlayers';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -415,19 +416,52 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const [saveDone, setSaveDone] = useState(false);
   const [sprintData, setSprintData] = useState(null);
 
-  // localStorage-based data (wellness, loads, jump evals)
+  // Supabase wellness + loads; localStorage para jump evals (pendiente migración)
   useEffect(() => {
-    function loadData() {
-      setLatestWellness(getLatestWellness(player.id));
-      setWellnessHistory(getWellnessByPlayer(player.id).slice(0, 7));
-      setPlayerLoads(getPlayerRecentLoads(player.id, 28));
+    if (!supabasePlayerId) return;
+
+    async function loadData() {
+      const today = new Date();
+      const since = new Date(today);
+      since.setDate(today.getDate() - 27);
+      const sinceStr = since.toISOString().split('T')[0];
+
+      const [wellData, { data: loadsRaw }] = await Promise.all([
+        getWellness(supabasePlayerId, 7).catch(() => []),
+        supabase
+          .from('loads')
+          .select('date, load')
+          .eq('player_id', supabasePlayerId)
+          .gte('date', sinceStr)
+          .gt('load', 0)
+          .order('date', { ascending: true })
+          .catch(() => ({ data: [] })),
+      ]);
+
+      setLatestWellness(wellData[0] ?? null);
+      setWellnessHistory(wellData);
+
+      // Construye array de 28 días con carga diaria (suma si hay varias sesiones)
+      const byDate = {};
+      (loadsRaw ?? []).forEach(r => {
+        byDate[r.date] = (byDate[r.date] ?? 0) + Number(r.load);
+      });
+      setPlayerLoads(
+        Array.from({ length: 28 }, (_, i) => {
+          const d = new Date(today);
+          d.setDate(today.getDate() - (27 - i));
+          const date = d.toISOString().split('T')[0];
+          return { date, load: byDate[date] ?? 0 };
+        })
+      );
+
       setPlayerEvals(getPlayerEvals(player.id));
     }
+
     loadData();
     const iv = setInterval(loadData, 30_000);
-    window.addEventListener('storage', loadData);
-    return () => { clearInterval(iv); window.removeEventListener('storage', loadData); };
-  }, [player.id, coach?.id]);
+    return () => clearInterval(iv);
+  }, [supabasePlayerId, player.id]);
 
   // Supabase evaluations — re-runs as soon as supabasePlayerId is resolved
   useEffect(() => {

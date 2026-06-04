@@ -1,56 +1,91 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BarChart2, Plus } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer } from 'recharts';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
 import { calcACWR, acwrStatus } from '../utils/biomechanics';
-import { getRecentSessions } from '../utils/storage';
+import { supabase } from '../lib/supabase';
+import { usePlayers } from '../hooks/usePlayers';
 
-const mockHistory = [
+const MOCK_HISTORY = [
   { day: 'L', load: 420 }, { day: 'M', load: 380 }, { day: 'X', load: 510 },
   { day: 'J', load: 290 }, { day: 'V', load: 600 }, { day: 'S', load: 450 },
   { day: 'D', load: 0   },
 ];
+const MOCK_CHRONIC = 420;
+const DAYS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
-const mockChronic = 420;
+function todayDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function dateMinusDays(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().split('T')[0];
+}
 
 export default function ACWR() {
-  const [loads,   setLoads]   = useState(mockHistory);
-  const [chronic, setChronic] = useState(mockChronic);
-  const [input, setInput] = useState('');
+  const { players } = usePlayers();
+  const [loads,   setLoads]   = useState(MOCK_HISTORY);
+  const [chronic, setChronic] = useState(MOCK_CHRONIC);
+  const [input,   setInput]   = useState('');
 
-  // Carga sesiones reales desde localStorage; actualiza cada 30 s o ante cambios
+  const loadFromSupabase = useCallback(async () => {
+    if (!players.length) return;
+    const playerIds = players.map(p => p.id);
+    const since = dateMinusDays(27);
+
+    const { data } = await supabase
+      .from('loads')
+      .select('date, load, player_id')
+      .in('player_id', playerIds)
+      .gte('date', since)
+      .gt('load', 0)
+      .order('date', { ascending: true });
+
+    if (!data || data.length === 0) return;
+
+    // Agrupa por fecha: promedio de cargas del plantel ese día
+    const byDate = {};
+    data.forEach(r => {
+      if (!byDate[r.date]) byDate[r.date] = [];
+      byDate[r.date].push(Number(r.load));
+    });
+
+    const dailyAvg = Array.from({ length: 28 }, (_, i) => {
+      const date = dateMinusDays(27 - i);
+      const vals  = byDate[date] ?? [];
+      return { date, load: vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0 };
+    });
+
+    if (!dailyAvg.some(d => d.load > 0)) return;
+
+    const chronicAvg = dailyAvg.reduce((s, d) => s + d.load, 0) / 28;
+    const last7 = dailyAvg.slice(-7).map(d => ({
+      day:  DAYS[new Date(d.date + 'T12:00:00').getDay()],
+      load: Math.round(d.load),
+    }));
+
+    setChronic(chronicAvg || MOCK_CHRONIC);
+    setLoads(last7);
+  }, [players]);
+
   useEffect(() => {
-    function loadSessions() {
-      const sessions = getRecentSessions(28);
-      if (!sessions.some(s => s.load > 0)) return; // sin datos reales, usar mock
-      const last7      = sessions.slice(-7);
-      const chronicAvg = sessions.reduce((s, d) => s + d.load, 0) / 28;
-      const DAYS       = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-      setChronic(chronicAvg || mockChronic);
-      setLoads(last7.map(s => ({
-        day:  DAYS[new Date(s.date + 'T12:00:00').getDay()],
-        load: Math.round(s.load),
-      })));
-    }
-    loadSessions();
-    const iv = setInterval(loadSessions, 30_000);
-    window.addEventListener('storage', loadSessions);
-    return () => { clearInterval(iv); window.removeEventListener('storage', loadSessions); };
-  }, []);
+    loadFromSupabase();
+    const iv = setInterval(loadFromSupabase, 30_000);
+    return () => clearInterval(iv);
+  }, [loadFromSupabase]);
 
-  const acute = loads.reduce((s, d) => s + d.load, 0) / 7;
-  const acwr = calcACWR(acute, chronic);
+  const acute  = loads.reduce((s, d) => s + d.load, 0) / 7;
+  const acwr   = calcACWR(acute, chronic);
   const status = acwrStatus(acwr);
 
   function addLoad() {
     const val = parseFloat(input);
     if (isNaN(val)) return;
-    setLoads(prev => {
-      const next = [...prev.slice(1), { day: 'Hoy', load: val }];
-      return next;
-    });
+    setLoads(prev => [...prev.slice(1), { day: 'Hoy', load: val }]);
     setInput('');
   }
 
@@ -100,8 +135,8 @@ export default function ACWR() {
         </ResponsiveContainer>
       </Card>
 
-      {/* Input de carga */}
-      <Card title="Registrar sesión">
+      {/* Simulación de carga */}
+      <Card title="Simular sesión">
         <div className="flex gap-3">
           <input
             type="number"
@@ -116,10 +151,10 @@ export default function ACWR() {
             className="flex items-center gap-1 px-4 py-2 bg-accent text-background rounded-lg text-sm font-semibold hover:bg-accent/90 transition-colors"
           >
             <Plus size={14} />
-            Agregar
+            Simular
           </button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">Sweet spot: 0.8 – 1.3 · Danger zone: &gt; 1.5</p>
+        <p className="mt-2 text-xs text-slate-500">Simulación local · Sweet spot: 0.8 – 1.3 · Danger zone: &gt; 1.5</p>
       </Card>
     </div>
   );

@@ -11,7 +11,7 @@ import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
 import { getTeamAlerts } from '../utils/alerts';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { getPlayers, getWellness, getLoads } from '../lib/db';
+import { getPlayers, getWellness, getLoads, createPlayer } from '../lib/db';
 import { PLAYERS } from '../data/players';
 
 const DEFAULT_ATHLETES = PLAYERS.map(p => ({
@@ -66,7 +66,7 @@ function dotPriority(a, w) {
 function normalizeWellness(row) {
   return {
     ...row,
-    score:     row.composite ?? 0,
+    score:     row.score ?? 0,
     timestamp: new Date(`${row.date}T12:00:00`).getTime(),
   };
 }
@@ -82,6 +82,7 @@ export default function Dashboard({ onNavigate }) {
   const [newName,     setNewName]     = useState('');
   const [newPos,      setNewPos]      = useState('');
   const [newNum,      setNewNum]      = useState('');
+  const [addingPlayer, setAddingPlayer] = useState(false);
 
   const loadFromDB = useCallback(async () => {
     if (!activeTeam?.id) return;
@@ -107,7 +108,7 @@ export default function Dashboard({ onNavigate }) {
 
         const loadValues = (loadsResults[i] ?? [])
           .slice().reverse()
-          .map(l => Number(l.value));
+          .map(l => Number(l.load));
         const acwrResult = loadValues.length > 0 ? calcACWR(loadValues) : null;
 
         return {
@@ -140,18 +141,34 @@ export default function Dashboard({ onNavigate }) {
     return () => { clearInterval(iv); window.removeEventListener('storage', load); };
   }, [usingLocal]);
 
-  function addAthlete() {
+  async function addAthlete() {
     if (!newName.trim()) return;
-    setAthletes(prev => [...prev, {
-      id:       Date.now(),
-      name:     newName.trim(),
-      position: newPos.trim(),
-      number:   Number(newNum) || 0,
-      acwr:     1.0,
-      lsi:      0,
-    }]);
-    setNewName(''); setNewPos(''); setNewNum('');
-    setShowAdd(false);
+    const isValidTeam = activeTeam?.id && String(activeTeam.id).includes('-');
+    setAddingPlayer(true);
+    try {
+      if (isValidTeam) {
+        await createPlayer({
+          team_id:  activeTeam.id,
+          coach_id: coach?.id,
+          name:     newName.trim(),
+          position: newPos.trim() || null,
+        });
+        await loadFromDB();
+      } else {
+        setAthletes(prev => [...prev, {
+          id:       Date.now(),
+          name:     newName.trim(),
+          position: newPos.trim(),
+          number:   Number(newNum) || 0,
+          acwr:     1.0,
+          lsi:      0,
+        }]);
+      }
+    } finally {
+      setNewName(''); setNewPos(''); setNewNum('');
+      setShowAdd(false);
+      setAddingPlayer(false);
+    }
   }
 
   const athletesWithWellness = athletes.map(a => ({
@@ -283,9 +300,10 @@ export default function Dashboard({ onNavigate }) {
             />
             <button
               onClick={addAthlete}
-              className="bg-accent text-background font-bold py-2 rounded-lg text-sm hover:bg-accent/90 transition-colors"
+              disabled={addingPlayer}
+              className="bg-accent text-background font-bold py-2 rounded-lg text-sm hover:bg-accent/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              Agregar
+              {addingPlayer ? <><Loader2 size={14} className="animate-spin" />Guardando…</> : 'Agregar'}
             </button>
           </div>
         )}

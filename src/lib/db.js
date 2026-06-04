@@ -51,7 +51,8 @@ export async function saveWellness(entry) {
 export async function getEvaluations(playerId) {
   const { data, error } = await supabase
     .from('evaluations').select('*').eq('player_id', playerId)
-    .order('date', { ascending: false });
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
 }

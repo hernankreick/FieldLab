@@ -10,7 +10,7 @@ import LoginView from './views/LoginView';
 // are never bundled into the initial JS payload.
 const Dashboard        = lazy(() => import('./views/Dashboard'));
 const ACWR             = lazy(() => import('./views/ACWR'));
-const Bosco            = lazy(() => import('./views/Bosco'));
+const BoscoView        = lazy(() => import('./views/BoscoView'));
 const Wellness         = lazy(() => import('./views/Wellness'));
 const VBT              = lazy(() => import('./views/VBT'));
 const TabVelocidad     = lazy(() => import('./views/Velocidad'));
@@ -22,6 +22,7 @@ const CargaSesionView  = lazy(() => import('./views/CargaSesionView'));
 const PlayerProfile    = lazy(() => import('./views/PlayerProfile'));
 const JumpAnalysis     = lazy(() => import('./views/JumpAnalysis'));
 const GoniometroView   = lazy(() => import('./views/GoniometroView'));
+const MovilidadTobillo = lazy(() => import('./views/MovilidadTobillo'));
 const WellnessFormPublic = lazy(() => import('./views/WellnessFormPublic'));
 const QRGeneratorView    = lazy(() => import('./views/QRGeneratorView'));
 
@@ -31,19 +32,20 @@ const RPE_MATCH       = window.location.pathname.match(/^\/rpe\/([^/]+)/);
 const WELLNESS_PUBLIC = window.location.pathname === '/wellness';
 
 const views = {
-  dashboard:    Dashboard,
-  acwr:         ACWR,
-  bosco:        Bosco,
-  velocidad:    TabVelocidad,
-  agilidad:     TabAgilidad,
-  evaluaciones: EvaluacionesView,
-  wellness:     Wellness,
-  vbt:          VBT,
-  carga:        CargaSesionView,
-  player:       PlayerProfile,
-  jumpAnalysis: JumpAnalysis,
-  goniometro:   GoniometroView,
-  qr:           QRGeneratorView,
+  dashboard:        Dashboard,
+  acwr:             ACWR,
+  bosco:            BoscoView,
+  velocidad:        TabVelocidad,
+  agilidad:         TabAgilidad,
+  evaluaciones:     EvaluacionesView,
+  wellness:         Wellness,
+  vbt:              VBT,
+  carga:            CargaSesionView,
+  player:           PlayerProfile,
+  jumpAnalysis:     JumpAnalysis,
+  movilidadTobillo: MovilidadTobillo,
+  goniometro:       GoniometroView,
+  qr:               QRGeneratorView,
 };
 
 const FALLBACK = (

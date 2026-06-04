@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { saveWellness } from '../utils/storage';
-import { PLAYERS } from '../data/players';
+import { saveWellness } from '../lib/db';
 
 const SLIDER_META = [
   { key: 'sleep',    label: 'Sueño',          minLabel: 'Pésimo',     maxLabel: 'Excelente' },
@@ -54,14 +53,15 @@ function zoneBtn(active) {
 }
 
 export default function WellnessFormPublic() {
-  const params   = new URLSearchParams(window.location.search);
-  const playerId = Number(params.get('player'));
-  const player   = PLAYERS.find(p => p.id === playerId);
+  const params     = new URLSearchParams(window.location.search);
+  const playerId   = params.get('player_id');
+  const playerName = params.get('player_name') ?? 'Jugador';
 
   const [form,      setForm]      = useState({ sleep: 5, stress: 2, fatigue: 2, soreness: 2 });
   const [zones,     setZones]     = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [loading,   setLoading]   = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   function setSlider(key, val) {
     setForm(prev => ({ ...prev, [key]: Number(val) }));
@@ -75,29 +75,36 @@ export default function WellnessFormPublic() {
     });
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
+    if (!playerId) return;
     setLoading(true);
+    setSaveError(null);
     const score = form.stress + (8 - form.sleep) + form.fatigue + form.soreness;
-    saveWellness({
-      playerId,
-      timestamp:   new Date().toISOString(),
-      sleep:       form.sleep,
-      stress:      form.stress,
-      fatigue:     form.fatigue,
-      soreness:    form.soreness,
-      score,
-      activeZones: zones,
-    });
-    setLoading(false);
-    setSubmitted(true);
+    try {
+      await saveWellness({
+        player_id:    playerId,
+        date:         new Date().toISOString().split('T')[0],
+        sleep:        form.sleep,
+        stress:       form.stress,
+        fatigue:      form.fatigue,
+        soreness:     form.soreness,
+        score,
+        active_zones: zones,
+      });
+      setSubmitted(true);
+    } catch {
+      setSaveError('No se pudo guardar. Intentá de nuevo.');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (!player) {
+  if (!playerId) {
     return (
       <div style={S.root}>
-        <div style={{ ...S.center }}>
-          <p style={{ color: '#ef4444', fontSize: 15 }}>Jugador no encontrado. Escaneá el QR correcto.</p>
+        <div style={S.center}>
+          <p style={{ color: '#ef4444', fontSize: 15 }}>QR inválido. Escaneá el código actualizado.</p>
         </div>
       </div>
     );
@@ -109,7 +116,7 @@ export default function WellnessFormPublic() {
         <div style={S.center}>
           <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
           <p style={{ color: '#f8fafc', fontSize: 19, fontWeight: 700, margin: '0 0 6px' }}>Reporte enviado</p>
-          <p style={{ color: '#94a3b8', fontSize: 15 }}>Buen entrenamiento, {player.name.split(' ')[0]}.</p>
+          <p style={{ color: '#94a3b8', fontSize: 15 }}>Buen entrenamiento, {playerName.split(' ')[0]}.</p>
         </div>
       </div>
     );
@@ -121,7 +128,7 @@ export default function WellnessFormPublic() {
         {/* Header */}
         <div style={{ marginBottom: 14 }}>
           <p style={S.label}>FieldLab · Wellness</p>
-          <h1 style={S.heading}>{player.name}</h1>
+          <h1 style={S.heading}>{playerName}</h1>
           <p style={S.sub}>
             {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
@@ -166,6 +173,12 @@ export default function WellnessFormPublic() {
               ))}
             </div>
           </div>
+
+          {saveError && (
+            <p style={{ color: '#ef4444', fontSize: 13, textAlign: 'center', marginBottom: 8 }}>
+              {saveError}
+            </p>
+          )}
 
           <button type="submit" disabled={loading} style={{ ...S.submit, opacity: loading ? 0.7 : 1 }}>
             {loading ? 'Enviando...' : 'Enviar reporte'}

@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { X, Download } from 'lucide-react';
-import { PLAYERS } from '../data/players';
 import Card from '../components/Card';
+import { usePlayers } from '../hooks/usePlayers';
 
-function wellnessUrl(playerId) {
-  return `${window.location.origin}/wellness?player=${playerId}`;
+function wellnessUrl(player) {
+  const params = new URLSearchParams({
+    player_id:   player.id,
+    player_name: player.name,
+  });
+  return `${window.location.origin}/wellness?${params.toString()}`;
 }
 
 function downloadQR(player) {
@@ -18,6 +22,7 @@ function downloadQR(player) {
 }
 
 export default function QRGeneratorView() {
+  const { players, loading } = usePlayers();
   const [selected, setSelected] = useState(null);
 
   return (
@@ -29,22 +34,32 @@ export default function QRGeneratorView() {
         </p>
       </div>
 
-      <div className="space-y-2">
-        {PLAYERS.map(player => (
-          <button
-            key={player.id}
-            onClick={() => setSelected(player)}
-            className="w-full flex items-center justify-between px-4 py-3 rounded-xl
-              bg-surface border border-white/5 hover:border-accent/30 transition-colors text-left"
-          >
-            <div>
-              <p className="text-sm font-semibold text-slate-200">{player.name}</p>
-              <p className="text-xs text-slate-500">{player.position} · {player.sport}</p>
-            </div>
-            <span className="text-xs text-accent font-semibold">Generar QR →</span>
-          </button>
-        ))}
-      </div>
+      {loading ? (
+        <p className="text-slate-500 text-sm">Cargando jugadores…</p>
+      ) : players.length === 0 ? (
+        <Card>
+          <p className="text-slate-500 text-sm text-center py-4">
+            No hay jugadores en este equipo
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {players.map(player => (
+            <button
+              key={player.id}
+              onClick={() => setSelected(player)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl
+                bg-surface border border-white/5 hover:border-accent/30 transition-colors text-left"
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-200">{player.name}</p>
+                <p className="text-xs text-slate-500">{player.position}</p>
+              </div>
+              <span className="text-xs text-accent font-semibold">Generar QR →</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Modal */}
       {selected && (
@@ -58,7 +73,7 @@ export default function QRGeneratorView() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-base font-bold text-slate-100">{selected.name}</h3>
-                <p className="text-xs text-slate-500">{selected.position} · {selected.sport}</p>
+                <p className="text-xs text-slate-500">{selected.position}</p>
               </div>
               <button
                 onClick={() => setSelected(null)}
@@ -72,7 +87,7 @@ export default function QRGeneratorView() {
             <div className="flex justify-center mb-3">
               <div className="p-3 bg-white rounded-2xl shadow-lg">
                 <QRCodeSVG
-                  value={wellnessUrl(selected.id)}
+                  value={wellnessUrl(selected)}
                   size={208}
                   bgColor="#ffffff"
                   fgColor="#0f172a"
@@ -86,7 +101,7 @@ export default function QRGeneratorView() {
             <div className="hidden">
               <QRCodeCanvas
                 id="qr-dl-canvas"
-                value={wellnessUrl(selected.id)}
+                value={wellnessUrl(selected)}
                 size={512}
                 bgColor="#ffffff"
                 fgColor="#0f172a"
@@ -97,7 +112,7 @@ export default function QRGeneratorView() {
 
             {/* URL */}
             <p className="text-[10px] font-mono text-slate-500 text-center break-all mb-4 leading-relaxed px-1">
-              {wellnessUrl(selected.id)}
+              {wellnessUrl(selected)}
             </p>
 
             {/* Download */}

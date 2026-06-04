@@ -31,12 +31,30 @@ export async function createPlayer(player) {
 }
 
 // WELLNESS
+function mapWellness(r) {
+  return { ...r, timestamp: r.date, activeZones: r.active_zones ?? {} };
+}
+
 export async function getWellness(playerId, days = 7) {
   const { data, error } = await supabase
     .from('wellness').select('*').eq('player_id', playerId)
     .order('date', { ascending: false }).limit(days);
   if (error) throw error;
-  return data;
+  return (data ?? []).map(mapWellness);
+}
+
+export async function getLatestTeamWellness(playerIds) {
+  if (!playerIds?.length) return {};
+  const { data } = await supabase
+    .from('wellness')
+    .select('*')
+    .in('player_id', playerIds)
+    .order('date', { ascending: false });
+  const map = {};
+  (data ?? []).forEach(r => {
+    if (!map[r.player_id]) map[r.player_id] = mapWellness(r);
+  });
+  return map;
 }
 
 export async function saveWellness(entry) {

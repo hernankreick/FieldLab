@@ -1,19 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
-import ReportButton from '../components/ReportButton';
-import { saveWellness } from '../utils/storage';
-import { PLAYERS } from '../data/players';
-
-const TEAM_PLAYERS = [
-  { id: 1, name: 'Ramiro Sánchez',   position: 'Fullback',      sport: 'rugby'  },
-  { id: 2, name: 'Leandro Martínez', position: 'Apertura',      sport: 'rugby'  },
-  { id: 3, name: 'Tomás Ruiz',       position: 'Hooker',        sport: 'rugby'  },
-  { id: 4, name: 'Facundo Benítez',  position: 'Ala',           sport: 'rugby'  },
-  { id: 5, name: 'Agustín Torres',   position: 'Centro',        sport: 'rugby'  },
-  { id: 6, name: 'Lucía Fernández',  position: 'Mediocampista', sport: 'hockey' },
-  { id: 7, name: 'Valentina López',  position: 'Delantera',     sport: 'hockey' },
-  { id: 8, name: 'Martín González',  position: 'Delantero',     sport: 'futbol' },
-];
+import { saveWellness } from '../lib/db';
+import { supabase } from '../lib/supabase';
 
 const SLEEP = [
   { v: 1, e: '😴', l: 'Pésimo'    },
@@ -57,7 +45,6 @@ const SORENESS = [
 
 const HEATMAP_LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
 
-// Hooper Score = estrés + (8 − sueño) + fatiga + dolor
 function calcScore(sleep, stress, fatigue, soreness) {
   return stress + (8 - sleep) + fatigue + soreness;
 }
@@ -69,12 +56,11 @@ function scoreLevel(score) {
 }
 
 const SCORE_CONFIG = {
-  safe:    { color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   msg: '¡Listo para entrenar! 💪'       },
-  warning: { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  msg: 'Entrenar con precaución ⚠️'      },
-  danger:  { color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   msg: 'Recuperación prioritaria'        },
+  safe:    { color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   msg: '¡Listo para entrenar! 💪'  },
+  warning: { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  msg: 'Entrenar con precaución ⚠️' },
+  danger:  { color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   msg: 'Recuperación prioritaria'   },
 };
 
-// Barra de progreso superior — se llena al avanzar en cada pregunta
 function ProgressBar({ step }) {
   const pct = ((step - 1) / 4) * 100;
   return (
@@ -87,7 +73,6 @@ function ProgressBar({ step }) {
   );
 }
 
-// Botón individual de opción (emoji + texto)
 function OptionBtn({ opt, selected, onSelect }) {
   const active = selected === opt.v;
   return (
@@ -111,7 +96,6 @@ function OptionBtn({ opt, selected, onSelect }) {
   );
 }
 
-// Grilla de 2 columnas — la 7ª opción ocupa el ancho completo
 function OptionGrid({ options, selected, onSelect }) {
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -130,16 +114,33 @@ function OptionGrid({ options, selected, onSelect }) {
 }
 
 export default function HooperQR({ teamId }) {
-  const [step, setStep]           = useState(0);
-  const [player, setPlayer]       = useState(null);
-  const [search, setSearch]       = useState('');
-  const [sleep, setSleep]         = useState(0);
-  const [stress, setStress]       = useState(0);
-  const [fatigue, setFatigue]     = useState(0);
-  const [soreness, setSoreness]   = useState(0);
-  const [activeZones, setZones]   = useState({});
+  const [step, setStep]         = useState(0);
+  const [player, setPlayer]     = useState(null);
+  const [search, setSearch]     = useState('');
+  const [sleep, setSleep]       = useState(0);
+  const [stress, setStress]     = useState(0);
+  const [fatigue, setFatigue]   = useState(0);
+  const [soreness, setSoreness] = useState(0);
+  const [activeZones, setZones] = useState({});
   const [confirmed, setConfirmed] = useState(false);
-  const [sentAt, setSentAt]       = useState(null);
+  const [sentAt, setSentAt]     = useState(null);
+  const [players, setPlayers]   = useState([]);
+  const [loadingPlayers, setLoadingPlayers] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  const isValidTeam = teamId && String(teamId).includes('-');
+
+  useEffect(() => {
+    if (!isValidTeam) return;
+    setLoadingPlayers(true);
+    supabase
+      .from('players')
+      .select('id, name, position')
+      .eq('team_id', teamId)
+      .order('name')
+      .then(({ data }) => setPlayers(data ?? []))
+      .finally(() => setLoadingPlayers(false));
+  }, [teamId]);
 
   function handleZone(id) {
     setZones(prev => {
@@ -149,43 +150,58 @@ export default function HooperQR({ teamId }) {
     });
   }
 
-  function selectPlayer(p) { setPlayer(p); setStep(1); }
-  function selectSleep(v)    { setSleep(v);    setStep(2); }
-  function selectStress(v)   { setStress(v);   setStep(3); }
-  function selectFatigue(v)  { setFatigue(v);  setStep(4); }
+  function selectPlayer(p)  { setPlayer(p); setStep(1); }
+  function selectSleep(v)   { setSleep(v);    setStep(2); }
+  function selectStress(v)  { setStress(v);   setStep(3); }
+  function selectFatigue(v) { setFatigue(v);  setStep(4); }
   function selectSoreness(v) {
     setSoreness(v);
     if (v < 4) {
-      setZones({}); // limpiar zonas marcadas si el dolor no es significativo
+      setZones({});
       setStep(5);
     }
   }
 
-  function handleSend() {
+  async function handleSend() {
     const now   = new Date();
     const score = calcScore(sleep, stress, fatigue, soreness);
-    saveWellness({
-      playerId: player.id, playerName: player.name,
-      timestamp: now.toISOString(),
-      sleep, stress, fatigue, soreness, score, activeZones,
-    });
-    setSentAt(now);
-    setConfirmed(true);
+    setSaveError(null);
+    try {
+      await saveWellness({
+        player_id:    player.id,
+        date:         now.toISOString().split('T')[0],
+        sleep, stress, fatigue, soreness, score,
+        active_zones: activeZones,
+      });
+      setSentAt(now);
+      setConfirmed(true);
+    } catch {
+      setSaveError('No se pudo guardar. Intentá de nuevo.');
+    }
   }
 
   function reset() {
     setStep(0); setPlayer(null); setSearch('');
     setSleep(0); setStress(0); setFatigue(0); setSoreness(0);
-    setZones({}); setConfirmed(false); setSentAt(null);
+    setZones({}); setConfirmed(false); setSentAt(null); setSaveError(null);
   }
 
   const score    = sleep && stress && fatigue && soreness
     ? calcScore(sleep, stress, fatigue, soreness) : null;
   const level    = score !== null ? scoreLevel(score) : null;
   const cfg      = level ? SCORE_CONFIG[level] : null;
-  const filtered = TEAM_PLAYERS.filter(p =>
+  const filtered = players.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  // QR inválido
+  if (!isValidTeam) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#0a0f1a' }}>
+        <p className="text-slate-400 text-center text-sm">QR inválido. Pedile el link actualizado al entrenador.</p>
+      </div>
+    );
+  }
 
   // Pantalla de confirmación
   if (confirmed) {
@@ -209,19 +225,6 @@ export default function HooperQR({ teamId }) {
         </h2>
         <p className="text-slate-400 text-center text-sm mb-1">Tu reporte fue enviado.</p>
         <p className="text-slate-600 text-center text-xs mb-6">{fecha} — {hora}</p>
-        {/* Botón de descarga del informe individual */}
-        {(() => {
-          const fullPlayer = PLAYERS.find(p => p.id === player.id) ?? null;
-          return fullPlayer ? (
-            <div className="mb-4">
-              <ReportButton
-                type="player"
-                player={fullPlayer}
-                label="Descargar mi informe"
-              />
-            </div>
-          ) : null;
-        })()}
         <button
           onClick={reset}
           className="w-full max-w-xs py-4 rounded-2xl font-bold text-sm
@@ -273,7 +276,15 @@ export default function HooperQR({ teamId }) {
                 style={{ background: '#1e293b', borderColor: 'rgba(255,255,255,0.08)' }}
               />
               <div className="grid grid-cols-2 gap-2">
-                {filtered.map(p => (
+                {loadingPlayers ? (
+                  <p className="col-span-2 text-center text-slate-500 text-sm py-8">
+                    Cargando jugadores…
+                  </p>
+                ) : filtered.length === 0 ? (
+                  <p className="col-span-2 text-center text-slate-500 text-sm py-8">
+                    Sin resultados
+                  </p>
+                ) : filtered.map(p => (
                   <button
                     key={p.id}
                     onClick={() => selectPlayer(p)}
@@ -287,11 +298,6 @@ export default function HooperQR({ teamId }) {
                     <span className="text-xs text-slate-500 mt-0.5">{p.position}</span>
                   </button>
                 ))}
-                {filtered.length === 0 && (
-                  <p className="col-span-2 text-center text-slate-500 text-sm py-8">
-                    Sin resultados
-                  </p>
-                )}
               </div>
             </>
           )}
@@ -300,12 +306,8 @@ export default function HooperQR({ teamId }) {
           {step === 1 && (
             <>
               <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Paso 1 de 4
-                </p>
-                <h2 className="text-xl font-bold text-white leading-tight">
-                  ¿Cómo dormiste anoche?
-                </h2>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Paso 1 de 4</p>
+                <h2 className="text-xl font-bold text-white leading-tight">¿Cómo dormiste anoche?</h2>
               </div>
               <OptionGrid options={SLEEP} selected={sleep} onSelect={selectSleep} />
             </>
@@ -315,12 +317,8 @@ export default function HooperQR({ teamId }) {
           {step === 2 && (
             <>
               <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Paso 2 de 4
-                </p>
-                <h2 className="text-xl font-bold text-white leading-tight">
-                  ¿Cómo está tu nivel de estrés?
-                </h2>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Paso 2 de 4</p>
+                <h2 className="text-xl font-bold text-white leading-tight">¿Cómo está tu nivel de estrés?</h2>
               </div>
               <OptionGrid options={STRESS} selected={stress} onSelect={selectStress} />
             </>
@@ -330,12 +328,8 @@ export default function HooperQR({ teamId }) {
           {step === 3 && (
             <>
               <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Paso 3 de 4
-                </p>
-                <h2 className="text-xl font-bold text-white leading-tight">
-                  ¿Cómo está tu nivel de fatiga?
-                </h2>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Paso 3 de 4</p>
+                <h2 className="text-xl font-bold text-white leading-tight">¿Cómo está tu nivel de fatiga?</h2>
               </div>
               <OptionGrid options={FATIGUE} selected={fatigue} onSelect={selectFatigue} />
             </>
@@ -345,15 +339,10 @@ export default function HooperQR({ teamId }) {
           {step === 4 && (
             <>
               <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                  Paso 4 de 4
-                </p>
-                <h2 className="text-xl font-bold text-white leading-tight">
-                  ¿Tenés dolores musculares?
-                </h2>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Paso 4 de 4</p>
+                <h2 className="text-xl font-bold text-white leading-tight">¿Tenés dolores musculares?</h2>
               </div>
               <OptionGrid options={SORENESS} selected={soreness} onSelect={selectSoreness} />
-              {/* Si dolor >= 4: mostrar mapa de calor y botón manual */}
               {soreness >= 4 && (
                 <>
                   <p className="text-xs text-slate-400 text-center -mb-1">
@@ -382,7 +371,6 @@ export default function HooperQR({ teamId }) {
             <>
               <h2 className="text-xl font-bold text-white">Resumen</h2>
 
-              {/* Score card con semáforo */}
               <div
                 className="rounded-2xl p-5 border"
                 style={{ background: cfg.bg, borderColor: cfg.color }}
@@ -405,7 +393,6 @@ export default function HooperQR({ teamId }) {
                 </div>
               </div>
 
-              {/* Resumen de los 4 valores */}
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { label: 'Sueño',  val: sleep,    opts: SLEEP    },
@@ -430,14 +417,10 @@ export default function HooperQR({ teamId }) {
                 })}
               </div>
 
-              {/* Alerta dolor severo */}
               {soreness >= 6 && (
                 <div
                   className="rounded-xl px-4 py-3 border"
-                  style={{
-                    background: 'rgba(239,68,68,0.1)',
-                    borderColor: 'rgba(239,68,68,0.3)',
-                  }}
+                  style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)' }}
                 >
                   <p className="text-xs font-semibold" style={{ color: '#ef4444' }}>
                     Dolor severo — consultar al preparador físico
@@ -445,7 +428,10 @@ export default function HooperQR({ teamId }) {
                 </div>
               )}
 
-              {/* Botón enviar */}
+              {saveError && (
+                <p className="text-sm text-red-400 text-center">{saveError}</p>
+              )}
+
               <button
                 onClick={handleSend}
                 className="w-full py-4 rounded-2xl font-black text-base uppercase

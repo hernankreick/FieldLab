@@ -1,24 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Heart, Map, Clock } from 'lucide-react';
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
-import { getWellnessByPlayer, getLatestWellness, getAllLatestWellness } from '../utils/storage';
+import { getWellness, getLatestTeamWellness } from '../lib/db';
+import { usePlayers } from '../hooks/usePlayers';
 
-// IDs deben coincidir con TEAM_PLAYERS en HooperQR
-const ATHLETES = [
-  { id: 1, name: 'Ramiro S.'    },
-  { id: 2, name: 'Leandro M.'   },
-  { id: 3, name: 'Tomás R.'     },
-  { id: 4, name: 'Facundo B.'   },
-  { id: 5, name: 'Agustín T.'   },
-  { id: 6, name: 'Lucía F.'     },
-  { id: 7, name: 'Valentina L.' },
-  { id: 8, name: 'Martín G.'    },
-];
-
-// Etiquetas para valores 1-7 de cada métrica
 const LABELS = {
   sleep:    ['', 'Pésimo',    'Muy malo', 'Malo',     'Regular',  'Bueno',    'Muy bueno', 'Excelente'],
   stress:   ['', 'Sin estrés','Muy leve', 'Leve',     'Moderado', 'Alto',     'Muy alto',  'Extremo'  ],
@@ -47,23 +35,38 @@ function formatDate(ts) {
 }
 
 export default function Wellness({ initialId }) {
-  const [selectedId, setSelectedId] = useState(initialId ?? ATHLETES[0].id);
+  const { players, loading: loadingPlayers } = usePlayers();
+
+  const [selectedId, setSelectedId] = useState(initialId ?? null);
   const [latest,     setLatest]     = useState(null);
   const [history,    setHistory]    = useState([]);
   const [rosterMap,  setRosterMap]  = useState({});
 
+  // Cuando cargan los jugadores, fija el primero si no hay uno seleccionado
   useEffect(() => {
-    function loadAll() {
-      setLatest(getLatestWellness(selectedId));
-      setHistory(getWellnessByPlayer(selectedId).slice(0, 7));
-      setRosterMap(getAllLatestWellness());
+    if (!selectedId && players.length > 0) {
+      setSelectedId(initialId ?? players[0].id);
     }
+  }, [players, initialId]);
+
+  const loadAll = useCallback(async () => {
+    if (!selectedId) return;
+    const [hist, rMap] = await Promise.all([
+      getWellness(selectedId, 7).catch(() => []),
+      players.length > 0
+        ? getLatestTeamWellness(players.map(p => p.id)).catch(() => ({}))
+        : Promise.resolve({}),
+    ]);
+    setHistory(hist);
+    setLatest(hist[0] ?? null);
+    setRosterMap(rMap);
+  }, [selectedId, players]);
+
+  useEffect(() => {
     loadAll();
-    const iv       = setInterval(loadAll, 30_000);
-    const onStorage = () => loadAll();
-    window.addEventListener('storage', onStorage);
-    return () => { clearInterval(iv); window.removeEventListener('storage', onStorage); };
-  }, [selectedId]);
+    const iv = setInterval(loadAll, 30_000);
+    return () => clearInterval(iv);
+  }, [loadAll]);
 
   const status   = latest ? hooperStatus(latest.score) : 'neutral';
   const hasZones = latest && Object.keys(latest.activeZones || {}).length > 0;
@@ -76,29 +79,33 @@ export default function Wellness({ initialId }) {
       </div>
 
       {/* Selector atleta */}
-      <div className="flex gap-2 flex-wrap">
-        {ATHLETES.map(({ id, name }) => {
-          const w  = rosterMap[String(id)];
-          const st = w ? hooperStatus(w.score) : null;
-          return (
-            <button
-              key={id}
-              onClick={() => setSelectedId(id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                selectedId === id
-                  ? 'bg-accent text-background border-accent'
-                  : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
-              }`}
-            >
-              {name}
-              {st && st !== 'safe' && (
-                <span className={`ml-1.5 w-1.5 h-1.5 rounded-full inline-block align-middle
-                  ${st === 'danger' ? 'bg-danger' : 'bg-warning'}`} />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {loadingPlayers ? (
+        <p className="text-slate-500 text-sm">Cargando jugadores…</p>
+      ) : (
+        <div className="flex gap-2 flex-wrap">
+          {players.map(p => {
+            const w  = rosterMap[p.id];
+            const st = w ? hooperStatus(w.score) : null;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelectedId(p.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  selectedId === p.id
+                    ? 'bg-accent text-background border-accent'
+                    : 'bg-surface text-slate-400 border-white/10 hover:text-slate-200'
+                }`}
+              >
+                {p.name.split(' ')[0]} {p.name.split(' ')[1]?.[0]}.
+                {st && st !== 'safe' && (
+                  <span className={`ml-1.5 w-1.5 h-1.5 rounded-full inline-block align-middle
+                    ${st === 'danger' ? 'bg-danger' : 'bg-warning'}`} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Sin datos */}
       {!latest ? (
@@ -205,13 +212,13 @@ export default function Wellness({ initialId }) {
       {/* Resumen plantel */}
       <Card title="Estado plantel">
         <div className="space-y-2">
-          {ATHLETES.map(({ id, name }) => {
-            const w  = rosterMap[String(id)];
+          {players.map(p => {
+            const w  = rosterMap[p.id];
             const st = w ? hooperStatus(w.score) : null;
             return (
-              <div key={id}
+              <div key={p.id}
                 className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
-                <span className="text-sm text-slate-200">{name}</span>
+                <span className="text-sm text-slate-200">{p.name}</span>
                 <div className="flex items-center gap-2">
                   {w ? (
                     <>

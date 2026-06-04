@@ -137,7 +137,7 @@ function TabVelocidad() {
   const [curvoSaving, setCurvoSaving] = useState(false);
   const [curvoDone,   setCurvoDone]   = useState(false);
 
-  const { players } = usePlayers();
+  const { players, debugState } = usePlayers();
   const [athlete, setAthlete] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
 
@@ -203,6 +203,7 @@ function TabVelocidad() {
 
       <div className="p-2 bg-slate-950 rounded text-xs font-mono text-slate-400 break-all">
         <div>Selected player: {athlete?.name ?? 'null'} / {athlete?.id ?? 'null'}</div>
+        <div>teamId: {debugState.teamId ?? '—'} | players: {players.length} | error: {debugState.error ?? 'none'} | count: {debugState.count ?? '—'}</div>
         {debugInfo !== null && (
           <div className="mt-1 whitespace-pre-wrap">{JSON.stringify(debugInfo, null, 2)}</div>
         )}

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccelerometerJump, heightToSayers, calcRSI, calcElasticEfficiency } from '../hooks/useAccelerometerJump';
-import { useBoscoBeep } from '../hooks/useBoscoBeep';
 
 const C = {
   bg: '#0f172a', card: '#1e293b', card2: '#273347',
@@ -113,18 +112,35 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     } catch { return []; }
   });
 
-  const { initAndCountdown, beepJump, beepEnd } = useBoscoBeep();
+  const audioCtxRef   = useRef(null);
+  const prevJumpCount = useRef(0);
 
   const accel = useAccelerometerJump({ maxJumps: numReps, testType });
 
+  function playBeep(freq = 880, duration = 0.15) {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    try {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type            = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.5, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + duration);
+    } catch (e) { console.warn('beep error', e); }
+  }
+
   // Track jump count to trigger beep on new jumps
-  const prevJumpCount = useRef(0);
   useEffect(() => {
     if (accel.jumps.length > prevJumpCount.current) {
-      beepJump();
+      playBeep(660, 0.08);
       prevJumpCount.current = accel.jumps.length;
     }
-  }, [accel.jumps.length, beepJump]);
+  }, [accel.jumps.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fullscreen during kiosk steps
   useEffect(() => {
@@ -136,20 +152,10 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   // Auto-advance when detection fills up
   useEffect(() => {
     if (step === 'DETECTANDO' && !accel.isDetecting && accel.jumps.length > 0) {
-      beepEnd();
+      playBeep(440, 0.5);
       setStep('RESULTADO');
     }
-  }, [accel.isDetecting, accel.jumps.length, step, beepEnd]);
-
-  // Countdown display
-  useEffect(() => {
-    if (step !== 'COUNTDOWN') return;
-    setCountNum(3);
-    const t1 = setTimeout(() => setCountNum(2),    1000);
-    const t2 = setTimeout(() => setCountNum(1),    2000);
-    const t3 = setTimeout(() => setCountNum('GO'), 3000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [step]);
+  }, [accel.isDetecting, accel.jumps.length, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -166,20 +172,35 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     setStep('ENTREGAR');
   }, [accel]);
 
-  // CRÍTICO: AudioContext se crea AQUÍ, dentro del tap del usuario
-  const handleAthleteStart = useCallback(() => {
+  // AudioContext se crea AQUÍ, dentro del onClick — requisito iOS
+  async function handleAthleteStart() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      await ctx.resume();
+      audioCtxRef.current = ctx;
+    } catch (e) { console.warn('AudioContext failed:', e); }
+
     setStep('COUNTDOWN');
-    initAndCountdown(() => {
-      setStep('DETECTANDO');
-      accel.startDetection();
-    });
-  }, [initAndCountdown, accel]);
+    setCountNum(3);
+    playBeep(880, 0.15);
+
+    setTimeout(() => { setCountNum(2); playBeep(880, 0.15); }, 1000);
+    setTimeout(() => { setCountNum(1); playBeep(880, 0.15); }, 2000);
+    setTimeout(() => {
+      setCountNum('GO');
+      playBeep(1320, 0.4);
+      setTimeout(() => {
+        setStep('DETECTANDO');
+        accel.startDetection();
+      }, 400);
+    }, 3000);
+  }
 
   const handleFinish = useCallback(() => {
     accel.stopDetection();
-    beepEnd();
+    playBeep(440, 0.5);
     setStep('RESULTADO');
-  }, [accel, beepEnd]);
+  }, [accel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = useCallback(() => {
     if (!accel.stats) return;

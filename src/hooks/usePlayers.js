@@ -1,42 +1,27 @@
 import { useState, useEffect } from 'react';
+import { useTeam } from '../context/TeamContext';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
 
 export function usePlayers() {
-  const { user } = useAuth();
+  const { activeTeam } = useTeam();
   const [players, setPlayers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user?.id) return;
+    const teamId = activeTeam?.id;
+    if (!teamId || !String(teamId).includes('-')) return;
 
-    async function fetchPlayers() {
-      setLoading(true);
+    setLoading(true);
+    setPlayers([]);
 
-      const { data: teams } = await supabase
-        .from('teams')
-        .select('id')
-        .eq('coach_id', user.id);
-
-      if (!teams?.length) {
-        setLoading(false);
-        return;
-      }
-
-      const teamIds = teams.map(t => t.id);
-
-      const { data } = await supabase
-        .from('players')
-        .select('id, name, position, number, team_id')
-        .in('team_id', teamIds)
-        .order('name');
-
-      setPlayers(data || []);
-      setLoading(false);
-    }
-
-    fetchPlayers();
-  }, [user?.id]);
+    supabase
+      .from('players')
+      .select('id, name, position, number, team_id')
+      .eq('team_id', teamId)
+      .order('name')
+      .then(({ data }) => setPlayers(data ?? []))
+      .finally(() => setLoading(false));
+  }, [activeTeam?.id]);
 
   return { players, loading };
 }

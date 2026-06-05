@@ -116,30 +116,54 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
 
   const audioCtxRef   = useRef(null);
   const undoTrapRef   = useRef(null);
+  const keepaliveRef  = useRef(null); // oscilador silencioso — impide que iOS suspenda el AudioContext
   const prevJumpCount = useRef(0);
 
   const accel = useAccelerometerJump({ maxJumps: numReps, testType });
 
-  function _playBeepSync(ctx, freq = 880, duration = 0.15) {
+  function _playBeepSync(ctx, freq = 880, duration = 0.15, type = 'sine') {
     if (!ctx) return;
+    // iOS suspende el AudioContext tras unos segundos de silencio.
+    // resume() es async pero kick-start el contexto; el oscilador
+    // del keepalive garantiza que ya esté running durante DETECTANDO.
+    if (ctx.state === 'suspended') ctx.resume();
     try {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.type            = 'sine';
+      osc.type            = type;
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.6, ctx.currentTime);
+      gain.gain.setValueAtTime(0.9, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + duration + 0.01);
     } catch (e) { console.warn('beep error:', e); }
   }
 
+  function _startKeepalive(ctx) {
+    if (!ctx || keepaliveRef.current) return;
+    try {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0001; // inaudible
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      keepaliveRef.current = osc;
+    } catch (_) {}
+  }
+
+  function _stopKeepalive() {
+    try { keepaliveRef.current?.stop(); } catch (_) {}
+    keepaliveRef.current = null;
+  }
+
   // Track jump count to trigger beep on new jumps
   useEffect(() => {
     if (accel.jumps.length > prevJumpCount.current) {
-      _playBeepSync(audioCtxRef.current, 660, 0.08);
+      // square wave 440Hz — más audible que sine en bolsillo/tela
+      _playBeepSync(audioCtxRef.current, 440, 0.15, 'square');
       prevJumpCount.current = accel.jumps.length;
     }
   }, [accel.jumps.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -154,6 +178,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   // Auto-advance when detection fills up
   useEffect(() => {
     if (step === 'DETECTANDO' && !accel.isDetecting && accel.jumps.length > 0) {
+      _stopKeepalive();
       _playBeepSync(audioCtxRef.current, 440, 0.5);
       setStep('RESULTADO');
     }
@@ -256,6 +281,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
       _playBeepSync(audioCtxRef.current, 1320, 0.4);
       setTimeout(() => {
         setStep('DETECTANDO');
+        _startKeepalive(audioCtxRef.current); // mantener AudioContext activo
         accel.startDetection();
       }, 500);
     }, 3000);
@@ -287,10 +313,11 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   }, [accel]);
 
   const handleRetry = useCallback(() => {
+    _stopKeepalive();
     accel.reset();
     prevJumpCount.current = 0;
     setStep('ENTREGAR');
-  }, [accel]);
+  }, [accel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── RESULTADO helpers ────────────────────────────────────────────────────────
 
@@ -685,6 +712,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
 
         <button
           onClick={() => {
+            _stopKeepalive();
             accel.stopDetection();
             _playBeepSync(audioCtxRef.current, 440, 0.5);
             setStep('RESULTADO');

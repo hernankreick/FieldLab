@@ -117,8 +117,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
 
   const accel = useAccelerometerJump({ maxJumps: numReps, testType });
 
-  function playBeep(freq = 880, duration = 0.15) {
-    const ctx = audioCtxRef.current;
+  function _playBeepSync(ctx, freq = 880, duration = 0.15) {
     if (!ctx) return;
     try {
       const osc  = ctx.createOscillator();
@@ -127,17 +126,17 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
       gain.connect(ctx.destination);
       osc.type            = 'sine';
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.5, ctx.currentTime);
+      gain.gain.setValueAtTime(0.6, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
       osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + duration);
-    } catch (e) { console.warn('beep error', e); }
+      osc.stop(ctx.currentTime + duration + 0.01);
+    } catch (e) { console.warn('beep error:', e); }
   }
 
   // Track jump count to trigger beep on new jumps
   useEffect(() => {
     if (accel.jumps.length > prevJumpCount.current) {
-      playBeep(660, 0.08);
+      _playBeepSync(audioCtxRef.current, 660, 0.08);
       prevJumpCount.current = accel.jumps.length;
     }
   }, [accel.jumps.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -152,10 +151,30 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   // Auto-advance when detection fills up
   useEffect(() => {
     if (step === 'DETECTANDO' && !accel.isDetecting && accel.jumps.length > 0) {
-      playBeep(440, 0.5);
+      _playBeepSync(audioCtxRef.current, 440, 0.5);
       setStep('RESULTADO');
     }
   }, [accel.isDetecting, accel.jumps.length, step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Bloquear scroll y gestos del browser durante las pantallas kiosko
+  useEffect(() => {
+    if (step !== 'DETECTANDO' && step !== 'COUNTDOWN') return;
+
+    const blockAll = (e) => { e.preventDefault(); e.stopPropagation(); };
+    document.addEventListener('touchmove',  blockAll, { passive: false });
+    document.addEventListener('touchstart', blockAll, { passive: false });
+
+    // Bloquear el botón atrás del browser
+    window.history.pushState(null, '', window.location.href);
+    const blockBack = () => window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', blockBack);
+
+    return () => {
+      document.removeEventListener('touchmove',  blockAll);
+      document.removeEventListener('touchstart', blockAll);
+      window.removeEventListener('popstate', blockBack);
+    };
+  }, [step]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -172,33 +191,40 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     setStep('ENTREGAR');
   }, [accel]);
 
-  // AudioContext se crea AQUÍ, dentro del onClick — requisito iOS
-  async function handleAthleteStart() {
+  // AudioContext se crea SÍNCRONAMENTE aquí — iOS requiere que el gesto sea síncrono
+  function handleAthleteStart() {
+    let ctx = null;
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      await ctx.resume();
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
       audioCtxRef.current = ctx;
-    } catch (e) { console.warn('AudioContext failed:', e); }
+      // Primer beep inmediato y síncrono — desbloquea el audio en iOS
+      _playBeepSync(ctx, 880, 0.15);
+    } catch (e) { console.warn('AudioContext error:', e); }
 
     setStep('COUNTDOWN');
     setCountNum(3);
-    playBeep(880, 0.15);
 
-    setTimeout(() => { setCountNum(2); playBeep(880, 0.15); }, 1000);
-    setTimeout(() => { setCountNum(1); playBeep(880, 0.15); }, 2000);
+    setTimeout(() => {
+      setCountNum(2);
+      _playBeepSync(audioCtxRef.current, 880, 0.15);
+    }, 1000);
+    setTimeout(() => {
+      setCountNum(1);
+      _playBeepSync(audioCtxRef.current, 880, 0.15);
+    }, 2000);
     setTimeout(() => {
       setCountNum('GO');
-      playBeep(1320, 0.4);
+      _playBeepSync(audioCtxRef.current, 1320, 0.4);
       setTimeout(() => {
         setStep('DETECTANDO');
         accel.startDetection();
-      }, 400);
+      }, 500);
     }, 3000);
   }
 
   const handleFinish = useCallback(() => {
     accel.stopDetection();
-    playBeep(440, 0.5);
+    _playBeepSync(audioCtxRef.current, 440, 0.5);
     setStep('RESULTADO');
   }, [accel]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -568,12 +594,21 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
           </div>
         )}
 
-        <button onClick={handleFinish}
+        <button
+          onClick={handleFinish}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            handleFinish();
+          }}
           style={{
             marginTop: 12, padding: '16px 48px', borderRadius: 14,
             border: `2px solid ${C.border}`,
             background: 'transparent', color: C.muted,
             fontSize: 15, fontWeight: 600, cursor: 'pointer',
+            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+            position: 'relative', zIndex: 10001,
           }}>
           FINALIZAR
         </button>

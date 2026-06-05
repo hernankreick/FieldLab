@@ -1,11 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 const G = 9.81;
-const MIN_FLIGHT_MS  = 200;
-const MAX_FLIGHT_MS  = 800;
-const MIN_CONTACT_MS = 50;
-const MAX_CONTACT_MS = 400;
+const MIN_FLIGHT_MS      = 200;
+const MAX_FLIGHT_MS      = 800;
+const MIN_CONTACT_MS     = 50;
+const MAX_CONTACT_MS     = 400;
 const FREEFALL_THRESHOLD = 3.0;
+const LANDING_THRESHOLD  = FREEFALL_THRESHOLD * 2;
+const COOLDOWN_MS        = 400; // ignorar lecturas durante 400ms post-aterrizaje
 
 export function flightToHeight(flightMs) {
   const t = flightMs / 1000;
@@ -38,13 +40,14 @@ export function useAccelerometerJump({ maxJumps = 5, testType = 'CMJ' } = {}) {
   const [error,       setError]       = useState(null);
   const [permitted,   setPermitted]   = useState(false);
 
-  const stateRef      = useRef(STATE.IDLE);
-  const airborneStart = useRef(null);
-  const contactStart  = useRef(null);
-  const isDetRef      = useRef(false);
-  const jumpsRef      = useRef([]);
-  const maxJumpsRef   = useRef(maxJumps);
-  const testTypeRef   = useRef(testType);
+  const stateRef       = useRef(STATE.IDLE);
+  const airborneStart  = useRef(null);
+  const contactStart   = useRef(null);
+  const cooldownUntil  = useRef(0);
+  const isDetRef       = useRef(false);
+  const jumpsRef       = useRef([]);
+  const maxJumpsRef    = useRef(maxJumps);
+  const testTypeRef    = useRef(testType);
 
   useEffect(() => { maxJumpsRef.current  = maxJumps;  }, [maxJumps]);
   useEffect(() => { testTypeRef.current  = testType;  }, [testType]);
@@ -83,6 +86,10 @@ export function useAccelerometerJump({ maxJumps = 5, testType = 'CMJ' } = {}) {
     );
 
     const now = Date.now();
+
+    // Ignorar lecturas durante el cooldown post-aterrizaje (vibración del impacto)
+    if (now < cooldownUntil.current) return;
+
     const cur = stateRef.current;
 
     if (cur === STATE.CONTACT || cur === STATE.IDLE) {
@@ -90,7 +97,6 @@ export function useAccelerometerJump({ maxJumps = 5, testType = 'CMJ' } = {}) {
         // Despegue detectado
         if (testTypeRef.current === 'DropJump' && contactStart.current !== null) {
           const contactMs = now - contactStart.current;
-          // Actualizar el último salto con su contactMs si es válido
           if (contactMs >= MIN_CONTACT_MS && contactMs <= MAX_CONTACT_MS) {
             jumpsRef.current = jumpsRef.current.map((j, i) =>
               i === jumpsRef.current.length - 1 ? { ...j, contactMs } : j
@@ -98,18 +104,19 @@ export function useAccelerometerJump({ maxJumps = 5, testType = 'CMJ' } = {}) {
             setJumps([...jumpsRef.current]);
           }
         }
-        stateRef.current = STATE.AIRBORNE;
+        stateRef.current  = STATE.AIRBORNE;
         setState(STATE.AIRBORNE);
         airborneStart.current = now;
         contactStart.current  = null;
       }
     } else if (cur === STATE.AIRBORNE) {
-      if (mag > FREEFALL_THRESHOLD * 2) {
+      if (mag > LANDING_THRESHOLD) {
         // Aterrizaje detectado
         const flightMs = now - airborneStart.current;
-        stateRef.current = STATE.CONTACT;
+        stateRef.current     = STATE.CONTACT;
         setState(STATE.CONTACT);
-        contactStart.current = now;
+        contactStart.current  = now;
+        cooldownUntil.current = now + COOLDOWN_MS;
 
         if (flightMs >= MIN_FLIGHT_MS && flightMs <= MAX_FLIGHT_MS) {
           const height  = flightToHeight(flightMs);
@@ -120,6 +127,7 @@ export function useAccelerometerJump({ maxJumps = 5, testType = 'CMJ' } = {}) {
           if (jumpsRef.current.length >= maxJumpsRef.current) {
             isDetRef.current = false;
             setIsDetecting(false);
+            window.removeEventListener('devicemotion', handleMotion);
           }
         }
       }
@@ -127,11 +135,12 @@ export function useAccelerometerJump({ maxJumps = 5, testType = 'CMJ' } = {}) {
   }, []);
 
   const startDetection = useCallback(() => {
-    jumpsRef.current = [];
+    jumpsRef.current      = [];
     setJumps([]);
     contactStart.current  = null;
     airborneStart.current = null;
-    stateRef.current = STATE.CONTACT;
+    cooldownUntil.current = 0;
+    stateRef.current      = STATE.CONTACT;
     setState(STATE.CONTACT);
     isDetRef.current = true;
     setIsDetecting(true);

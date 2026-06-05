@@ -1,24 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { useState } from 'react';
 import { QrCode, Printer } from 'lucide-react';
-
-const HOOPER_URL = `${window.location.origin}/hooper/team_001`;
-const RPE_URL    = `${window.location.origin}/rpe/team_001`;
-
-const FORMS = [
-  {
-    id:       'hooper',
-    title:    'Wellness diario',
-    subtitle: 'Escaneá antes de cada sesión',
-    url:      HOOPER_URL,
-  },
-  {
-    id:       'rpe',
-    title:    'RPE de sesión',
-    subtitle: 'Escaneá al terminar el entrenamiento',
-    url:      RPE_URL,
-  },
-];
+import { useTeam } from '../context/TeamContext';
 
 // Fallback de clipboard para iOS Safari
 function copyToClipboard(text, onSuccess) {
@@ -44,8 +27,8 @@ function fallbackCopy(text, onSuccess) {
 }
 
 // Abre una ventana limpia con los dos QRs para imprimir
-function handlePrint() {
-  const cards = FORMS.map(f => {
+function handlePrint(forms) {
+  const cards = forms.map(f => {
     // Extraer el SVG renderizado por qrcode.react directamente del DOM
     const container = document.getElementById(`qr-svg-${f.id}`);
     const svgHTML   = container ? container.innerHTML : '';
@@ -170,6 +153,26 @@ function QRCard({ id, title, subtitle, url }) {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function QRGenerator() {
+  const { activeTeam } = useTeam();
+  const isValidTeam = activeTeam?.id && String(activeTeam.id).includes('-');
+
+  const forms = isValidTeam
+    ? [
+        {
+          id:       'hooper',
+          title:    'Wellness diario',
+          subtitle: 'Escaneá antes de cada sesión',
+          url:      `${window.location.origin}/hooper/${activeTeam.id}`,
+        },
+        {
+          id:       'rpe',
+          title:    'RPE de sesión',
+          subtitle: 'Escaneá al terminar el entrenamiento',
+          url:      `${window.location.origin}/rpe/${activeTeam.id}`,
+        },
+      ]
+    : [];
+
   return (
     <div className="bg-surface rounded-fieldlab p-4 border border-white/5
       shadow-[0_10px_15px_-3px_rgba(0,0,0,0.4)]">
@@ -182,23 +185,30 @@ export default function QRGenerator() {
             Códigos QR del equipo
           </h3>
         </div>
-        <button
-          onClick={handlePrint}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs
-            font-semibold border border-white/10 text-slate-400
-            hover:text-slate-200 hover:border-white/20 transition-all active:scale-95"
-        >
-          <Printer size={12} strokeWidth={1.5} />
-          Imprimir
-        </button>
+        {isValidTeam && (
+          <button
+            onClick={() => handlePrint(forms)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs
+              font-semibold border border-white/10 text-slate-400
+              hover:text-slate-200 hover:border-white/20 transition-all active:scale-95"
+          >
+            <Printer size={12} strokeWidth={1.5} />
+            Imprimir
+          </button>
+        )}
       </div>
 
-      {/* Dos QRs: columna en mobile, lado a lado en desktop */}
-      <div className="flex flex-col md:flex-row gap-6">
-        {FORMS.map(f => (
-          <QRCard key={f.id} {...f} />
-        ))}
-      </div>
+      {!isValidTeam ? (
+        <p className="text-xs text-slate-500 text-center py-4">
+          Seleccioná un equipo para generar los QRs
+        </p>
+      ) : (
+        <div className="flex flex-col md:flex-row gap-6">
+          {forms.map(f => (
+            <QRCard key={f.id} {...f} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

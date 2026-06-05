@@ -115,6 +115,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   });
 
   const audioCtxRef   = useRef(null);
+  const undoTrapRef   = useRef(null);
   const prevJumpCount = useRef(0);
 
   const accel = useAccelerometerJump({ maxJumps: numReps, testType });
@@ -175,32 +176,16 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     };
   }, [step]);
 
-  // Deshabilitar shake-to-undo de iOS durante la detección
+  // Deshabilitar shake-to-undo: foco en input readOnly vacío durante la detección
+  // Un <input readOnly> es el único elemento que iOS reconoce como first responder
+  // pero sin historial de deshacer — el popup no aparece.
   useEffect(() => {
-    if (step !== 'DETECTANDO' && step !== 'COUNTDOWN') return;
-
-    // Quitar foco de cualquier input activo (el foco en un input activa shake-to-undo)
-    if (document.activeElement && document.activeElement !== document.body) {
-      document.activeElement.blur();
+    if (step !== 'DETECTANDO' && step !== 'COUNTDOWN') {
+      undoTrapRef.current?.blur();
+      return;
     }
-
-    // Bloquear Cmd/Ctrl+Z (undo keyboard shortcut)
-    const blockUndo = (e) => {
-      if (e.key === 'z' && (e.metaKey || e.ctrlKey)) e.preventDefault();
-    };
-    document.addEventListener('keydown', blockUndo);
-
-    // Mantener foco en un div no-editable para que iOS no tenga contexto de texto
-    const focusTrap = document.createElement('div');
-    focusTrap.setAttribute('tabindex', '-1');
-    focusTrap.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
-    document.body.appendChild(focusTrap);
-    focusTrap.focus();
-
-    return () => {
-      document.removeEventListener('keydown', blockUndo);
-      if (document.body.contains(focusTrap)) document.body.removeChild(focusTrap);
-    };
+    const t = setTimeout(() => undoTrapRef.current?.focus(), 50);
+    return () => clearTimeout(t);
   }, [step]);
   useEffect(() => {
     if (!showDebug) { setCurrentMag(null); return; }
@@ -236,6 +221,17 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
 
   // AudioContext se crea SÍNCRONAMENTE aquí — iOS requiere que el gesto sea síncrono
   function handleAthleteStart() {
+    // Reproducir audio HTML silencioso ANTES del AudioContext:
+    // esto eleva la sesión de audio de iOS de "Ambient" (mutable por el switch)
+    // a "Playback" (altavoz principal, no afectado por el mute switch).
+    try {
+      // WAV silencioso de 1 sample — mínimo válido
+      const sil = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+      sil.setAttribute('playsinline', '');
+      sil.volume = 0.001;
+      sil.play().catch(() => {});
+    } catch (_) {}
+
     let ctx = null;
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -322,10 +318,26 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  // Input oculto siempre en el DOM — recibe foco durante COUNTDOWN/DETECTANDO
+  // para que iOS no encuentre historial de escritura al hacer shake-to-undo
+  const undoTrap = (
+    <input
+      ref={undoTrapRef}
+      type="text"
+      readOnly
+      autoComplete="off"
+      aria-hidden="true"
+      tabIndex={-1}
+      style={{ position: 'fixed', opacity: 0, width: 1, height: 1,
+        left: -9999, pointerEvents: 'none' }}
+    />
+  );
+
   // ── SELECTOR ────────────────────────────────────────────────────────────────
   if (step === 'SELECTOR') {
     return (
       <div style={{ paddingBottom: 24 }}>
+        {undoTrap}
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ color: '#f8fafc', fontSize: 20, fontWeight: 700, margin: 0 }}>
             Batería de Bosco
@@ -408,6 +420,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     const cfg = TEST_CONFIGS[testType];
     return (
       <div style={{ paddingBottom: 24 }}>
+        {undoTrap}
         <button onClick={() => setStep('SELECTOR')}
           style={{ background: 'none', border: 'none', color: C.muted,
             fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 20 }}>
@@ -539,6 +552,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
         alignItems: 'center', justifyContent: 'center',
         padding: 32,
       }}>
+        {undoTrap}
         <div style={{ fontSize: 56, marginBottom: 12 }}>{cfg.icon}</div>
         <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 700,
           marginBottom: 8, textAlign: 'center', margin: '0 0 8px' }}>
@@ -593,6 +607,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
         background: '#000',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
+        {undoTrap}
         <span style={{
           fontFamily: "'JetBrains Mono', monospace",
           fontSize: 140, fontWeight: 900,
@@ -621,6 +636,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
           gap: 24, touchAction: 'none',
         }}
       >
+        {undoTrap}
         <div style={{
           background: accel.state === 'airborne'
             ? 'rgba(34,197,94,0.12)' : 'rgba(56,189,248,0.08)',
@@ -696,6 +712,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
 
     return (
       <div style={{ paddingBottom: 32 }}>
+        {undoTrap}
         <div style={{ marginBottom: 20 }}>
           <h2 style={{ color: '#f8fafc', fontSize: 20, fontWeight: 700, margin: 0 }}>
             {cfg.icon} Resultado — {cfg.label}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAccelerometerJump, heightToSayers, calcRSI, calcElasticEfficiency } from '../hooks/useAccelerometerJump';
 
@@ -94,6 +94,43 @@ function StatCard({ label, value, unit, color }) {
   );
 }
 
+// ── Audio via HTML <audio> ────────────────────────────────────────────────────
+// Web Audio API usa AVAudioSessionCategorySoloAmbient → earpiece, mutable por
+// mute switch. <audio> HTML usa AVAudioSessionCategoryPlayback → altavoz
+// principal, no mutable. Generamos WAV sintético en JS y lo reproducimos así.
+
+function genBeepWav(freq, durationMs, sampleRate = 22050) {
+  const n   = Math.round(sampleRate * durationMs / 1000);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v   = new DataView(buf);
+  const ws  = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const t   = i / sampleRate;
+    const env = Math.max(0, Math.min(t / 0.005, 1) * Math.min((durationMs / 1000 - t) / 0.015, 1));
+    v.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * freq * t) * env * 0.9 * 32767), true);
+  }
+  const bytes = new Uint8Array(buf);
+  let b = '';
+  for (let i = 0; i < bytes.length; i++) b += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(b);
+}
+
+function playBeep(src) {
+  if (!src) return;
+  try {
+    const a = new Audio(src);
+    a.setAttribute('playsinline', '');
+    a.setAttribute('webkit-playsinline', '');
+    a.volume = 1.0;
+    a.play().catch(e => console.warn('beep play failed:', e));
+  } catch (e) { console.warn('beep error:', e); }
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BoscoView({ onNavigate, onFullscreen }) {
@@ -114,59 +151,26 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     } catch { return []; }
   });
 
-  const audioCtxRef   = useRef(null);
   const undoTrapRef   = useRef(null);
-  const keepaliveRef  = useRef(null); // oscilador silencioso — impide que iOS suspenda el AudioContext
   const prevJumpCount = useRef(0);
 
+  // WAVs generados una sola vez — evita recalcular en cada beep
+  const beeps = useMemo(() => ({
+    tick: genBeepWav(880,  130),
+    go:   genBeepWav(1320, 380),
+    jump: genBeepWav(520,  180),
+    end:  genBeepWav(440,  480),
+  }), []);
+
   const accel = useAccelerometerJump({ maxJumps: numReps, testType });
-
-  function _playBeepSync(ctx, freq = 880, duration = 0.15, type = 'sine') {
-    if (!ctx) return;
-    // iOS suspende el AudioContext tras unos segundos de silencio.
-    // resume() es async pero kick-start el contexto; el oscilador
-    // del keepalive garantiza que ya esté running durante DETECTANDO.
-    if (ctx.state === 'suspended') ctx.resume();
-    try {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type            = type;
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.9, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + duration + 0.01);
-    } catch (e) { console.warn('beep error:', e); }
-  }
-
-  function _startKeepalive(ctx) {
-    if (!ctx || keepaliveRef.current) return;
-    try {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      gain.gain.value = 0.0001; // inaudible
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      keepaliveRef.current = osc;
-    } catch (_) {}
-  }
-
-  function _stopKeepalive() {
-    try { keepaliveRef.current?.stop(); } catch (_) {}
-    keepaliveRef.current = null;
-  }
 
   // Track jump count to trigger beep on new jumps
   useEffect(() => {
     if (accel.jumps.length > prevJumpCount.current) {
-      // square wave 440Hz — más audible que sine en bolsillo/tela
-      _playBeepSync(audioCtxRef.current, 440, 0.15, 'square');
+      playBeep(beeps.jump);
       prevJumpCount.current = accel.jumps.length;
     }
-  }, [accel.jumps.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accel.jumps.length, beeps.jump]);
 
   // Fullscreen during kiosk steps
   useEffect(() => {
@@ -178,11 +182,10 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   // Auto-advance when detection fills up
   useEffect(() => {
     if (step === 'DETECTANDO' && !accel.isDetecting && accel.jumps.length > 0) {
-      _stopKeepalive();
-      _playBeepSync(audioCtxRef.current, 440, 0.5);
+      playBeep(beeps.end);
       setStep('RESULTADO');
     }
-  }, [accel.isDetecting, accel.jumps.length, step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accel.isDetecting, accel.jumps.length, step, beeps.end]);
 
   // Bloquear scroll durante pantallas kiosko (solo touchmove — NO touchstart)
   useEffect(() => {
@@ -244,44 +247,19 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     setStep('ENTREGAR');
   }, [accel]);
 
-  // AudioContext se crea SÍNCRONAMENTE aquí — iOS requiere que el gesto sea síncrono
+  // Primer beep dentro del tap — desbloquea el altavoz iOS para el resto de la sesión
   function handleAthleteStart() {
-    // Reproducir audio HTML silencioso ANTES del AudioContext:
-    // esto eleva la sesión de audio de iOS de "Ambient" (mutable por el switch)
-    // a "Playback" (altavoz principal, no afectado por el mute switch).
-    try {
-      // WAV silencioso de 1 sample — mínimo válido
-      const sil = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-      sil.setAttribute('playsinline', '');
-      sil.volume = 0.001;
-      sil.play().catch(() => {});
-    } catch (_) {}
-
-    let ctx = null;
-    try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      audioCtxRef.current = ctx;
-      // Primer beep inmediato y síncrono — desbloquea el audio en iOS
-      _playBeepSync(ctx, 880, 0.15);
-    } catch (e) { console.warn('AudioContext error:', e); }
-
+    playBeep(beeps.tick);
     setStep('COUNTDOWN');
     setCountNum(3);
 
-    setTimeout(() => {
-      setCountNum(2);
-      _playBeepSync(audioCtxRef.current, 880, 0.15);
-    }, 1000);
-    setTimeout(() => {
-      setCountNum(1);
-      _playBeepSync(audioCtxRef.current, 880, 0.15);
-    }, 2000);
+    setTimeout(() => { setCountNum(2); playBeep(beeps.tick); }, 1000);
+    setTimeout(() => { setCountNum(1); playBeep(beeps.tick); }, 2000);
     setTimeout(() => {
       setCountNum('GO');
-      _playBeepSync(audioCtxRef.current, 1320, 0.4);
+      playBeep(beeps.go);
       setTimeout(() => {
         setStep('DETECTANDO');
-        _startKeepalive(audioCtxRef.current); // mantener AudioContext activo
         accel.startDetection();
       }, 500);
     }, 3000);
@@ -313,11 +291,10 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   }, [accel]);
 
   const handleRetry = useCallback(() => {
-    _stopKeepalive();
     accel.reset();
     prevJumpCount.current = 0;
     setStep('ENTREGAR');
-  }, [accel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accel]);
 
   // ── RESULTADO helpers ────────────────────────────────────────────────────────
 
@@ -712,9 +689,8 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
 
         <button
           onClick={() => {
-            _stopKeepalive();
             accel.stopDetection();
-            _playBeepSync(audioCtxRef.current, 440, 0.5);
+            playBeep(beeps.end);
             setStep('RESULTADO');
           }}
           style={{

@@ -187,19 +187,28 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     }
   }, [accel.isDetecting, accel.jumps.length, step, beeps.end]);
 
-  // Bloquear scroll durante pantallas kiosko (solo touchmove — NO touchstart)
+  // Bloquear todos los toques durante kiosko — solo deja pasar FINALIZAR
   useEffect(() => {
     if (step !== 'DETECTANDO' && step !== 'COUNTDOWN') return;
 
-    const blockScroll = (e) => { e.preventDefault(); };
-    document.addEventListener('touchmove', blockScroll, { passive: false });
+    const isFinalizar = (e) => !!e.target.closest('[data-bosco-finalizar]');
+
+    const blockStart = (e) => { if (!isFinalizar(e)) { e.preventDefault(); e.stopPropagation(); } };
+    const blockEnd   = (e) => { if (!isFinalizar(e)) { e.preventDefault(); e.stopPropagation(); } };
+    const blockMove  = (e) => { e.preventDefault(); };
+
+    document.addEventListener('touchstart', blockStart, { capture: true, passive: false });
+    document.addEventListener('touchend',   blockEnd,   { capture: true, passive: false });
+    document.addEventListener('touchmove',  blockMove,  { passive: false });
 
     window.history.pushState(null, '', window.location.href);
     const blockBack = () => window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', blockBack);
 
     return () => {
-      document.removeEventListener('touchmove', blockScroll);
+      document.removeEventListener('touchstart', blockStart, { capture: true });
+      document.removeEventListener('touchend',   blockEnd,   { capture: true });
+      document.removeEventListener('touchmove',  blockMove);
       window.removeEventListener('popstate', blockBack);
     };
   }, [step]);
@@ -688,6 +697,7 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
         )}
 
         <button
+          data-bosco-finalizar=""
           onClick={() => {
             accel.stopDetection();
             playBeep(beeps.end);

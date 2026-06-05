@@ -175,7 +175,33 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     };
   }, [step]);
 
-  // Debug: leer acelerómetro en tiempo real cuando showDebug está activo
+  // Deshabilitar shake-to-undo de iOS durante la detección
+  useEffect(() => {
+    if (step !== 'DETECTANDO' && step !== 'COUNTDOWN') return;
+
+    // Quitar foco de cualquier input activo (el foco en un input activa shake-to-undo)
+    if (document.activeElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
+
+    // Bloquear Cmd/Ctrl+Z (undo keyboard shortcut)
+    const blockUndo = (e) => {
+      if (e.key === 'z' && (e.metaKey || e.ctrlKey)) e.preventDefault();
+    };
+    document.addEventListener('keydown', blockUndo);
+
+    // Mantener foco en un div no-editable para que iOS no tenga contexto de texto
+    const focusTrap = document.createElement('div');
+    focusTrap.setAttribute('tabindex', '-1');
+    focusTrap.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
+    document.body.appendChild(focusTrap);
+    focusTrap.focus();
+
+    return () => {
+      document.removeEventListener('keydown', blockUndo);
+      if (document.body.contains(focusTrap)) document.body.removeChild(focusTrap);
+    };
+  }, [step]);
   useEffect(() => {
     if (!showDebug) { setCurrentMag(null); return; }
     const handler = (e) => {
@@ -583,13 +609,18 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   if (step === 'DETECTANDO') {
     const last = accel.jumps[accel.jumps.length - 1];
     return (
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 999,
-        background: C.bg,
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        gap: 24,
-      }}>
+      <div
+        contentEditable={false}
+        suppressContentEditableWarning
+        onMouseDown={(e) => e.preventDefault()}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 999,
+          background: C.bg,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 24, touchAction: 'none',
+        }}
+      >
         <div style={{
           background: accel.state === 'airborne'
             ? 'rgba(34,197,94,0.12)' : 'rgba(56,189,248,0.08)',

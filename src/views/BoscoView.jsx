@@ -104,7 +104,9 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
   const [bodyMass,   setBodyMass]   = useState('');
   const [numReps,    setNumReps]    = useState(5);
   const [countNum,   setCountNum]   = useState(3);
-  const [sessionRes, setSessionRes] = useState({});  // { SJ: stats, CMJ: stats, DropJump: stats }
+  const [sessionRes,  setSessionRes]  = useState({});
+  const [showDebug,   setShowDebug]   = useState(false);
+  const [currentMag,  setCurrentMag]  = useState(null);
 
   const [savedResults, setSavedResults] = useState(() => {
     try {
@@ -156,25 +158,40 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
     }
   }, [accel.isDetecting, accel.jumps.length, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Bloquear scroll y gestos del browser durante las pantallas kiosko
+  // Bloquear scroll durante pantallas kiosko (solo touchmove — NO touchstart)
   useEffect(() => {
     if (step !== 'DETECTANDO' && step !== 'COUNTDOWN') return;
 
-    const blockAll = (e) => { e.preventDefault(); e.stopPropagation(); };
-    document.addEventListener('touchmove',  blockAll, { passive: false });
-    document.addEventListener('touchstart', blockAll, { passive: false });
+    const blockScroll = (e) => { e.preventDefault(); };
+    document.addEventListener('touchmove', blockScroll, { passive: false });
 
-    // Bloquear el botón atrás del browser
     window.history.pushState(null, '', window.location.href);
     const blockBack = () => window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', blockBack);
 
     return () => {
-      document.removeEventListener('touchmove',  blockAll);
-      document.removeEventListener('touchstart', blockAll);
+      document.removeEventListener('touchmove', blockScroll);
       window.removeEventListener('popstate', blockBack);
     };
   }, [step]);
+
+  // Debug: leer acelerómetro en tiempo real cuando showDebug está activo
+  useEffect(() => {
+    if (!showDebug) { setCurrentMag(null); return; }
+    const handler = (e) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      setCurrentMag(Math.sqrt((acc.x ?? 0) ** 2 + (acc.y ?? 0) ** 2 + (acc.z ?? 0) ** 2));
+    };
+    if (typeof DeviceMotionEvent?.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission().then(res => {
+        if (res === 'granted') window.addEventListener('devicemotion', handler, { passive: true });
+      });
+    } else {
+      window.addEventListener('devicemotion', handler, { passive: true });
+    }
+    return () => window.removeEventListener('devicemotion', handler);
+  }, [showDebug]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -221,12 +238,6 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
       }, 500);
     }, 3000);
   }
-
-  const handleFinish = useCallback(() => {
-    accel.stopDetection();
-    _playBeepSync(audioCtxRef.current, 440, 0.5);
-    setStep('RESULTADO');
-  }, [accel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = useCallback(() => {
     if (!accel.stats) return;
@@ -439,6 +450,37 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
           </div>
         </div>
 
+        {/* Debug sensor */}
+        <button
+          onClick={() => setShowDebug(s => !s)}
+          style={{
+            padding: '8px 16px', borderRadius: 8,
+            border: `1px solid ${C.border}`, background: 'transparent',
+            color: '#64748b', fontSize: 12, cursor: 'pointer', marginBottom: 8,
+          }}>
+          {showDebug ? 'Ocultar debug' : 'Ver sensor'}
+        </button>
+        {showDebug && (
+          <div style={{
+            background: '#0f172a', border: `1px solid ${C.border}`,
+            borderRadius: 12, padding: 16, marginBottom: 12,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
+            <div style={{ color: C.muted, fontSize: 11, marginBottom: 8 }}>
+              DEBUG — Aceleración en tiempo real
+            </div>
+            <div style={{ color: C.accent, fontSize: 28, fontWeight: 700 }}>
+              {currentMag != null ? currentMag.toFixed(1) : '--'} m/s²
+            </div>
+            <div style={{ color: '#64748b', fontSize: 11, marginTop: 6 }}>
+              Reposo: ~9.8 · Caída libre: ~0–2 · Impacto: ~15–30
+            </div>
+            <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+              Umbral despegue: &lt;4.0 · Umbral aterrizaje: &gt;12.0
+            </div>
+          </div>
+        )}
+
         {accel.error && (
           <div style={{ background: '#ef444422', border: '1px solid #ef4444',
             borderRadius: 12, padding: '12px 16px', marginBottom: 16,
@@ -595,20 +637,19 @@ export default function BoscoView({ onNavigate, onFullscreen }) {
         )}
 
         <button
-          onClick={handleFinish}
-          onTouchEnd={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            handleFinish();
+          onClick={() => {
+            accel.stopDetection();
+            _playBeepSync(audioCtxRef.current, 440, 0.5);
+            setStep('RESULTADO');
           }}
           style={{
-            marginTop: 12, padding: '16px 48px', borderRadius: 14,
-            border: `2px solid ${C.border}`,
-            background: 'transparent', color: C.muted,
-            fontSize: 15, fontWeight: 600, cursor: 'pointer',
-            touchAction: 'manipulation',
+            marginTop: 16, minWidth: 200, minHeight: 56,
+            padding: '18px 56px', borderRadius: 14,
+            border: '2px solid #475569',
+            background: 'rgba(30,41,59,0.8)', color: C.muted,
+            fontSize: 17, fontWeight: 700, cursor: 'pointer',
+            letterSpacing: '0.08em',
             WebkitTapHighlightColor: 'transparent',
-            position: 'relative', zIndex: 10001,
           }}>
           FINALIZAR
         </button>

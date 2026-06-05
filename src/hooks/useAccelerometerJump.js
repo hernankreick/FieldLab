@@ -1,13 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 const G = 9.81;
-const MIN_FLIGHT_MS      = 200;
-const MAX_FLIGHT_MS      = 800;
+const MIN_FLIGHT_MS      = 150;
+const MAX_FLIGHT_MS      = 1000;
 const MIN_CONTACT_MS     = 50;
 const MAX_CONTACT_MS     = 400;
-const FREEFALL_THRESHOLD = 3.0;
-const LANDING_THRESHOLD  = FREEFALL_THRESHOLD * 2;
-const COOLDOWN_MS        = 400; // ignorar lecturas durante 400ms post-aterrizaje
+const FREEFALL_THRESHOLD = 4.0;
+const LANDING_THRESHOLD  = 12.0;
+const COOLDOWN_MS        = 300;
 
 export function flightToHeight(flightMs) {
   const t = flightMs / 1000;

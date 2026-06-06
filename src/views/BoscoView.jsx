@@ -221,12 +221,6 @@ export default function BoscoView({ onFullscreen }) {
     if (galleryInputRef.current) galleryInputRef.current.value = '';
   }
 
-  function handleVideoFile(file) {
-    if (!file) return;
-    video.loadVideo(file);
-    setStep('ANALIZANDO_B');
-  }
-
   function handleStartEval() {
     timer.reset();
     setManualJumps([]);
@@ -256,7 +250,7 @@ export default function BoscoView({ onFullscreen }) {
     if (updated.length >= numReps) {
       setStep('RESULTADO');
     } else {
-      video.clearVideo();
+      video.resetAll();   // limpia DOM + estado + marcadores
       clearFileInputs();
       setStep('GRABANDO_B');
     }
@@ -668,6 +662,7 @@ export default function BoscoView({ onFullscreen }) {
 
   // ── GRABANDO_B ────────────────────────────────────────────────────────────────
   if (step === 'GRABANDO_B') {
+    const jumpNum = manualJumps.length + 1;
     return (
       <div style={{ paddingBottom: 24 }}>
         <button onClick={() => setStep('CONFIG')}
@@ -676,24 +671,52 @@ export default function BoscoView({ onFullscreen }) {
           ← Volver
         </button>
 
-        <div style={{ marginBottom: 24 }}>
-          <h2 style={{ color: '#f8fafc', fontSize: 20, fontWeight: 700, margin: 0 }}>
-            Salto {manualJumps.length + 1} de {numReps}
-          </h2>
-          <p style={{ color: C.muted, fontSize: 13, margin: '4px 0 0' }}>
-            Grabá el salto con el celu apoyado
-          </p>
+        {/* Progreso */}
+        <div style={{
+          background: C.card, borderRadius: 12, padding: '12px 16px',
+          marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ color: C.muted, fontSize: 13 }}>
+            {TEST_CONFIGS[testType]?.icon} {TEST_CONFIGS[testType]?.label} — Salto
+          </span>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            color: C.accent, fontSize: 20, fontWeight: 700,
+          }}>
+            {jumpNum} / {numReps}
+          </span>
         </div>
+
+        {/* Saltos ya registrados */}
+        {manualJumps.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {manualJumps.map((j, i) => {
+              const st = jumpStatus(j.height, testType);
+              return (
+                <div key={i} style={{
+                  background: C.card2, borderRadius: 8, padding: '6px 12px', textAlign: 'center',
+                }}>
+                  <div style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    color: STATUS_COLOR[st] ?? C.accent, fontSize: 15, fontWeight: 700,
+                  }}>
+                    {j.height}cm
+                  </div>
+                  <div style={{ color: C.muted, fontSize: 10 }}>S{i + 1}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div style={{ background: C.card, borderRadius: 12, padding: 16, marginBottom: 16 }}>
           <div style={{ color: '#f8fafc', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-            Cómo posicionar la cámara
+            Instrucciones
           </div>
           <ol style={{ color: C.muted, fontSize: 13, lineHeight: 1.8, margin: 0, paddingLeft: 20 }}>
-            <li>Apoyá el celu contra la pared o en el piso</li>
-            <li>La cámara debe ver los pies completos</li>
-            <li>Grabá el salto en video</li>
-            <li>Cargá el video para analizarlo</li>
+            <li>Apoyá el celu en el piso con la cámara apuntando hacia vos</li>
+            <li>Grabá UN solo salto por video</li>
+            <li>Marcá el frame de despegue y de aterrizaje</li>
           </ol>
         </div>
 
@@ -706,14 +729,16 @@ export default function BoscoView({ onFullscreen }) {
             marginBottom: 10,
           }}
         >
-          🎥 Grabar con cámara
+          🎥 Grabar salto {jumpNum}
         </button>
         <input
           ref={cameraInputRef}
-          type="file"
-          accept="video/*"
-          capture="environment"
-          onChange={(e) => handleVideoFile(e.target.files?.[0])}
+          type="file" accept="video/*" capture="environment"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = ''; // permite recargar el mismo archivo
+            if (file) { video.loadVideo(file); setStep('ANALIZANDO_B'); }
+          }}
           style={{ display: 'none' }}
         />
 
@@ -725,13 +750,16 @@ export default function BoscoView({ onFullscreen }) {
             color: C.text, fontWeight: 600, fontSize: 15, cursor: 'pointer',
           }}
         >
-          📁 Cargar desde galería
+          📁 Cargar video
         </button>
         <input
           ref={galleryInputRef}
-          type="file"
-          accept="video/*"
-          onChange={(e) => handleVideoFile(e.target.files?.[0])}
+          type="file" accept="video/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = ''; // permite recargar el mismo archivo
+            if (file) { video.loadVideo(file); setStep('ANALIZANDO_B'); }
+          }}
           style={{ display: 'none' }}
         />
 

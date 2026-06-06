@@ -82,6 +82,11 @@ export function useVideoAnalysis() {
     setLandingTime(null);
   }, []);
 
+  const resetMarkers = useCallback(() => {
+    setTakeoffTime(null);
+    setLandingTime(null);
+  }, []);
+
   const clearVideo = useCallback(() => {
     setVideoSrc(null);
     setTakeoffTime(null);
@@ -89,6 +94,18 @@ export function useVideoAnalysis() {
     setIsReady(false);
     setCurrentTime(0);
     setDuration(0);
+  }, []);
+
+  // Limpia todo incluyendo el elemento DOM — usar entre saltos de un mismo video
+  const resetAll = useCallback(() => {
+    setVideoSrc(null);
+    setTakeoffTime(null);
+    setLandingTime(null);
+    setIsReady(false);
+    setCurrentTime(0);
+    setDuration(0);
+    const v = videoRef.current;
+    if (v) { v.pause(); v.src = ''; v.load(); }
   }, []);
 
   const result = (() => {
@@ -105,6 +122,6 @@ export function useVideoAnalysis() {
     isReady, result,
     loadVideo, onVideoLoad, onVideoTimeUpdate,
     stepFrame, seekTo, markTakeoff, markLanding,
-    reset, clearVideo, forceReady,
+    reset, resetMarkers, clearVideo, resetAll, forceReady,
   };
 }

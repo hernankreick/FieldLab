@@ -13,13 +13,21 @@ export function useVideoAnalysis() {
   const [isReady,     setIsReady]     = useState(false);
 
   const loadVideo = useCallback((file) => {
-    const url = URL.createObjectURL(file);
-    setVideoSrc(url);
+    if (!file) return;
+    setIsReady(false);
     setTakeoffTime(null);
     setLandingTime(null);
     setCurrentTime(0);
-    setIsReady(false);
     setDuration(0);
+    // FileReader genera un data URL (base64) que iOS Safari siempre puede reproducir,
+    // a diferencia de createObjectURL que falla silenciosamente en algunos contextos.
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setVideoSrc(e.target.result);
+      // Esperar a que React actualice el src antes de llamar load()
+      setTimeout(() => { videoRef.current?.load(); }, 50);
+    };
+    reader.readAsDataURL(file);
   }, []);
 
   const onVideoLoad = useCallback((e) => {
@@ -75,10 +83,7 @@ export function useVideoAnalysis() {
   }, []);
 
   const clearVideo = useCallback(() => {
-    setVideoSrc(prev => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
+    setVideoSrc(null);
     setTakeoffTime(null);
     setLandingTime(null);
     setIsReady(false);

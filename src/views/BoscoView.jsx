@@ -144,9 +144,12 @@ export default function BoscoView({ onFullscreen }) {
     end:  genBeepWav(440, 480),
   }), []);
 
-  const timer          = useManualTimer({ maxJumps: numReps });
-  const video          = useVideoAnalysis();
-  const cameraInputRef = useRef(null);
+  const [countdownNum, setCountdownNum] = useState(3);
+  const audioCtxRef    = useRef(null);
+
+  const timer           = useManualTimer({ maxJumps: numReps });
+  const video           = useVideoAnalysis();
+  const cameraInputRef  = useRef(null);
   const galleryInputRef = useRef(null);
 
   // Fullscreen kiosko para modo A
@@ -187,6 +190,22 @@ export default function BoscoView({ onFullscreen }) {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
+  // AudioContext beep — funciona desde setTimeout porque el ctx ya fue desbloqueado
+  function _beep(freq, dur) {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    try {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.5, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      o.start(ctx.currentTime);
+      o.stop(ctx.currentTime + dur + 0.01);
+    } catch {}
+  }
+
   function handleSelectTest(type) {
     setTestType(type);
     setStep('MODO');
@@ -213,7 +232,21 @@ export default function BoscoView({ onFullscreen }) {
     setManualJumps([]);
     video.clearVideo();
     clearFileInputs();
-    setStep(modo === 'A' ? 'EVALUANDO_A' : 'GRABANDO_B');
+
+    if (modo === 'B') { setStep('GRABANDO_B'); return; }
+
+    // Modo A: countdown 3-2-1-GO con AudioContext
+    setCountdownNum(3);
+    setStep('COUNTDOWN');
+    _beep(880, 0.15);
+
+    setTimeout(() => { setCountdownNum(2); _beep(880, 0.15); }, 1000);
+    setTimeout(() => { setCountdownNum(1); _beep(880, 0.15); }, 2000);
+    setTimeout(() => {
+      setCountdownNum('GO');
+      _beep(1320, 0.40);
+      setTimeout(() => setStep('EVALUANDO_A'), 600);
+    }, 3000);
   }
 
   function handleConfirmVideoJump() {
@@ -360,12 +393,23 @@ export default function BoscoView({ onFullscreen }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <button
+            onTouchStart={(e) => {
+              e.preventDefault();
+              if (!audioCtxRef.current) {
+                try {
+                  audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                  audioCtxRef.current.resume();
+                } catch {}
+              }
+              handleSelectModo('A');
+            }}
             onClick={() => handleSelectModo('A')}
             style={{
               background: C.card, border: `1px solid ${C.border}`,
               borderRadius: 16, padding: '20px',
               display: 'flex', alignItems: 'flex-start', gap: 16,
               cursor: 'pointer', textAlign: 'left', width: '100%',
+              WebkitTapHighlightColor: 'transparent',
             }}
           >
             <span style={{ fontSize: 36 }}>👥</span>
@@ -485,7 +529,16 @@ export default function BoscoView({ onFullscreen }) {
         </div>
 
         <button
-          onTouchStart={(e) => { e.preventDefault(); handleStartEval(); }}
+          onTouchStart={(e) => {
+            e.preventDefault();
+            if (!audioCtxRef.current) {
+              try {
+                audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                audioCtxRef.current.resume();
+              } catch {}
+            }
+            handleStartEval();
+          }}
           onClick={handleStartEval}
           style={{
             width: '100%', padding: '16px 0', borderRadius: 14,
@@ -495,6 +548,29 @@ export default function BoscoView({ onFullscreen }) {
           }}>
           Comenzar →
         </button>
+      </div>
+    );
+  }
+
+  // ── COUNTDOWN ─────────────────────────────────────────────────────────────────
+  if (step === 'COUNTDOWN') {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: '#000000',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 180, fontWeight: 900, lineHeight: 1,
+          color: countdownNum === 'GO' ? C.green
+               : countdownNum === 1    ? C.red
+               : countdownNum === 2    ? C.yellow
+               : C.accent,
+          userSelect: 'none',
+        }}>
+          {countdownNum}
+        </span>
       </div>
     );
   }

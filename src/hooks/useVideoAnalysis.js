@@ -35,16 +35,26 @@ export function useVideoAnalysis() {
   const stepFrame = useCallback((direction) => {
     const video = videoRef.current;
     if (!video) return;
+    video.pause();
     const newTime = Math.max(0, Math.min(video.duration, video.currentTime + direction / 30));
     video.currentTime = newTime;
-    setCurrentTime(newTime);
+    video.addEventListener('seeked', () => setCurrentTime(video.currentTime), { once: true });
   }, []);
 
   const seekTo = useCallback((time) => {
     const video = videoRef.current;
     if (!video) return;
+    video.pause();
     video.currentTime = time;
-    setCurrentTime(time);
+    video.addEventListener('seeked', () => setCurrentTime(video.currentTime), { once: true });
+  }, []);
+
+  // Permite forzar isReady desde fuera (ej. overlay de play en iOS)
+  const forceReady = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    setDuration(video.duration || 0);
+    setIsReady(true);
   }, []);
 
   const markTakeoff = useCallback(() => {
@@ -90,6 +100,6 @@ export function useVideoAnalysis() {
     isReady, result,
     loadVideo, onVideoLoad, onVideoTimeUpdate,
     stepFrame, seekTo, markTakeoff, markLanding,
-    reset, clearVideo,
+    reset, clearVideo, forceReady,
   };
 }

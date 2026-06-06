@@ -144,9 +144,10 @@ export default function BoscoView({ onFullscreen }) {
     end:  genBeepWav(440, 480),
   }), []);
 
-  const timer   = useManualTimer({ maxJumps: numReps });
-  const video   = useVideoAnalysis();
-  const fileRef = useRef(null);
+  const timer          = useManualTimer({ maxJumps: numReps });
+  const video          = useVideoAnalysis();
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   // Fullscreen kiosko para modo A
   useEffect(() => {
@@ -196,11 +197,22 @@ export default function BoscoView({ onFullscreen }) {
     setStep('CONFIG');
   }
 
+  function clearFileInputs() {
+    if (cameraInputRef.current)  cameraInputRef.current.value  = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
+  }
+
+  function handleVideoFile(file) {
+    if (!file) return;
+    video.loadVideo(file);
+    setStep('ANALIZANDO_B');
+  }
+
   function handleStartEval() {
     timer.reset();
     setManualJumps([]);
     video.clearVideo();
-    if (fileRef.current) fileRef.current.value = '';
+    clearFileInputs();
     setStep(modo === 'A' ? 'EVALUANDO_A' : 'GRABANDO_B');
   }
 
@@ -212,7 +224,7 @@ export default function BoscoView({ onFullscreen }) {
       setStep('RESULTADO');
     } else {
       video.clearVideo();
-      if (fileRef.current) fileRef.current.value = '';
+      clearFileInputs();
       setStep('GRABANDO_B');
     }
   }
@@ -240,7 +252,7 @@ export default function BoscoView({ onFullscreen }) {
     timer.reset();
     setManualJumps([]);
     video.clearVideo();
-    if (fileRef.current) fileRef.current.value = '';
+    clearFileInputs();
     setStep(modo === 'A' ? 'EVALUANDO_A' : 'GRABANDO_B');
   }
 
@@ -248,7 +260,7 @@ export default function BoscoView({ onFullscreen }) {
     timer.reset();
     setManualJumps([]);
     video.clearVideo();
-    if (fileRef.current) fileRef.current.value = '';
+    clearFileInputs();
     setModo(null);
     setStep('SELECTOR');
   }
@@ -472,12 +484,14 @@ export default function BoscoView({ onFullscreen }) {
           </div>
         </div>
 
-        <button onClick={handleStartEval}
+        <button
+          onTouchStart={(e) => { e.preventDefault(); handleStartEval(); }}
+          onClick={handleStartEval}
           style={{
             width: '100%', padding: '16px 0', borderRadius: 14,
             background: C.accent, border: 'none',
             color: '#0f172a', fontSize: 16, fontWeight: 800,
-            cursor: 'pointer',
+            cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
           }}>
           Comenzar →
         </button>
@@ -608,15 +622,42 @@ export default function BoscoView({ onFullscreen }) {
         </div>
 
         <button
-          onClick={() => fileRef.current?.click()}
+          onClick={() => cameraInputRef.current?.click()}
           style={{
             width: '100%', padding: '16px', borderRadius: 12,
             border: 'none', background: C.accent,
             color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+            marginBottom: 10,
           }}
         >
-          📁 Cargar video del salto
+          🎥 Grabar con cámara
         </button>
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="video/*"
+          capture="environment"
+          onChange={(e) => handleVideoFile(e.target.files?.[0])}
+          style={{ display: 'none' }}
+        />
+
+        <button
+          onClick={() => galleryInputRef.current?.click()}
+          style={{
+            width: '100%', padding: '15px', borderRadius: 12,
+            border: `1px solid ${C.border}`, background: 'transparent',
+            color: C.text, fontWeight: 600, fontSize: 15, cursor: 'pointer',
+          }}
+        >
+          📁 Cargar desde galería
+        </button>
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="video/*"
+          onChange={(e) => handleVideoFile(e.target.files?.[0])}
+          style={{ display: 'none' }}
+        />
 
         {manualJumps.length > 0 && (
           <button
@@ -630,20 +671,6 @@ export default function BoscoView({ onFullscreen }) {
             Ver resultados parciales ({manualJumps.length}/{numReps})
           </button>
         )}
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept="video/*"
-          capture="environment"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            video.loadVideo(file);
-            setStep('ANALIZANDO_B');
-          }}
-          style={{ display: 'none' }}
-        />
       </div>
     );
   }
@@ -666,9 +693,40 @@ export default function BoscoView({ onFullscreen }) {
               src={video.videoSrc}
               onLoadedMetadata={video.onVideoLoad}
               onTimeUpdate={video.onVideoTimeUpdate}
-              style={{ width: '100%', display: 'block' }}
               playsInline
+              muted
+              preload="auto"
+              style={{ width: '100%', display: 'block', background: '#000',
+                WebkitPlaysinline: true }}
             />
+            {/* Overlay de play — desbloquea carga de video en iOS cuando loadedmetadata no dispara */}
+            {!video.isReady && (
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 1,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(0,0,0,0.6)', gap: 12,
+              }}>
+                <button
+                  onClick={() => {
+                    const v = video.videoRef.current;
+                    if (!v) return;
+                    v.play()
+                      .then(() => { v.pause(); video.forceReady(); })
+                      .catch(() => video.forceReady());
+                  }}
+                  style={{
+                    width: 64, height: 64, borderRadius: '50%',
+                    background: 'rgba(56,189,248,0.9)',
+                    border: 'none', color: '#0f172a',
+                    fontSize: 24, cursor: 'pointer',
+                  }}
+                >
+                  ▶
+                </button>
+                <span style={{ color: C.muted, fontSize: 12 }}>Tocá para cargar el video</span>
+              </div>
+            )}
             {video.takeoffTime !== null && (
               <div style={{
                 position: 'absolute', top: 8, left: 8,

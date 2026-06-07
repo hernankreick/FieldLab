@@ -250,9 +250,7 @@ export default function BoscoView({ onFullscreen }) {
     if (updated.length >= numReps) {
       setStep('RESULTADO');
     } else {
-      video.resetAll();   // limpia DOM + estado + marcadores
-      clearFileInputs();
-      setStep('GRABANDO_B');
+      video.resetMarkers(); // solo limpia marcadores — el video permanece cargado
     }
   }
 
@@ -662,7 +660,7 @@ export default function BoscoView({ onFullscreen }) {
 
   // ── GRABANDO_B ────────────────────────────────────────────────────────────────
   if (step === 'GRABANDO_B') {
-    const jumpNum = manualJumps.length + 1;
+    const cfg = TEST_CONFIGS[testType];
     return (
       <div style={{ paddingBottom: 24 }}>
         <button onClick={() => setStep('CONFIG')}
@@ -671,52 +669,26 @@ export default function BoscoView({ onFullscreen }) {
           ← Volver
         </button>
 
-        {/* Progreso */}
-        <div style={{
-          background: C.card, borderRadius: 12, padding: '12px 16px',
-          marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span style={{ color: C.muted, fontSize: 13 }}>
-            {TEST_CONFIGS[testType]?.icon} {TEST_CONFIGS[testType]?.label} — Salto
-          </span>
-          <span style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            color: C.accent, fontSize: 20, fontWeight: 700,
-          }}>
-            {jumpNum} / {numReps}
-          </span>
+        <div style={{ marginBottom: 20 }}>
+          <h2 style={{ color: '#f8fafc', fontSize: 20, fontWeight: 700, margin: 0 }}>
+            {cfg.icon} {cfg.label}
+          </h2>
+          <p style={{ color: C.muted, fontSize: 13, margin: '4px 0 0' }}>
+            Modo Autoevaluación
+          </p>
         </div>
 
-        {/* Saltos ya registrados */}
-        {manualJumps.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-            {manualJumps.map((j, i) => {
-              const st = jumpStatus(j.height, testType);
-              return (
-                <div key={i} style={{
-                  background: C.card2, borderRadius: 8, padding: '6px 12px', textAlign: 'center',
-                }}>
-                  <div style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    color: STATUS_COLOR[st] ?? C.accent, fontSize: 15, fontWeight: 700,
-                  }}>
-                    {j.height}cm
-                  </div>
-                  <div style={{ color: C.muted, fontSize: 10 }}>S{i + 1}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div style={{ background: C.card, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <div style={{ color: '#f8fafc', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-            Instrucciones
-          </div>
-          <ol style={{ color: C.muted, fontSize: 13, lineHeight: 1.8, margin: 0, paddingLeft: 20 }}>
-            <li>Apoyá el celu en el piso con la cámara apuntando hacia vos</li>
-            <li>Grabá UN solo salto por video</li>
-            <li>Marcá el frame de despegue y de aterrizaje</li>
+        <div style={{
+          background: C.card, borderRadius: 12, padding: 16, marginBottom: 16,
+          border: `1px solid ${C.accent}33`,
+        }}>
+          <p style={{ color: C.accent, fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>
+            📹 Grabá todos los saltos en un solo video
+          </p>
+          <ol style={{ color: C.text, fontSize: 13, lineHeight: 1.8, margin: 0, paddingLeft: 16 }}>
+            <li>Apoyá el celu en el suelo apuntando a tus pies</li>
+            <li>Grabá los {numReps} saltos seguidos</li>
+            <li>Después marcás despegue y aterrizaje de cada uno</li>
           </ol>
         </div>
 
@@ -729,18 +701,8 @@ export default function BoscoView({ onFullscreen }) {
             marginBottom: 10,
           }}
         >
-          🎥 Grabar salto {jumpNum}
+          🎥 Grabar {numReps} saltos
         </button>
-        <input
-          ref={cameraInputRef}
-          type="file" accept="video/*" capture="environment"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = ''; // permite recargar el mismo archivo
-            if (file) { video.loadVideo(file); setStep('ANALIZANDO_B'); }
-          }}
-          style={{ display: 'none' }}
-        />
 
         <button
           onClick={() => galleryInputRef.current?.click()}
@@ -750,31 +712,29 @@ export default function BoscoView({ onFullscreen }) {
             color: C.text, fontWeight: 600, fontSize: 15, cursor: 'pointer',
           }}
         >
-          📁 Cargar video
+          📁 Cargar video existente
         </button>
+
+        <input
+          ref={cameraInputRef}
+          type="file" accept="video/*" capture="environment"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) { video.loadVideo(file); setStep('ANALIZANDO_B'); }
+          }}
+          style={{ display: 'none' }}
+        />
         <input
           ref={galleryInputRef}
           type="file" accept="video/*"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            e.target.value = ''; // permite recargar el mismo archivo
+            e.target.value = '';
             if (file) { video.loadVideo(file); setStep('ANALIZANDO_B'); }
           }}
           style={{ display: 'none' }}
         />
-
-        {manualJumps.length > 0 && (
-          <button
-            onClick={() => setStep('RESULTADO')}
-            style={{
-              width: '100%', marginTop: 10, padding: '13px', borderRadius: 12,
-              border: `1px solid ${C.border}`, background: 'transparent',
-              color: C.muted, fontSize: 13, cursor: 'pointer',
-            }}
-          >
-            Ver resultados parciales ({manualJumps.length}/{numReps})
-          </button>
-        )}
       </div>
     );
   }
@@ -782,12 +742,62 @@ export default function BoscoView({ onFullscreen }) {
   // ── ANALIZANDO_B ──────────────────────────────────────────────────────────────
   if (step === 'ANALIZANDO_B') {
     return (
-      <div style={{ paddingBottom: 24 }}>
-        <button onClick={() => { video.clearVideo(); setStep('GRABANDO_B'); }}
-          style={{ background: 'none', border: 'none', color: C.muted,
-            fontSize: 14, cursor: 'pointer', padding: '4px 0 0', display: 'block', marginBottom: 8 }}>
-          ← Volver a grabar
-        </button>
+      <div style={{ background: '#000', minHeight: '100vh' }}>
+
+        {/* Header con progreso */}
+        <div style={{
+          background: C.card, padding: '10px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          <button
+            onClick={() => {
+              video.resetAll();
+              setManualJumps([]);
+              setStep('GRABANDO_B');
+            }}
+            style={{
+              background: 'none', border: 'none',
+              color: C.muted, cursor: 'pointer', fontSize: 13, padding: 0,
+            }}
+          >
+            ← Nuevo video
+          </button>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            color: C.accent, fontSize: 14, fontWeight: 700,
+          }}>
+            Salto {manualJumps.length + 1} / {numReps}
+          </div>
+          <div style={{ width: 80 }} />
+        </div>
+
+        {/* Chips de saltos ya registrados */}
+        {manualJumps.length > 0 && (
+          <div style={{
+            display: 'flex', gap: 8, padding: '8px 16px',
+            background: C.card, borderBottom: `1px solid ${C.border}`,
+            flexWrap: 'wrap',
+          }}>
+            {manualJumps.map((j, i) => {
+              const st = jumpStatus(j.height, testType);
+              return (
+                <div key={i} style={{
+                  background: C.card2, borderRadius: 8,
+                  padding: '4px 10px', textAlign: 'center',
+                }}>
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    color: STATUS_COLOR[st] ?? C.accent,
+                    fontSize: 13, fontWeight: 700,
+                  }}>
+                    S{i + 1}: {j.height}cm
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Video */}
         {video.videoSrc && (
@@ -803,7 +813,6 @@ export default function BoscoView({ onFullscreen }) {
               style={{ width: '100%', display: 'block', background: '#000',
                 WebkitPlaysinline: true }}
             />
-            {/* Overlay de play — desbloquea carga de video en iOS cuando loadedmetadata no dispara */}
             {!video.isReady && (
               <div style={{
                 position: 'absolute', inset: 0, zIndex: 1,
@@ -857,6 +866,7 @@ export default function BoscoView({ onFullscreen }) {
           <div style={{
             background: C.card, padding: '10px 16px',
             display: 'flex', alignItems: 'center', gap: 10,
+            borderBottom: `1px solid ${C.border}`,
           }}>
             <input
               type="range" min="0" max={video.duration}
@@ -875,7 +885,10 @@ export default function BoscoView({ onFullscreen }) {
 
         {/* Controles frame a frame */}
         {video.isReady && (
-          <div style={{ display: 'flex', gap: 8, padding: '8px 0' }}>
+          <div style={{
+            display: 'flex', gap: 8, padding: '10px 16px',
+            background: C.card, borderBottom: `1px solid ${C.border}`,
+          }}>
             <button onClick={() => video.stepFrame(-1)}
               style={{
                 flex: 1, padding: '12px', borderRadius: 10,
@@ -897,7 +910,7 @@ export default function BoscoView({ onFullscreen }) {
 
         {/* Botones de marcado */}
         {video.isReady && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8, padding: '10px 16px' }}>
             <button onClick={video.markTakeoff}
               style={{
                 flex: 1, padding: '14px 8px', borderRadius: 10,
@@ -905,7 +918,7 @@ export default function BoscoView({ onFullscreen }) {
                 background: video.takeoffTime !== null ? 'rgba(34,197,94,0.15)' : 'transparent',
                 color: C.green, fontWeight: 700, fontSize: 13, cursor: 'pointer',
               }}>
-              ↑ Marcar Despegue
+              ↑ Despegue
               {video.takeoffTime !== null && (
                 <div style={{ fontSize: 10, fontWeight: 400, marginTop: 2 }}>
                   {video.takeoffTime.toFixed(3)}s
@@ -919,7 +932,7 @@ export default function BoscoView({ onFullscreen }) {
                 background: video.landingTime !== null ? 'rgba(239,68,68,0.15)' : 'transparent',
                 color: C.red, fontWeight: 700, fontSize: 13, cursor: 'pointer',
               }}>
-              ↓ Marcar Aterrizaje
+              ↓ Aterrizaje
               {video.landingTime !== null && (
                 <div style={{ fontSize: 10, fontWeight: 400, marginTop: 2 }}>
                   {video.landingTime.toFixed(3)}s
@@ -932,9 +945,10 @@ export default function BoscoView({ onFullscreen }) {
         {/* Preview resultado */}
         {video.result && (
           <div style={{
+            margin: '0 16px',
             background: C.card, borderRadius: 12, padding: '12px 16px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginBottom: 8,
+            border: `1px solid ${C.green}33`,
           }}>
             <div>
               <div style={{ color: C.muted, fontSize: 11 }}>Tiempo de vuelo</div>
@@ -954,21 +968,21 @@ export default function BoscoView({ onFullscreen }) {
         )}
 
         {video.isReady && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 16px 32px' }}>
             {video.result && (
               <button onClick={handleConfirmVideoJump}
                 style={{
-                  padding: '14px', borderRadius: 12,
+                  padding: '15px', borderRadius: 12,
                   border: 'none', background: C.accent,
                   color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer',
                 }}>
                 ✓ Confirmar salto {manualJumps.length + 1}/{numReps}
               </button>
             )}
-            <button onClick={video.reset}
+            <button onClick={video.resetMarkers}
               style={{
                 padding: '12px', borderRadius: 12,
-                border: `1px solid ${C.border}`, background: 'transparent',
+                border: 'none', background: 'transparent',
                 color: C.muted, fontSize: 13, cursor: 'pointer',
               }}>
               Remarcar puntos

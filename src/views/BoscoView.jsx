@@ -245,12 +245,14 @@ export default function BoscoView({ onFullscreen }) {
 
   function handleConfirmVideoJump() {
     if (!video.result) return;
-    const updated = [...manualJumps, { height: video.result.height, flightMs: video.result.flightMs }];
+    // Capturar valores antes de resetMarkers() para evitar race condition
+    const jumpData = { height: video.result.height, flightMs: video.result.flightMs };
+    const updated = [...manualJumps, jumpData];
     setManualJumps(updated);
     if (updated.length >= numReps) {
       setStep('RESULTADO');
     } else {
-      video.resetMarkers(); // solo limpia marcadores — el video permanece cargado
+      video.resetMarkers();
     }
   }
 
@@ -969,16 +971,30 @@ export default function BoscoView({ onFullscreen }) {
 
         {video.isReady && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 16px 32px' }}>
-            {video.result && (
-              <button onClick={handleConfirmVideoJump}
-                style={{
-                  padding: '15px', borderRadius: 12,
-                  border: 'none', background: C.accent,
-                  color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-                }}>
-                ✓ Confirmar salto {manualJumps.length + 1}/{numReps}
-              </button>
-            )}
+            {(() => {
+              const isDuplicate = manualJumps.length > 0 &&
+                video.result?.flightMs === manualJumps[manualJumps.length - 1]?.flightMs;
+              const canConfirm = video.result !== null && !isDuplicate;
+              return (
+                <button
+                  onClick={handleConfirmVideoJump}
+                  disabled={!canConfirm}
+                  style={{
+                    padding: '15px', borderRadius: 12,
+                    border: 'none',
+                    background: canConfirm ? C.accent : C.border,
+                    color: canConfirm ? '#0f172a' : C.muted,
+                    fontWeight: 700, fontSize: 15,
+                    cursor: canConfirm ? 'pointer' : 'not-allowed',
+                    opacity: canConfirm ? 1 : 0.6,
+                  }}
+                >
+                  {isDuplicate
+                    ? `⚠ Marcá nuevos puntos para el salto ${manualJumps.length + 1}`
+                    : `✓ Confirmar salto ${manualJumps.length + 1}/${numReps}`}
+                </button>
+              );
+            })()}
             <button onClick={video.resetMarkers}
               style={{
                 padding: '12px', borderRadius: 12,

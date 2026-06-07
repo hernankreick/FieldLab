@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 const G = 9.81;
 
@@ -11,6 +11,7 @@ export function useVideoAnalysis() {
   const [takeoffTime, setTakeoffTime] = useState(null);
   const [landingTime, setLandingTime] = useState(null);
   const [isReady,     setIsReady]     = useState(false);
+  const [result,      setResult]      = useState(null);
 
   const loadVideo = useCallback((file) => {
     if (!file) return;
@@ -80,27 +81,30 @@ export function useVideoAnalysis() {
   const reset = useCallback(() => {
     setTakeoffTime(null);
     setLandingTime(null);
+    setResult(null);
   }, []);
 
   const resetMarkers = useCallback(() => {
     setTakeoffTime(null);
     setLandingTime(null);
+    setResult(null);
   }, []);
 
   const clearVideo = useCallback(() => {
     setVideoSrc(null);
     setTakeoffTime(null);
     setLandingTime(null);
+    setResult(null);
     setIsReady(false);
     setCurrentTime(0);
     setDuration(0);
   }, []);
 
-  // Limpia todo incluyendo el elemento DOM — usar entre saltos de un mismo video
   const resetAll = useCallback(() => {
     setVideoSrc(null);
     setTakeoffTime(null);
     setLandingTime(null);
+    setResult(null);
     setIsReady(false);
     setCurrentTime(0);
     setDuration(0);
@@ -108,13 +112,19 @@ export function useVideoAnalysis() {
     if (v) { v.pause(); v.src = ''; v.load(); }
   }, []);
 
-  const result = (() => {
-    if (takeoffTime === null || landingTime === null) return null;
+  useEffect(() => {
+    if (takeoffTime === null || landingTime === null) {
+      setResult(null);
+      return;
+    }
     const flightMs = Math.abs(landingTime - takeoffTime) * 1000;
-    if (flightMs < 150 || flightMs > 1000) return null;
+    if (flightMs < 150 || flightMs > 1000) {
+      setResult(null);
+      return;
+    }
     const height = Math.round((G * (flightMs / 1000) ** 2 / 8) * 100);
-    return { height, flightMs: Math.round(flightMs) };
-  })();
+    setResult({ height, flightMs: Math.round(flightMs) });
+  }, [takeoffTime, landingTime]);
 
   return {
     videoRef, videoSrc, fps, duration,

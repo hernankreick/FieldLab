@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
-import { saveWellness } from '../lib/db';
+import { saveWellness, getPlayerWithCoach } from '../lib/db';
 import { supabase } from '../lib/supabase';
 
 const SLEEP = [
@@ -127,6 +127,7 @@ export default function HooperQR({ teamId }) {
   const [players, setPlayers]   = useState([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [coachId,   setCoachId]   = useState(null);
 
   const isValidTeam = teamId && String(teamId).includes('-');
 
@@ -150,7 +151,14 @@ export default function HooperQR({ teamId }) {
     });
   }
 
-  function selectPlayer(p)  { setPlayer(p); setStep(1); }
+  function selectPlayer(p) {
+    setPlayer(p);
+    setCoachId(null);
+    setStep(1);
+    getPlayerWithCoach(p.id)
+      .then(data => setCoachId(data.teams?.coach_id ?? null))
+      .catch(() => {});
+  }
   function selectSleep(v)   { setSleep(v);    setStep(2); }
   function selectStress(v)  { setStress(v);   setStep(3); }
   function selectFatigue(v) { setFatigue(v);  setStep(4); }
@@ -163,12 +171,14 @@ export default function HooperQR({ teamId }) {
   }
 
   async function handleSend() {
+    if (!coachId) return;
     const now   = new Date();
     const score = calcScore(sleep, stress, fatigue, soreness);
     setSaveError(null);
     try {
       await saveWellness({
         player_id:    player.id,
+        coach_id:     coachId,
         date:         now.toISOString().split('T')[0],
         sleep, stress, fatigue, soreness, score,
         active_zones: activeZones,
@@ -181,7 +191,7 @@ export default function HooperQR({ teamId }) {
   }
 
   function reset() {
-    setStep(0); setPlayer(null); setSearch('');
+    setStep(0); setPlayer(null); setSearch(''); setCoachId(null);
     setSleep(0); setStress(0); setFatigue(0); setSoreness(0);
     setZones({}); setConfirmed(false); setSentAt(null); setSaveError(null);
   }
@@ -434,11 +444,12 @@ export default function HooperQR({ teamId }) {
 
               <button
                 onClick={handleSend}
+                disabled={!coachId}
                 className="w-full py-4 rounded-2xl font-black text-base uppercase
                   tracking-widest active:scale-95 transition-all mt-1"
-                style={{ background: '#38bdf8', color: '#0a0f1a' }}
+                style={{ background: '#38bdf8', color: '#0a0f1a', opacity: coachId ? 1 : 0.7 }}
               >
-                Enviar
+                {coachId ? 'Enviar' : 'Cargando...'}
               </button>
             </>
           )}

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { saveWellness } from '../lib/db';
+import { useState, useEffect } from 'react';
+import { saveWellness, getPlayerWithCoach } from '../lib/db';
 
 const SLIDER_META = [
   { key: 'sleep',    label: 'Sueño',          minLabel: 'Pésimo',     maxLabel: 'Excelente' },
@@ -57,11 +57,20 @@ export default function WellnessFormPublic() {
   const playerId   = params.get('player_id');
   const playerName = params.get('player_name') ?? 'Jugador';
 
-  const [form,      setForm]      = useState({ sleep: 5, stress: 2, fatigue: 2, soreness: 2 });
-  const [zones,     setZones]     = useState({});
-  const [submitted, setSubmitted] = useState(false);
-  const [loading,   setLoading]   = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [form,        setForm]        = useState({ sleep: 5, stress: 2, fatigue: 2, soreness: 2 });
+  const [zones,       setZones]       = useState({});
+  const [submitted,   setSubmitted]   = useState(false);
+  const [loading,     setLoading]     = useState(false);
+  const [saveError,   setSaveError]   = useState(null);
+  const [coachId,     setCoachId]     = useState(null);
+  const [playerError, setPlayerError] = useState(false);
+
+  useEffect(() => {
+    if (!playerId) return;
+    getPlayerWithCoach(playerId)
+      .then(p => setCoachId(p.teams?.coach_id ?? null))
+      .catch(() => setPlayerError(true));
+  }, [playerId]);
 
   function setSlider(key, val) {
     setForm(prev => ({ ...prev, [key]: Number(val) }));
@@ -77,13 +86,14 @@ export default function WellnessFormPublic() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!playerId) return;
+    if (!playerId || !coachId) return;
     setLoading(true);
     setSaveError(null);
     const score = form.stress + (8 - form.sleep) + form.fatigue + form.soreness;
     try {
       await saveWellness({
         player_id:    playerId,
+        coach_id:     coachId,
         date:         new Date().toISOString().split('T')[0],
         sleep:        form.sleep,
         stress:       form.stress,
@@ -105,6 +115,18 @@ export default function WellnessFormPublic() {
       <div style={S.root}>
         <div style={S.center}>
           <p style={{ color: '#ef4444', fontSize: 15 }}>QR inválido. Escaneá el código actualizado.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (playerError) {
+    return (
+      <div style={S.root}>
+        <div style={S.center}>
+          <p style={{ color: '#ef4444', fontSize: 15 }}>
+            Jugador no encontrado. Pedile al profe un QR actualizado.
+          </p>
         </div>
       </div>
     );
@@ -180,8 +202,12 @@ export default function WellnessFormPublic() {
             </p>
           )}
 
-          <button type="submit" disabled={loading} style={{ ...S.submit, opacity: loading ? 0.7 : 1 }}>
-            {loading ? 'Enviando...' : 'Enviar reporte'}
+          <button
+            type="submit"
+            disabled={loading || !coachId}
+            style={{ ...S.submit, opacity: (loading || !coachId) ? 0.7 : 1 }}
+          >
+            {loading ? 'Enviando...' : !coachId ? 'Cargando...' : 'Enviar reporte'}
           </button>
         </form>
       </div>

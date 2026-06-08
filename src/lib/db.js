@@ -30,6 +30,18 @@ export async function createPlayer(player) {
   return data;
 }
 
+// Lookup de jugador + coach_id para formularios públicos QR (sin sesión auth).
+// Requiere RLS policy que permita SELECT anónimo en players y teams por id.
+export async function getPlayerWithCoach(playerId) {
+  const { data, error } = await supabase
+    .from('players')
+    .select('id, name, team_id, teams(coach_id)')
+    .eq('id', playerId)
+    .single();
+  if (error) throw error;
+  return data; // { id, name, team_id, teams: { coach_id } }
+}
+
 // WELLNESS
 function mapWellness(r) {
   return { ...r, timestamp: r.date, activeZones: r.active_zones ?? {} };

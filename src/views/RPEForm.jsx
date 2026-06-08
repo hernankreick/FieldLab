@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { getPlayerWithCoach } from '../lib/db';
 
 const RPE_SCALE = [
   { v: 1, label: 'Recuperación',    color: '#22c55e' },
@@ -22,6 +23,7 @@ export default function RPEForm({ teamId }) {
   const [players,       setPlayers]       = useState([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [saveError,     setSaveError]     = useState(null);
+  const [coachId,       setCoachId]       = useState(null);
   const submittingRef = useRef(false);
 
   const isValidTeam = teamId && String(teamId).includes('-');
@@ -38,14 +40,24 @@ export default function RPEForm({ teamId }) {
       .finally(() => setLoadingPlayers(false));
   }, [teamId]);
 
+  function handleSelectPlayer(p) {
+    setPlayer(p);
+    setCoachId(null);
+    setStep(1);
+    getPlayerWithCoach(p.id)
+      .then(data => setCoachId(data.teams?.coach_id ?? null))
+      .catch(() => {});
+  }
+
   async function selectRPE(item) {
-    if (submittingRef.current) return;
+    if (submittingRef.current || !coachId) return;
     submittingRef.current = true;
     setPressing(item.v);
     navigator.vibrate?.(60);
     setTimeout(async () => {
       const { error } = await supabase.from('loads').insert({
         player_id: player.id,
+        coach_id:  coachId,
         date:      todayDate(),
         rpe:       item.v * 2,
         load:      0,
@@ -66,6 +78,7 @@ export default function RPEForm({ teamId }) {
     submittingRef.current = false;
     setStep(0);
     setPlayer(null);
+    setCoachId(null);
     setSearch('');
     setSentItem(null);
     setPressing(null);
@@ -193,7 +206,7 @@ export default function RPEForm({ teamId }) {
                 ) : filtered.map(p => (
                   <button
                     key={p.id}
-                    onClick={() => { setPlayer(p); setStep(1); }}
+                    onClick={() => handleSelectPlayer(p)}
                     className="flex flex-col items-start p-4 rounded-2xl border text-left
                       transition-all active:scale-95 min-h-[72px]"
                     style={{

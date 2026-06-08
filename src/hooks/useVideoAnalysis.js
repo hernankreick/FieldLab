@@ -78,12 +78,6 @@ export function useVideoAnalysis() {
     setLandingTime(video.currentTime);
   }, []);
 
-  const reset = useCallback(() => {
-    setTakeoffTime(null);
-    setLandingTime(null);
-    setResult(null);
-  }, []);
-
   const resetMarkers = useCallback(() => {
     setTakeoffTime(null);
     setLandingTime(null);
@@ -132,6 +126,6 @@ export function useVideoAnalysis() {
     isReady, result,
     loadVideo, onVideoLoad, onVideoTimeUpdate,
     stepFrame, seekTo, markTakeoff, markLanding,
-    reset, resetMarkers, clearVideo, resetAll, forceReady,
+    resetMarkers, clearVideo, resetAll, forceReady,
   };
 }

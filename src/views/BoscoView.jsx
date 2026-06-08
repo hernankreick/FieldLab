@@ -319,6 +319,7 @@ export default function BoscoView({ onFullscreen }) {
     timer.reset();
     setManualJumps([]);
     video.clearVideo();
+    setModo(null);
     setLateralidad('bilateral');
     setPierna(null);
     setResultadoIzq(null);
@@ -749,7 +750,7 @@ export default function BoscoView({ onFullscreen }) {
     const cfg = TEST_CONFIGS[testType];
     return (
       <div style={{ paddingBottom: 24 }}>
-        <button onClick={() => setStep('CONFIG')}
+        <button onClick={() => setStep('MODO')}
           style={{ background: 'none', border: 'none', color: C.muted,
             fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 20 }}>
           ← Volver

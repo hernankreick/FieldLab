@@ -47,8 +47,15 @@ const TEST_CONFIGS = {
   },
 };
 
-function jumpStatus(heightCm, testType) {
-  const { optimo, precaucion } = TEST_CONFIGS[testType]?.normal ?? { optimo: 40, precaucion: 30 };
+const NORMAL_UNILATERAL = {
+  SJ:       { optimo: 18, precaucion: 12 },
+  CMJ:      { optimo: 20, precaucion: 14 },
+  DropJump: { optimo: 1.2, precaucion: 0.8 },
+};
+
+function jumpStatus(heightCm, testType, isUnilateral = false) {
+  const normals = isUnilateral ? NORMAL_UNILATERAL[testType] : TEST_CONFIGS[testType]?.normal;
+  const { optimo, precaucion } = normals ?? { optimo: 40, precaucion: 30 };
   if (heightCm >= optimo) return 'green';
   if (heightCm >= precaucion) return 'yellow';
   return 'red';
@@ -130,7 +137,11 @@ export default function BoscoView({ onFullscreen }) {
   const [numReps,     setNumReps]     = useState(5);
   const [bodyMass,    setBodyMass]    = useState('');
   const [manualJumps, setManualJumps] = useState([]);        // acumula saltos modo B
-  const [sessionRes,  setSessionRes]  = useState({});
+  const [sessionRes,    setSessionRes]    = useState({});
+  const [lateralidad,   setLateralidad]   = useState('bilateral'); // 'bilateral' | 'unilateral'
+  const [pierna,        setPierna]        = useState(null);        // null | 'izq' | 'der'
+  const [resultadoIzq,  setResultadoIzq]  = useState(null);
+  const [toast,         setToast]         = useState(null);
 
   const [savedResults, setSavedResults] = useState(() => {
     try {
@@ -162,9 +173,10 @@ export default function BoscoView({ onFullscreen }) {
   useEffect(() => {
     if (step === 'EVALUANDO_A' && timer.isComplete) {
       playBeep(beeps.end);
-      setStep('RESULTADO');
+      handleSerieCompleta(timer.jumps);
     }
-  }, [step, timer.isComplete, beeps.end]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, timer.isComplete]);
 
   // ── Derived ───────────────────────────────────────────────────────────────────
 
@@ -176,9 +188,29 @@ export default function BoscoView({ onFullscreen }) {
     worst: Math.min(...activeHeights),
   } : null;
 
+  const isUnilateral = lateralidad === 'unilateral';
+
   const bm    = parseFloat(bodyMass) || null;
   const bestH = activeStats?.best ?? 0;
   const watts = bm ? heightToSayers(bestH, bm) : null;
+
+  const lsi = (() => {
+    if (!isUnilateral || !resultadoIzq || !activeStats) return null;
+    const izq    = resultadoIzq.best;
+    const der    = activeStats.best;
+    const fuerte = Math.max(izq, der);
+    const debil  = Math.min(izq, der);
+    return {
+      valor: Math.round((debil / fuerte) * 100),
+      lado:  izq > der ? 'Izquierdo' : 'Derecho',
+      izq, der,
+    };
+  })();
+
+  const lsiStatus = !lsi ? null
+    : lsi.valor >= 90 ? { color: C.green,  label: 'Simétrico ✓',            bg: `${C.green}12`  }
+    : lsi.valor >= 85 ? { color: C.yellow, label: 'Asimetría leve',         bg: `${C.yellow}12` }
+    :                   { color: C.red,    label: 'Asimetría significativa', bg: `${C.red}12`    };
 
   const elasticEff = (sessionRes.CMJ && sessionRes.SJ)
     ? calcElasticEfficiency(sessionRes.CMJ.best, sessionRes.SJ.best)
@@ -211,29 +243,17 @@ export default function BoscoView({ onFullscreen }) {
     setStep('MODO');
   }
 
-  function handleSelectModo(m) {
-    setModo(m);
-    setStep('CONFIG');
-  }
-
   function clearFileInputs() {
     if (cameraInputRef.current)  cameraInputRef.current.value  = '';
     if (galleryInputRef.current) galleryInputRef.current.value = '';
   }
 
-  function handleStartEval() {
+  function handleComenzar() {
     timer.reset();
     setManualJumps([]);
-    video.clearVideo();
-    clearFileInputs();
-
-    if (modo === 'B') { setStep('GRABANDO_B'); return; }
-
-    // Modo A: countdown 3-2-1-GO con AudioContext
     setCountdownNum(3);
     setStep('COUNTDOWN');
     _beep(880, 0.15);
-
     setTimeout(() => { setCountdownNum(2); _beep(880, 0.15); }, 1000);
     setTimeout(() => { setCountdownNum(1); _beep(880, 0.15); }, 2000);
     setTimeout(() => {
@@ -243,14 +263,38 @@ export default function BoscoView({ onFullscreen }) {
     }, 3000);
   }
 
+  function handleSerieCompleta(jumpsData) {
+    const heights = jumpsData.map(j => j.height);
+    const stats = {
+      best:  Math.max(...heights),
+      avg:   Math.round(heights.reduce((a, b) => a + b, 0) / heights.length),
+      worst: Math.min(...heights),
+      jumps: jumpsData,
+    };
+    if (lateralidad === 'unilateral' && pierna === 'izq') {
+      setResultadoIzq(stats);
+      setPierna('der');
+      if (modo === 'A') {
+        handleComenzar();
+      } else {
+        video.resetAll();
+        setManualJumps([]);
+        setStep('GRABANDO_B');
+      }
+      setToast('✓ Pierna izquierda completada — ahora la derecha');
+      setTimeout(() => setToast(null), 2500);
+    } else {
+      setStep('RESULTADO');
+    }
+  }
+
   function handleConfirmVideoJump() {
     if (!video.result) return;
-    // Capturar valores antes de resetMarkers() para evitar race condition
     const jumpData = { height: video.result.height, flightMs: video.result.flightMs };
     const updated = [...manualJumps, jumpData];
     setManualJumps(updated);
     if (updated.length >= numReps) {
-      setStep('RESULTADO');
+      handleSerieCompleta(updated);
     } else {
       video.resetMarkers();
     }
@@ -259,8 +303,11 @@ export default function BoscoView({ onFullscreen }) {
   function handleSave() {
     if (!activeStats) return;
     const entry = {
-      id: Date.now(), testType, modo,
-      jumps: activeJumps, stats: activeStats,
+      id: Date.now(), testType, modo, lateralidad,
+      jumps: isUnilateral ? { izq: resultadoIzq, der: activeJumps } : activeJumps,
+      stats: activeStats,
+      resultadoIzq: isUnilateral ? resultadoIzq : null,
+      lsi: lsi?.valor ?? null,
       bodyMass: bm, date: new Date().toISOString(),
     };
     const next = [entry, ...savedResults].slice(0, 100);
@@ -272,6 +319,9 @@ export default function BoscoView({ onFullscreen }) {
     timer.reset();
     setManualJumps([]);
     video.clearVideo();
+    setLateralidad('bilateral');
+    setPierna(null);
+    setResultadoIzq(null);
     setStep('SELECTOR');
   }
 
@@ -280,7 +330,15 @@ export default function BoscoView({ onFullscreen }) {
     setManualJumps([]);
     video.clearVideo();
     clearFileInputs();
-    setStep(modo === 'A' ? 'EVALUANDO_A' : 'GRABANDO_B');
+    if (isUnilateral) {
+      setPierna('izq');
+      setResultadoIzq(null);
+    }
+    if (modo === 'A') {
+      handleComenzar();
+    } else {
+      setStep('GRABANDO_B');
+    }
   }
 
   function handleNewTest() {
@@ -289,6 +347,9 @@ export default function BoscoView({ onFullscreen }) {
     video.clearVideo();
     clearFileInputs();
     setModo(null);
+    setLateralidad('bilateral');
+    setPierna(null);
+    setResultadoIzq(null);
     setStep('SELECTOR');
   }
 
@@ -374,173 +435,171 @@ export default function BoscoView({ onFullscreen }) {
       <div style={{ paddingBottom: 24 }}>
         <button onClick={() => setStep('SELECTOR')}
           style={{ background: 'none', border: 'none', color: C.muted,
-            fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 20 }}>
+            fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 16 }}>
           ← Volver
         </button>
 
-        <div style={{ marginBottom: 24 }}>
-          <h2 style={{ color: '#f8fafc', fontSize: 20, fontWeight: 700, margin: 0 }}>
-            {cfg.icon} {cfg.label}
-          </h2>
-          <p style={{ color: C.muted, fontSize: 13, margin: '4px 0 0' }}>¿Cómo evaluás?</p>
-        </div>
+        <h2 style={{ color: '#f8fafc', fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
+          {cfg.icon} {cfg.label}
+        </h2>
+        <p style={{ color: C.muted, fontSize: 13, margin: '0 0 16px' }}>Configuración</p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <button
-            onTouchStart={(e) => {
-              e.preventDefault();
-              if (!audioCtxRef.current) {
-                try {
-                  audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-                  audioCtxRef.current.resume();
-                } catch {}
-              }
-              handleSelectModo('A');
-            }}
-            onClick={() => handleSelectModo('A')}
-            style={{
-              background: C.card, border: `1px solid ${C.border}`,
-              borderRadius: 16, padding: '20px',
-              display: 'flex', alignItems: 'flex-start', gap: 16,
-              cursor: 'pointer', textAlign: 'left', width: '100%',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            <span style={{ fontSize: 36 }}>👥</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: '#f8fafc', fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
-                Modo Equipo
-              </div>
-              <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
-                El profe toca ↑ al despegue y ↓ al aterrizaje mientras observa al atleta
-              </div>
-              <div style={{ color: C.green, fontSize: 11, fontWeight: 700, marginTop: 6 }}>
-                Rápido · Para grupos
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleSelectModo('B')}
-            style={{
-              background: C.card, border: `1px solid ${C.border}`,
-              borderRadius: 16, padding: '20px',
-              display: 'flex', alignItems: 'flex-start', gap: 16,
-              cursor: 'pointer', textAlign: 'left', width: '100%',
-            }}
-          >
-            <span style={{ fontSize: 36 }}>📱</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: '#f8fafc', fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
-                Modo Autoevaluación
-              </div>
-              <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
-                Grabás el salto con el celu y marcás los frames de despegue y aterrizaje
-              </div>
-              <div style={{ color: C.accent, fontSize: 11, fontWeight: 700, marginTop: 6 }}>
-                Solo · Más preciso
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── CONFIG ────────────────────────────────────────────────────────────────────
-  if (step === 'CONFIG') {
-    const cfg = TEST_CONFIGS[testType];
-    return (
-      <div style={{ paddingBottom: 24 }}>
-        <button onClick={() => setStep('MODO')}
-          style={{ background: 'none', border: 'none', color: C.muted,
-            fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 20 }}>
-          ← Volver
-        </button>
-
-        <div style={{ marginBottom: 24 }}>
-          <h2 style={{ color: '#f8fafc', fontSize: 20, fontWeight: 700, margin: 0 }}>
-            {cfg.icon} {cfg.label}
-          </h2>
-          <p style={{ color: C.muted, fontSize: 13, margin: '4px 0 0' }}>
-            {modo === 'A' ? '👥 Modo Equipo' : '📱 Modo Autoevaluación'}
-          </p>
-        </div>
-
-        <div style={{ background: C.card, borderRadius: 16, padding: 20, marginBottom: 16 }}>
-          <div style={{ color: '#f8fafc', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
-            Instrucciones
+        {/* Bilateral / Unilateral */}
+        <div style={{ background: C.card, borderRadius: 12, padding: '12px 14px',
+          marginBottom: 12, border: `1px solid ${C.border}` }}>
+          <div style={{ color: C.muted, fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.06em', marginBottom: 10 }}>
+            TIPO DE EVALUACIÓN
           </div>
-          {cfg.instruction.map((line, i) => (
-            <div key={i} style={{ color: C.muted, fontSize: 13, marginBottom: 6,
-              display: 'flex', gap: 8 }}>
-              <span style={{ color: C.accent, minWidth: 18 }}>{i + 1}.</span>
-              {line}
-            </div>
-          ))}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              { key: 'bilateral',  label: '🦵🦵 Bilateral' },
+              { key: 'unilateral', label: '🦵 Unilateral' },
+            ].map(({ key, label }) => (
+              <button key={key} onClick={() => setLateralidad(key)}
+                style={{
+                  flex: 1, padding: '12px 8px', borderRadius: 10,
+                  border: `2px solid ${lateralidad === key ? C.accent : C.border}`,
+                  background: lateralidad === key ? `${C.accent}15` : 'transparent',
+                  color: lateralidad === key ? C.accent : C.muted,
+                  fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {lateralidad === 'unilateral' && (
+            <p style={{ color: C.muted, fontSize: 11, margin: '8px 0 0' }}>
+              Primero pierna izquierda, luego derecha. LSI automático.
+            </p>
+          )}
         </div>
 
-        <div style={{ background: C.card, borderRadius: 16, padding: 20, marginBottom: 16 }}>
-          <div style={{ color: '#f8fafc', fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
-            Configuración
+        {/* Modo A / B */}
+        <div style={{ background: C.card, borderRadius: 12, padding: '12px 14px',
+          marginBottom: 12, border: `1px solid ${C.border}` }}>
+          <div style={{ color: C.muted, fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.06em', marginBottom: 10 }}>
+            MÉTODO DE MEDICIÓN
           </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ color: C.muted, fontSize: 12, display: 'block', marginBottom: 6 }}>
-              Número de saltos
-            </label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[3, 5, 6].map(n => (
-                <button key={n} onClick={() => setNumReps(n)}
-                  style={{
-                    flex: 1, padding: '10px 0', borderRadius: 10,
-                    border: `1px solid ${numReps === n ? C.accent : C.border}`,
-                    background: numReps === n ? C.accent + '22' : 'transparent',
-                    color: numReps === n ? C.accent : C.muted,
-                    fontSize: 15, fontWeight: 700, cursor: 'pointer',
-                  }}>
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label style={{ color: C.muted, fontSize: 12, display: 'block', marginBottom: 6 }}>
-              Peso corporal (kg) — opcional, para calcular potencia
-            </label>
-            <input
-              type="number" inputMode="decimal" placeholder="ej. 75"
-              value={bodyMass} onChange={e => setBodyMass(e.target.value)}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: '#0f172a', border: `1px solid ${C.border}`,
-                borderRadius: 10, padding: '10px 14px',
-                color: '#f8fafc', fontSize: 15, outline: 'none',
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              onClick={() => {
+                setModo('A');
+                if (!audioCtxRef.current) {
+                  try {
+                    audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                    audioCtxRef.current.resume();
+                  } catch {}
+                }
               }}
-            />
+              style={{
+                padding: '14px 16px', borderRadius: 10,
+                border: `2px solid ${modo === 'A' ? C.green : C.border}`,
+                background: modo === 'A' ? `${C.green}12` : 'transparent',
+                color: modo === 'A' ? C.green : C.muted,
+                fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 20 }}>👥</span>
+              <div>
+                <div style={{ fontWeight: 700 }}>Modo Equipo</div>
+                <div style={{ fontSize: 11, opacity: 0.8 }}>
+                  El profe toca ↑ despegue y ↓ aterrizaje
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={() => setModo('B')}
+              style={{
+                padding: '14px 16px', borderRadius: 10,
+                border: `2px solid ${modo === 'B' ? C.accent : C.border}`,
+                background: modo === 'B' ? `${C.accent}12` : 'transparent',
+                color: modo === 'B' ? C.accent : C.muted,
+                fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 20 }}>📱</span>
+              <div>
+                <div style={{ fontWeight: 700 }}>Autoevaluación</div>
+                <div style={{ fontSize: 11, opacity: 0.8 }}>
+                  Grabás el salto y marcás frame a frame
+                </div>
+              </div>
+            </button>
           </div>
+        </div>
+
+        {/* Saltos + peso */}
+        <div style={{ background: C.card, borderRadius: 12, padding: '12px 14px',
+          marginBottom: 20, border: `1px solid ${C.border}` }}>
+          <div style={{ color: C.muted, fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.06em', marginBottom: 10 }}>
+            SALTOS POR {lateralidad === 'unilateral' ? 'PIERNA' : 'SERIE'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {[3, 5, 6].map(n => (
+              <button key={n} onClick={() => setNumReps(n)}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 8,
+                  border: `2px solid ${numReps === n ? C.accent : C.border}`,
+                  background: numReps === n ? `${C.accent}15` : 'transparent',
+                  color: numReps === n ? C.accent : C.muted,
+                  fontWeight: 700, fontSize: 16, cursor: 'pointer',
+                }}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <input
+            type="number" inputMode="decimal"
+            placeholder="Peso corporal (kg) — opcional para Sayers"
+            value={bodyMass} onChange={e => setBodyMass(e.target.value)}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '9px 12px', borderRadius: 8,
+              background: C.card2, border: `1px solid ${C.border}`,
+              color: C.text, fontSize: 13,
+            }}
+          />
         </div>
 
         <button
+          disabled={!modo}
           onTouchStart={(e) => {
             e.preventDefault();
+            if (!modo) return;
             if (!audioCtxRef.current) {
               try {
                 audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
                 audioCtxRef.current.resume();
               } catch {}
             }
-            handleStartEval();
+            if (isUnilateral) { setPierna('izq'); setResultadoIzq(null); }
+            if (modo === 'A') { handleComenzar(); } else { video.clearVideo(); clearFileInputs(); setManualJumps([]); setStep('GRABANDO_B'); }
           }}
-          onClick={handleStartEval}
+          onClick={() => {
+            if (!modo) return;
+            if (isUnilateral) { setPierna('izq'); setResultadoIzq(null); }
+            if (modo === 'A') { handleComenzar(); } else { video.clearVideo(); clearFileInputs(); setManualJumps([]); setStep('GRABANDO_B'); }
+          }}
           style={{
-            width: '100%', padding: '16px 0', borderRadius: 14,
-            background: C.accent, border: 'none',
-            color: '#0f172a', fontSize: 16, fontWeight: 800,
-            cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-          }}>
-          Comenzar →
+            width: '100%', padding: 18, borderRadius: 14,
+            border: 'none',
+            background: modo ? C.accent : C.border,
+            color: modo ? '#0f172a' : C.muted,
+            fontWeight: 800, fontSize: 17,
+            cursor: modo ? 'pointer' : 'not-allowed',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          {!modo
+            ? 'Seleccioná un método'
+            : lateralidad === 'unilateral'
+            ? 'Comenzar — Pierna Izquierda'
+            : 'Comenzar evaluación'}
         </button>
       </div>
     );
@@ -579,8 +638,20 @@ export default function BoscoView({ onFullscreen }) {
         alignItems: 'center', justifyContent: 'center',
         gap: 20,
       }}>
+        {isUnilateral && pierna && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: pierna === 'izq' ? `${C.accent}20` : `${C.green}20`,
+            border: `1px solid ${pierna === 'izq' ? C.accent : C.green}44`,
+            borderRadius: 99, padding: '4px 12px',
+            color: pierna === 'izq' ? C.accent : C.green,
+            fontSize: 12, fontWeight: 700,
+          }}>
+            🦵 Pierna {pierna === 'izq' ? 'Izquierda' : 'Derecha'}
+          </div>
+        )}
         <div style={{ color: C.muted, fontSize: 14 }}>
-          Salto {timer.jumps.length + (timer.phase === 'airborne' ? 1 : 1)} de {numReps}
+          Salto {timer.jumps.length + 1} de {numReps}
         </div>
 
         <div style={{
@@ -624,7 +695,7 @@ export default function BoscoView({ onFullscreen }) {
         {timer.jumps.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
             {timer.jumps.map((j, i) => {
-              const st = jumpStatus(j.height, testType);
+              const st = jumpStatus(j.height, testType, isUnilateral);
               return (
                 <div key={i} style={{
                   background: C.card, borderRadius: 8, padding: '6px 12px', textAlign: 'center',
@@ -644,9 +715,9 @@ export default function BoscoView({ onFullscreen }) {
 
         <button
           onClick={() => {
-            if (timer.jumps.length === 0) { setStep('CONFIG'); return; }
+            if (timer.jumps.length === 0) { setStep('MODO'); return; }
             playBeep(beeps.end);
-            setStep('RESULTADO');
+            handleSerieCompleta(timer.jumps);
           }}
           style={{
             padding: '12px 32px', borderRadius: 10,
@@ -656,6 +727,19 @@ export default function BoscoView({ onFullscreen }) {
         >
           Finalizar ({timer.jumps.length}/{numReps})
         </button>
+
+        {toast && (
+          <div style={{
+            position: 'fixed', top: 60, left: '50%',
+            transform: 'translateX(-50%)', zIndex: 1000,
+            background: 'rgba(34,197,94,0.95)', color: '#0f172a',
+            fontWeight: 700, fontSize: 13, padding: '10px 20px',
+            borderRadius: 99, whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          }}>
+            {toast}
+          </div>
+        )}
       </div>
     );
   }
@@ -737,6 +821,19 @@ export default function BoscoView({ onFullscreen }) {
           }}
           style={{ display: 'none' }}
         />
+
+        {toast && (
+          <div style={{
+            position: 'fixed', top: 60, left: '50%',
+            transform: 'translateX(-50%)', zIndex: 1000,
+            background: 'rgba(34,197,94,0.95)', color: '#0f172a',
+            fontWeight: 700, fontSize: 13, padding: '10px 20px',
+            borderRadius: 99, whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          }}>
+            {toast}
+          </div>
+        )}
       </div>
     );
   }
@@ -765,11 +862,21 @@ export default function BoscoView({ onFullscreen }) {
           >
             ← Nuevo video
           </button>
-          <div style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            color: C.accent, fontSize: 14, fontWeight: 700,
-          }}>
-            Salto {manualJumps.length + 1} / {numReps}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              color: C.accent, fontSize: 14, fontWeight: 700,
+            }}>
+              Salto {manualJumps.length + 1} / {numReps}
+            </div>
+            {isUnilateral && pierna && (
+              <div style={{
+                color: pierna === 'izq' ? C.accent : C.green,
+                fontSize: 11, fontWeight: 700,
+              }}>
+                🦵 {pierna === 'izq' ? 'Izquierda' : 'Derecha'}
+              </div>
+            )}
           </div>
           <div style={{ width: 80 }} />
         </div>
@@ -782,7 +889,7 @@ export default function BoscoView({ onFullscreen }) {
             flexWrap: 'wrap',
           }}>
             {manualJumps.map((j, i) => {
-              const st = jumpStatus(j.height, testType);
+              const st = jumpStatus(j.height, testType, isUnilateral);
               return (
                 <div key={i} style={{
                   background: C.card2, borderRadius: 8,
@@ -1018,7 +1125,7 @@ export default function BoscoView({ onFullscreen }) {
   // ── RESULTADO ─────────────────────────────────────────────────────────────────
   if (step === 'RESULTADO') {
     const cfg         = TEST_CONFIGS[testType];
-    const status      = activeStats ? jumpStatus(activeStats.best, testType) : null;
+    const status      = activeStats ? jumpStatus(activeStats.best, testType, isUnilateral) : null;
     const statusColor = STATUS_COLOR[status] ?? C.muted;
 
     return (
@@ -1040,6 +1147,79 @@ export default function BoscoView({ onFullscreen }) {
               <StatCard label="Promedio" value={activeStats.avg}   unit="cm" />
               <StatCard label="Peor"    value={activeStats.worst} unit="cm" />
             </div>
+
+            {lsi && lsiStatus && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '1fr 1fr',
+                  gap: 10, marginBottom: 10,
+                }}>
+                  {[
+                    { label: 'IZQUIERDO', value: lsi.izq },
+                    { label: 'DERECHO',   value: lsi.der },
+                  ].map(({ label, value }) => {
+                    const col = jumpStatus(value, testType, true);
+                    const colHex = STATUS_COLOR[col] ?? C.accent;
+                    return (
+                      <div key={label} style={{
+                        background: C.card2, border: `1px solid ${colHex}33`,
+                        borderRadius: 12, padding: '14px 10px', textAlign: 'center',
+                      }}>
+                        <div style={{ color: C.muted, fontSize: 10,
+                          fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>
+                          {label}
+                        </div>
+                        <div style={{
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: 36, fontWeight: 700, color: colHex, lineHeight: 1,
+                        }}>
+                          {value}
+                        </div>
+                        <div style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>cm (mejor)</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{
+                  background: lsiStatus.bg, border: `1px solid ${lsiStatus.color}33`,
+                  borderRadius: 12, padding: '14px 16px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  marginBottom: 10,
+                }}>
+                  <div>
+                    <div style={{ color: C.text, fontSize: 13, fontWeight: 700 }}>
+                      LSI — Limb Symmetry Index
+                    </div>
+                    <div style={{ color: lsiStatus.color, fontSize: 12, marginTop: 2 }}>
+                      {lsiStatus.label}
+                      {lsi.valor < 90 && ` — lado ${lsi.lado} dominante`}
+                    </div>
+                  </div>
+                  <div style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 32, fontWeight: 700, color: lsiStatus.color,
+                  }}>
+                    {lsi.valor}%
+                  </div>
+                </div>
+                <div style={{
+                  background: C.card, borderRadius: 12,
+                  padding: '12px 14px', border: `1px solid ${C.border}`,
+                }}>
+                  <div style={{ color: C.muted, fontSize: 11, fontWeight: 700,
+                    marginBottom: 6, letterSpacing: '0.05em' }}>
+                    INTERPRETACIÓN CLÍNICA
+                  </div>
+                  <p style={{ color: C.text, fontSize: 12, lineHeight: 1.6, margin: 0 }}>
+                    {lsi.valor >= 90
+                      ? 'Excelente simetría bilateral. Sin indicadores de riesgo por asimetría.'
+                      : lsi.valor >= 85
+                      ? `Asimetría leve. El lado ${lsi.lado} presenta ${100 - lsi.valor}% menos potencia. Monitorear en próximas evaluaciones.`
+                      : `Asimetría significativa (LSI < 85%). El lado ${lsi.lado} presenta déficit de ${100 - lsi.valor}%. Alta correlación con riesgo de lesión. Evaluar intervención.`}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {(watts != null || elasticEff != null) && (
               <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -1100,7 +1280,7 @@ export default function BoscoView({ onFullscreen }) {
                 Detalle de saltos
               </div>
               {activeJumps.map((j, i) => {
-                const jst = jumpStatus(j.height, testType);
+                const jst = jumpStatus(j.height, testType, isUnilateral);
                 return (
                   <div key={i} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',

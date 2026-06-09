@@ -1092,30 +1092,24 @@ export default function BoscoView({ onFullscreen }) {
 
         {video.isReady && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 16px 32px' }}>
-            {(() => {
-              const isDuplicate = manualJumps.length > 0 &&
-                video.result?.flightMs === manualJumps[manualJumps.length - 1]?.flightMs;
-              const canConfirm = video.result !== null && !isDuplicate;
-              return (
-                <button
-                  onClick={handleConfirmVideoJump}
-                  disabled={!canConfirm}
-                  style={{
-                    padding: '15px', borderRadius: 12,
-                    border: 'none',
-                    background: canConfirm ? C.accent : C.border,
-                    color: canConfirm ? '#0f172a' : C.muted,
-                    fontWeight: 700, fontSize: 15,
-                    cursor: canConfirm ? 'pointer' : 'not-allowed',
-                    opacity: canConfirm ? 1 : 0.6,
-                  }}
-                >
-                  {isDuplicate
-                    ? `⚠ Marcá nuevos puntos para el salto ${manualJumps.length + 1}`
-                    : `✓ Confirmar salto ${manualJumps.length + 1}/${numReps}`}
-                </button>
-              );
-            })()}
+            <button
+              onClick={handleConfirmVideoJump}
+              disabled={!video.result}
+              style={{
+                padding: '15px', borderRadius: 12,
+                border: 'none',
+                background: video.result ? C.accent : C.border,
+                color: video.result ? '#0f172a' : C.muted,
+                fontWeight: 700, fontSize: 15,
+                cursor: video.result ? 'pointer' : 'not-allowed',
+                opacity: video.result ? 1 : 0.5,
+              }}
+            >
+              {video.result
+                ? `✓ Confirmar salto ${manualJumps.length + 1}/${numReps}`
+                : 'Marcá despegue y aterrizaje'
+              }
+            </button>
             <button onClick={video.resetMarkers}
               style={{
                 padding: '12px', borderRadius: 12,

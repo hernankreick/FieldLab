@@ -82,6 +82,7 @@ export function useVideoAnalysis() {
     setTakeoffTime(null);
     setLandingTime(null);
     setResult(null);
+    console.log('[useVideoAnalysis] resetMarkers called');
   }, []);
 
   const clearVideo = useCallback(() => {

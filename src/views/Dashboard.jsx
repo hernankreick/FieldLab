@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Users, LogOut, Plus, Loader2 } from 'lucide-react';
+import { AlertTriangle, Users, LogOut, Plus, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import {
+  AreaChart, Area, LineChart, Line,
+  XAxis, YAxis, ReferenceLine,
+  Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
 import QRGenerator from '../components/QRGenerator';
@@ -12,6 +17,7 @@ import { getTeamAlerts } from '../utils/alerts';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { getPlayers, getWellness, getLoads, createPlayer } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { PLAYERS } from '../data/players';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
 
@@ -136,6 +142,9 @@ export default function Dashboard({ onNavigate }) {
   const [newNum,      setNewNum]      = useState('');
   const [addingPlayer, setAddingPlayer] = useState(false);
   const [activeTab,    setActiveTab]    = useState('roster');
+  const [teamHistory,   setTeamHistory]   = useState([]);
+  const [hooperHistory, setHooperHistory] = useState([]);
+  const [trendLoading,  setTrendLoading]  = useState(false);
 
   const loadFromDB = useCallback(async () => {
     if (!activeTeam?.id) return;
@@ -182,6 +191,101 @@ export default function Dashboard({ onNavigate }) {
   }, [activeTeam?.id]);
 
   useEffect(() => { loadFromDB(); }, [loadFromDB]);
+
+  const loadTrendData = useCallback(async () => {
+    if (!activeTeam?.id) return;
+    setTrendLoading(true);
+    try {
+      const players = await getPlayers(activeTeam.id);
+      if (!players?.length) return;
+      const playerIds = players.map(p => p.id);
+
+      const today  = new Date();
+      const dateStr = (d) => d.toISOString().split('T')[0];
+      const daysAgo = (n) => { const d = new Date(today); d.setDate(d.getDate() - n); return d; };
+
+      // ACWR histórico del equipo (28 días)
+      const { data: loadsData } = await supabase
+        .from('loads')
+        .select('date, load, player_id')
+        .in('player_id', playerIds)
+        .gte('date', dateStr(daysAgo(28)))
+        .order('date', { ascending: true });
+
+      if (loadsData?.length > 0) {
+        const byDate = {};
+        loadsData.forEach(r => {
+          if (!byDate[r.date]) byDate[r.date] = [];
+          byDate[r.date].push(Number(r.load));
+        });
+
+        const series = Array.from({ length: 28 }, (_, i) => {
+          const date = dateStr(daysAgo(27 - i));
+          const vals = byDate[date] ?? [];
+          return {
+            date,
+            label: new Date(date + 'T12:00:00')
+              .toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
+            load: vals.length > 0
+              ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)
+              : 0,
+          };
+        });
+
+        const seriesWithACWR = series.map((point, i) => {
+          if (i < 7) return { ...point, acwr: null };
+          const acute7   = series.slice(i - 6, i + 1).reduce((s, d) => s + d.load, 0) / 7;
+          const chronic28 = i >= 27
+            ? series.slice(0, 28).reduce((s, d) => s + d.load, 0) / 28
+            : series.slice(0, i + 1).reduce((s, d) => s + d.load, 0) / (i + 1);
+          const acwr = chronic28 > 0 ? acute7 / chronic28 : null;
+          return { ...point, acwr: acwr !== null ? Math.round(acwr * 100) / 100 : null };
+        });
+
+        setTeamHistory(seriesWithACWR);
+      }
+
+      // Hooper histórico del equipo (14 días)
+      const { data: wellnessData } = await supabase
+        .from('wellness')
+        .select('date, score, player_id')
+        .in('player_id', playerIds)
+        .gte('date', dateStr(daysAgo(14)))
+        .order('date', { ascending: true });
+
+      if (wellnessData?.length > 0) {
+        const byDate = {};
+        wellnessData.forEach(r => {
+          if (!byDate[r.date]) byDate[r.date] = [];
+          byDate[r.date].push(Number(r.score));
+        });
+
+        const hooperSeries = Array.from({ length: 14 }, (_, i) => {
+          const date = dateStr(daysAgo(13 - i));
+          const vals = byDate[date] ?? [];
+          return {
+            date,
+            label: new Date(date + 'T12:00:00')
+              .toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
+            score: vals.length > 0
+              ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length)
+              : null,
+            count: vals.length,
+          };
+        });
+
+        setHooperHistory(hooperSeries);
+      }
+    } catch (e) {
+      console.warn('trend load error:', e);
+    } finally {
+      setTrendLoading(false);
+    }
+  }, [activeTeam?.id]);
+
+  useEffect(() => {
+    if (activeTab === 'tendencias') loadTrendData();
+  }, [activeTab, loadTrendData]);
 
   // Poll localStorage wellness when using local fallback
   useEffect(() => {
@@ -300,22 +404,20 @@ export default function Dashboard({ onNavigate }) {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-white/[0.04] p-1 rounded-xl">
-        <button
-          onClick={() => setActiveTab('roster')}
-          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            activeTab === 'roster' ? 'bg-accent text-background' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Plantel
-        </button>
-        <button
-          onClick={() => setActiveTab('heatmap')}
-          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            activeTab === 'heatmap' ? 'bg-accent text-background' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Mapa de dolor
-        </button>
+        {[
+          { id: 'roster',     label: 'Plantel'       },
+          { id: 'heatmap',    label: 'Mapa de dolor' },
+          { id: 'tendencias', label: 'Tendencias'    },
+        ].map(({ id, label }) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+              activeTab === id
+                ? 'bg-accent text-background'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'roster' && (
@@ -462,6 +564,218 @@ export default function Dashboard({ onNavigate }) {
           </Card>
         );
       })()}
+
+      {activeTab === 'tendencias' && (
+        <div className="space-y-4">
+
+          {trendLoading && (
+            <div className="flex items-center justify-center gap-2 py-4 text-slate-500 text-xs">
+              <Loader2 size={12} className="animate-spin" />
+              Cargando tendencias…
+            </div>
+          )}
+
+          {/* ACWR del equipo */}
+          <Card title="ACWR del Equipo — 28 días" icon={TrendingUp}>
+            {teamHistory.filter(d => d.acwr !== null).length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6">
+                Sin datos de carga suficientes (mínimo 7 días)
+              </p>
+            ) : (
+              <>
+                {(() => {
+                  const withACWR = teamHistory.filter(d => d.acwr !== null);
+                  const current  = withACWR[withACWR.length - 1]?.acwr ?? null;
+                  const prev     = withACWR[withACWR.length - 8]?.acwr ?? null;
+                  const trend    = current && prev
+                    ? current > prev + 0.05 ? 'up'
+                    : current < prev - 0.05 ? 'down'
+                    : 'stable'
+                    : null;
+                  const acwrCol  = !current ? '#94a3b8'
+                    : current > 1.5 ? '#ef4444'
+                    : current > 1.3 ? '#f59e0b'
+                    : current < 0.8 ? '#f59e0b'
+                    : '#22c55e';
+                  return (
+                    <div className="flex items-center gap-3 mb-3">
+                      <div>
+                        <span className="font-data text-3xl font-bold" style={{ color: acwrCol }}>
+                          {current?.toFixed(2) ?? '—'}
+                        </span>
+                        <span className="text-slate-500 text-xs ml-1">hoy</span>
+                      </div>
+                      {trend && (
+                        <div className="flex items-center gap-1">
+                          {trend === 'up'     && <TrendingUp   size={14} className="text-red-400" />}
+                          {trend === 'down'   && <TrendingDown size={14} className="text-green-400" />}
+                          {trend === 'stable' && <Minus        size={14} className="text-slate-400" />}
+                          <span className="text-xs text-slate-500">vs semana anterior</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart
+                    data={teamHistory.filter(d => d.acwr !== null)}
+                    margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="acwrGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#38bdf8" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#38bdf8" stopOpacity={0}    />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 9 }}
+                      axisLine={false} tickLine={false} interval={6} />
+                    <YAxis domain={[0, 2]} tick={{ fill: '#64748b', fontSize: 9 }}
+                      axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', fontSize: 12 }}
+                      labelStyle={{ color: '#f8fafc' }}
+                      itemStyle={{ color: '#38bdf8' }}
+                      formatter={(v) => [v?.toFixed(2), 'ACWR']}
+                    />
+                    <ReferenceLine y={0.8} stroke="#22c55e" strokeDasharray="3 3"
+                      label={{ value: '0.8', fill: '#22c55e', fontSize: 9, position: 'left' }} />
+                    <ReferenceLine y={1.3} stroke="#f59e0b" strokeDasharray="3 3"
+                      label={{ value: '1.3', fill: '#f59e0b', fontSize: 9, position: 'left' }} />
+                    <ReferenceLine y={1.5} stroke="#ef4444" strokeDasharray="3 3"
+                      label={{ value: '1.5', fill: '#ef4444', fontSize: 9, position: 'left' }} />
+                    <Area type="monotone" dataKey="acwr" stroke="#38bdf8" strokeWidth={2}
+                      fill="url(#acwrGrad)" connectNulls={false} dot={false}
+                      activeDot={{ r: 4, fill: '#38bdf8' }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+
+                <p className="text-[10px] text-slate-600 mt-1 text-center">
+                  Promedio del equipo · Verde 0.8–1.3 · Riesgo &gt;1.5
+                </p>
+              </>
+            )}
+          </Card>
+
+          {/* Hooper Index del equipo */}
+          <Card title="Hooper Index del Equipo — 14 días">
+            {hooperHistory.filter(d => d.score !== null).length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6">
+                Sin reportes de wellness en los últimos 14 días
+              </p>
+            ) : (
+              <>
+                {(() => {
+                  const withScore = hooperHistory.filter(d => d.score !== null);
+                  const current   = withScore[withScore.length - 1]?.score ?? null;
+                  const hooCol    = !current ? '#94a3b8'
+                    : current > 18 ? '#ef4444'
+                    : current > 12 ? '#f59e0b'
+                    : '#22c55e';
+                  const hooLabel  = !current ? '—'
+                    : current > 18 ? 'Fatiga crítica'
+                    : current > 12 ? 'Precaución'
+                    : 'Óptimo';
+                  return (
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="font-data text-3xl font-bold" style={{ color: hooCol }}>
+                        {current ?? '—'}
+                      </span>
+                      <span className="text-xs font-semibold" style={{ color: hooCol }}>
+                        {hooLabel}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                <ResponsiveContainer width="100%" height={130}>
+                  <LineChart data={hooperHistory} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 9 }}
+                      axisLine={false} tickLine={false} interval={3} />
+                    <YAxis domain={[0, 28]} tick={{ fill: '#64748b', fontSize: 9 }}
+                      axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', fontSize: 12 }}
+                      labelStyle={{ color: '#f8fafc' }}
+                      formatter={(v, _, p) => [`${v} pts (${p.payload.count} reportes)`, 'Hooper']}
+                    />
+                    <ReferenceLine y={12} stroke="#22c55e" strokeDasharray="3 3"
+                      label={{ value: '12', fill: '#22c55e', fontSize: 9, position: 'left' }} />
+                    <ReferenceLine y={18} stroke="#ef4444" strokeDasharray="3 3"
+                      label={{ value: '18', fill: '#ef4444', fontSize: 9, position: 'left' }} />
+                    <Line type="monotone" dataKey="score" stroke="#a78bfa" strokeWidth={2}
+                      dot={{ r: 3, fill: '#a78bfa' }} connectNulls={false}
+                      activeDot={{ r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+
+                <p className="text-[10px] text-slate-600 mt-1 text-center">
+                  Promedio del equipo · Verde &lt;12 · Riesgo &gt;18
+                </p>
+              </>
+            )}
+          </Card>
+
+          {/* Top atletas en seguimiento */}
+          <Card title="Atletas en seguimiento">
+            {(() => {
+              const atRisk = sortedAthletes
+                .filter(a => a.acwr > 1.3 || (a.w && a.w.score > 12))
+                .slice(0, 5);
+
+              if (atRisk.length === 0) {
+                return (
+                  <p className="text-sm text-slate-500 text-center py-4">
+                    ✓ Todo el plantel en zona óptima
+                  </p>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {atRisk.map(a => {
+                    const acwrCol = acwrColor(a.acwr);
+                    const hooCol  = !a.w ? '#475569'
+                      : a.w.score > 18 ? '#ef4444'
+                      : a.w.score > 12 ? '#f59e0b'
+                      : '#22c55e';
+                    return (
+                      <button key={a.id} onClick={() => onNavigate?.('player', a.id)}
+                        className="w-full text-left">
+                        <div className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-200 truncate">{a.name}</p>
+                            <p className="text-xs text-slate-500">{a.position}</p>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-2">
+                            <div className="text-right">
+                              <div className="font-data text-sm font-bold" style={{ color: acwrCol }}>
+                                {a.acwr.toFixed(2)}
+                              </div>
+                              <div className="text-[10px] text-slate-600">ACWR</div>
+                            </div>
+                            {a.w && (
+                              <div className="text-right">
+                                <div className="font-data text-sm font-bold" style={{ color: hooCol }}>
+                                  {a.w.score}
+                                </div>
+                                <div className="text-[10px] text-slate-600">Hooper</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </Card>
+
+        </div>
+      )}
     </div>
   );
 }

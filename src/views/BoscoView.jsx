@@ -279,6 +279,7 @@ export default function BoscoView({ onFullscreen }) {
       } else {
         video.resetAll();
         setManualJumps([]);
+        clearFileInputs();
         setStep('GRABANDO_B');
       }
       setToast('✓ Pierna izquierda completada — ahora la derecha');
@@ -625,6 +626,18 @@ export default function BoscoView({ onFullscreen }) {
         }}>
           {countdownNum}
         </span>
+        {toast && (
+          <div style={{
+            position: 'absolute', top: 60, left: '50%',
+            transform: 'translateX(-50%)', zIndex: 1000,
+            background: 'rgba(34,197,94,0.95)', color: '#0f172a',
+            fontWeight: 700, fontSize: 13, padding: '10px 20px',
+            borderRadius: 99, whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          }}>
+            {toast}
+          </div>
+        )}
       </div>
     );
   }

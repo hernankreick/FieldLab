@@ -127,7 +127,8 @@ export default function HooperQR({ teamId }) {
   const [players, setPlayers]   = useState([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [saveError, setSaveError] = useState(null);
-  const [coachId,   setCoachId]   = useState(null);
+  const [coachId,    setCoachId]    = useState(null);
+  const [coachError, setCoachError] = useState(false);
 
   const isValidTeam = teamId && String(teamId).includes('-');
 
@@ -154,10 +155,15 @@ export default function HooperQR({ teamId }) {
   function selectPlayer(p) {
     setPlayer(p);
     setCoachId(null);
+    setCoachError(false);
     setStep(1);
     getPlayerWithCoach(p.id)
-      .then(data => setCoachId(data.teams?.coach_id ?? null))
-      .catch(() => {});
+      .then(data => {
+        const cid = data.teams?.coach_id ?? null;
+        if (!cid) { setCoachError(true); return; }
+        setCoachId(cid);
+      })
+      .catch(() => setCoachError(true));
   }
   function selectSleep(v)   { setSleep(v);    setStep(2); }
   function selectStress(v)  { setStress(v);   setStep(3); }
@@ -191,7 +197,7 @@ export default function HooperQR({ teamId }) {
   }
 
   function reset() {
-    setStep(0); setPlayer(null); setSearch(''); setCoachId(null);
+    setStep(0); setPlayer(null); setSearch(''); setCoachId(null); setCoachError(false);
     setSleep(0); setStress(0); setFatigue(0); setSoreness(0);
     setZones({}); setConfirmed(false); setSentAt(null); setSaveError(null);
   }
@@ -440,6 +446,12 @@ export default function HooperQR({ teamId }) {
 
               {saveError && (
                 <p className="text-sm text-red-400 text-center">{saveError}</p>
+              )}
+
+              {coachError && !coachId && (
+                <p className="text-sm text-red-400 text-center">
+                  Error al cargar datos. Volvé al inicio y seleccioná el jugador de nuevo.
+                </p>
               )}
 
               <button

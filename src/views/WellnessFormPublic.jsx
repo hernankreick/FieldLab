@@ -62,14 +62,20 @@ export default function WellnessFormPublic() {
   const [submitted,   setSubmitted]   = useState(false);
   const [loading,     setLoading]     = useState(false);
   const [saveError,   setSaveError]   = useState(null);
-  const [coachId,     setCoachId]     = useState(null);
-  const [playerError, setPlayerError] = useState(false);
+  const [coachId,    setCoachId]    = useState(null);
+  const [fetchState, setFetchState] = useState('loading'); // 'loading' | 'ok' | 'error'
 
   useEffect(() => {
     if (!playerId) return;
+    setFetchState('loading');
     getPlayerWithCoach(playerId)
-      .then(p => setCoachId(p.teams?.coach_id ?? null))
-      .catch(() => setPlayerError(true));
+      .then(p => {
+        const cid = p.teams?.coach_id ?? null;
+        if (!cid) { setFetchState('error'); return; }
+        setCoachId(cid);
+        setFetchState('ok');
+      })
+      .catch(() => setFetchState('error'));
   }, [playerId]);
 
   function setSlider(key, val) {
@@ -82,6 +88,17 @@ export default function WellnessFormPublic() {
       if (next[id]) delete next[id]; else next[id] = 'alto';
       return next;
     });
+  }
+
+  function retry() {
+    setFetchState('loading');
+    getPlayerWithCoach(playerId)
+      .then(p => {
+        const cid = p.teams?.coach_id ?? null;
+        setCoachId(cid || null);
+        setFetchState(cid ? 'ok' : 'error');
+      })
+      .catch(() => setFetchState('error'));
   }
 
   async function handleSubmit(e) {
@@ -120,13 +137,34 @@ export default function WellnessFormPublic() {
     );
   }
 
-  if (playerError) {
+  if (fetchState === 'loading') {
     return (
       <div style={S.root}>
         <div style={S.center}>
-          <p style={{ color: '#ef4444', fontSize: 15 }}>
-            Jugador no encontrado. Pedile al profe un QR actualizado.
+          <p style={{ color: '#94a3b8', fontSize: 14 }}>Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchState === 'error') {
+    return (
+      <div style={S.root}>
+        <div style={S.center}>
+          <p style={{ color: '#ef4444', fontSize: 15, marginBottom: 16 }}>
+            No se pudo cargar el formulario.
           </p>
+          <button
+            onClick={retry}
+            style={{
+              padding: '10px 24px', borderRadius: 10,
+              background: '#3b82f6', color: '#fff',
+              border: 'none', fontSize: 14,
+              fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     );
@@ -204,10 +242,10 @@ export default function WellnessFormPublic() {
 
           <button
             type="submit"
-            disabled={loading || !coachId}
-            style={{ ...S.submit, opacity: (loading || !coachId) ? 0.7 : 1 }}
+            disabled={loading}
+            style={{ ...S.submit, opacity: loading ? 0.7 : 1 }}
           >
-            {loading ? 'Enviando...' : !coachId ? 'Cargando...' : 'Enviar reporte'}
+            {loading ? 'Enviando...' : 'Enviar reporte'}
           </button>
         </form>
       </div>

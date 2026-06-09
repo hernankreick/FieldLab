@@ -24,6 +24,7 @@ export default function RPEForm({ teamId }) {
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [saveError,     setSaveError]     = useState(null);
   const [coachId,       setCoachId]       = useState(null);
+  const [coachError,    setCoachError]    = useState(false);
   const submittingRef = useRef(false);
 
   const isValidTeam = teamId && String(teamId).includes('-');
@@ -43,35 +44,46 @@ export default function RPEForm({ teamId }) {
   function handleSelectPlayer(p) {
     setPlayer(p);
     setCoachId(null);
+    setCoachError(false);
     setStep(1);
     getPlayerWithCoach(p.id)
-      .then(data => setCoachId(data.teams?.coach_id ?? null))
-      .catch(() => {});
+      .then(data => {
+        const cid = data.teams?.coach_id ?? null;
+        if (!cid) { setCoachError(true); return; }
+        setCoachId(cid);
+      })
+      .catch(() => setCoachError(true));
   }
 
   async function selectRPE(item) {
     if (submittingRef.current || !coachId) return;
     submittingRef.current = true;
+
+    const currentPlayerId = player.id;
+    const currentCoachId  = coachId;
+
     setPressing(item.v);
     navigator.vibrate?.(60);
-    setTimeout(async () => {
+
+    try {
+      await new Promise(res => setTimeout(res, 140));
       const { error } = await supabase.from('loads').insert({
-        player_id: player.id,
-        coach_id:  coachId,
+        player_id: currentPlayerId,
+        coach_id:  currentCoachId,
         date:      todayDate(),
         rpe:       item.v * 2,
         load:      0,
       });
-      if (error) {
-        console.error('RPE insert error:', error);
-        setSaveError('No se pudo guardar. Intentá de nuevo.');
-        submittingRef.current = false;
-        setPressing(null);
-        return;
-      }
+      if (error) throw error;
       setSentItem(item);
       setPressing(null);
-    }, 140);
+    } catch (err) {
+      console.error('RPE insert error:', err);
+      setSaveError('No se pudo guardar. Intentá de nuevo.');
+      setPressing(null);
+    } finally {
+      submittingRef.current = false;
+    }
   }
 
   function reset() {
@@ -79,6 +91,7 @@ export default function RPEForm({ teamId }) {
     setStep(0);
     setPlayer(null);
     setCoachId(null);
+    setCoachError(false);
     setSearch('');
     setSentItem(null);
     setPressing(null);
@@ -241,13 +254,21 @@ export default function RPEForm({ teamId }) {
                 <p className="text-sm text-red-400 text-center">{saveError}</p>
               )}
 
+              {coachError && (
+                <p className="text-sm text-red-400 text-center">
+                  Error al cargar datos. Seleccioná el jugador de nuevo.
+                </p>
+              )}
+
               <div className="flex flex-col gap-3">
                 {RPE_SCALE.map((item) => {
                   const { v, label, color } = item;
                   const isPressed = pressing === v;
+                  const blocked   = !coachId || coachError;
                   return (
                     <button
                       key={v}
+                      disabled={blocked}
                       onClick={() => selectRPE(item)}
                       className="w-full flex items-center gap-5 px-6 py-5 rounded-2xl border
                         text-left transition-all active:scale-[0.97]"
@@ -256,6 +277,8 @@ export default function RPEForm({ teamId }) {
                         borderColor: isPressed ? color         : `${color}28`,
                         boxShadow:   isPressed ? `0 0 24px ${color}35` : 'none',
                         transform:   isPressed ? 'scale(0.97)' : 'scale(1)',
+                        opacity:     blocked ? 0.4 : 1,
+                        cursor:      blocked ? 'not-allowed' : 'pointer',
                       }}
                     >
                       <span

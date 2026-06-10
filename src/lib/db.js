@@ -44,7 +44,12 @@ export async function getPlayerWithCoach(playerId) {
 
 // WELLNESS
 function mapWellness(r) {
-  return { ...r, timestamp: r.date, activeZones: r.active_zones ?? {} };
+  return {
+    ...r,
+    score:       r.score ?? r.composite ?? 0,
+    timestamp:   r.date ? new Date(r.date + 'T12:00:00').getTime() : Date.now(),
+    activeZones: r.active_zones ?? {},
+  };
 }
 
 export async function getWellness(playerId, days = 7) {

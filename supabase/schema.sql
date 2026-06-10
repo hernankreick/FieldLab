@@ -137,8 +137,21 @@ CREATE POLICY "players_delete" ON public.players
 CREATE POLICY "wellness_select" ON public.wellness
   FOR SELECT USING (auth.uid() = coach_id);
 
+-- Permite inserts de coaches autenticados y de formularios QR anónimos.
+-- Los inserts anónimos deben declarar el coach_id real del equipo del jugador.
 CREATE POLICY "wellness_insert" ON public.wellness
-  FOR INSERT WITH CHECK (auth.uid() = coach_id);
+  FOR INSERT WITH CHECK (
+    auth.uid() = coach_id
+    OR (
+      auth.uid() IS NULL
+      AND coach_id IN (
+        SELECT t.coach_id
+        FROM public.players p
+        JOIN public.teams t ON t.id = p.team_id
+        WHERE p.id = player_id
+      )
+    )
+  );
 
 CREATE POLICY "wellness_update" ON public.wellness
   FOR UPDATE USING (auth.uid() = coach_id)
@@ -167,8 +180,20 @@ CREATE POLICY "evaluations_delete" ON public.evaluations
 CREATE POLICY "loads_select" ON public.loads
   FOR SELECT USING (auth.uid() = coach_id);
 
+-- Permite inserts de coaches autenticados y de formularios QR de RPE anónimos.
 CREATE POLICY "loads_insert" ON public.loads
-  FOR INSERT WITH CHECK (auth.uid() = coach_id);
+  FOR INSERT WITH CHECK (
+    auth.uid() = coach_id
+    OR (
+      auth.uid() IS NULL
+      AND coach_id IN (
+        SELECT t.coach_id
+        FROM public.players p
+        JOIN public.teams t ON t.id = p.team_id
+        WHERE p.id = player_id
+      )
+    )
+  );
 
 CREATE POLICY "loads_update" ON public.loads
   FOR UPDATE USING (auth.uid() = coach_id)

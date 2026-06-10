@@ -124,7 +124,7 @@ function dotPriority(a, w) {
 function normalizeWellness(row) {
   return {
     ...row,
-    score:     row.score ?? 0,
+    score:     row.score ?? row.composite ?? 0,
     timestamp: new Date(`${row.date}T12:00:00`).getTime(),
   };
 }
@@ -248,7 +248,7 @@ export default function Dashboard({ onNavigate }) {
       // Hooper histórico del equipo (14 días)
       const { data: wellnessData } = await supabase
         .from('wellness')
-        .select('date, score, player_id')
+        .select('date, composite, player_id')
         .in('player_id', playerIds)
         .gte('date', dateStr(daysAgo(14)))
         .order('date', { ascending: true });
@@ -257,7 +257,7 @@ export default function Dashboard({ onNavigate }) {
         const byDate = {};
         wellnessData.forEach(r => {
           if (!byDate[r.date]) byDate[r.date] = [];
-          byDate[r.date].push(Number(r.score));
+          byDate[r.date].push(Number(r.composite ?? 0));
         });
 
         const hooperSeries = Array.from({ length: 14 }, (_, i) => {

@@ -71,8 +71,7 @@ export default function RPEForm({ teamId }) {
         player_id: currentPlayerId,
         coach_id:  currentCoachId,
         date:      todayDate(),
-        rpe:       item.v * 2,
-        load:      0,
+        value:     item.v * 2,
       });
       if (error) throw error;
       setSentItem(item);

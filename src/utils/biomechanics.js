@@ -1,12 +1,12 @@
-// LSI - Limb Symmetry Index
+// LSI - Limb Symmetry Index (simetría: 100% = perfecto, < 90% = riesgo)
 export function calcLSI(strong, weak) {
   if (!strong || strong === 0) return 0;
-  return ((strong - weak) / strong) * 100;
+  return (weak / strong) * 100;
 }
 
 export function lsiStatus(lsi) {
-  if (lsi <= 8) return 'safe';
-  if (lsi <= 15) return 'warning';
+  if (lsi >= 90) return 'safe';
+  if (lsi >= 85) return 'warning';
   return 'danger';
 }
 

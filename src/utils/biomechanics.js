@@ -10,12 +10,6 @@ export function lsiStatus(lsi) {
   return 'danger';
 }
 
-// ACWR - Acute:Chronic Workload Ratio
-export function calcACWR(acute, chronic) {
-  if (!chronic || chronic === 0) return 0;
-  return acute / chronic;
-}
-
 export function acwrStatus(acwr) {
   if (acwr >= 0.8 && acwr <= 1.3) return 'safe';
   if (acwr > 1.3 && acwr <= 1.5) return 'warning';

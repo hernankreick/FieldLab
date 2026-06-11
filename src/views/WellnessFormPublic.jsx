@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { saveWellness, getPlayerWithCoach } from '../lib/db';
+import { saveWellnessPublic, getPlayerWithCoach } from '../lib/db';
 
 const SLIDER_META = [
   { key: 'sleep',    label: 'Sueño',          minLabel: 'Pésimo',     maxLabel: 'Excelente' },
@@ -108,18 +108,16 @@ export default function WellnessFormPublic() {
     if (!playerId || !coachId) return;
     setLoading(true);
     setSaveError(null);
-    const score = form.stress + (8 - form.sleep) + form.fatigue + form.soreness;
     try {
-      await saveWellness({
-        player_id:    playerId,
-        coach_id:     coachId,
-        date:         new Date().toISOString().split('T')[0],
-        sleep:        form.sleep,
-        stress:       form.stress,
-        fatigue:      form.fatigue,
-        soreness:     form.soreness,
-        score,
-        active_zones: zones,
+      await saveWellnessPublic({
+        player_id:   playerId,
+        coach_id:    coachId,
+        date:        new Date().toISOString().split('T')[0],
+        sleep:       form.sleep,
+        stress:      form.stress,
+        fatigue:     form.fatigue,
+        muscle_pain: form.soreness,
+        zones:       Object.keys(zones).filter(k => zones[k]).join(',') || null,
       });
       setSubmitted(true);
     } catch {

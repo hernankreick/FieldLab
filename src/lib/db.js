@@ -105,6 +105,15 @@ export async function saveWellness(entry) {
   return data;
 }
 
+// Para formularios QR anónimos: INSERT puro sin upsert.
+// El rol anon no tiene policy UPDATE en wellness, por lo que upsert fallaría
+// al intentar sobreescribir un registro existente del mismo día.
+// Un duplicado (23505) se trata como éxito — el jugador ya reportó hoy.
+export async function saveWellnessPublic(entry) {
+  const { error } = await supabase.from('wellness').insert(entry);
+  if (error && error.code !== '23505') throw error;
+}
+
 // EVALUATIONS
 export async function getEvaluations(playerId) {
   const { data, error } = await supabase

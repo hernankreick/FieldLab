@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS public.loads (
   date       date          NOT NULL,
   value      numeric(7,1)  NOT NULL,
   notes      text,
-  created_at timestamptz   NOT NULL DEFAULT now()
+  created_at timestamptz   NOT NULL DEFAULT now(),
+  UNIQUE (player_id, date)
 );
 
 
@@ -109,6 +110,14 @@ CREATE POLICY "teams_update" ON public.teams
 
 CREATE POLICY "teams_delete" ON public.teams
   FOR DELETE USING (auth.uid() = coach_id);
+
+-- Permite SELECT anónimo en players/teams para que los formularios QR puedan
+-- resolver el coach_id del jugador antes de insertar wellness/loads.
+CREATE POLICY "players_select_anon" ON public.players
+  FOR SELECT TO anon USING (true);
+
+CREATE POLICY "teams_select_anon" ON public.teams
+  FOR SELECT TO anon USING (true);
 
 -- ── players (access through team ownership) ──────────────────────────────────
 

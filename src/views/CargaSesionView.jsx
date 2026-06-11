@@ -61,7 +61,7 @@ export default function CargaSesionView() {
     const playerIds = teamPlayers.map(p => p.id);
     const { data } = await supabase
       .from('loads')
-      .select('player_id, rpe, created_at')
+      .select('player_id, value, created_at')
       .eq('date', todayDate())
       .in('player_id', playerIds)
       .order('created_at', { ascending: false });
@@ -86,7 +86,7 @@ export default function CargaSesionView() {
 
   const players = teamPlayers.map(p => {
     const rec  = rpeMap[p.id];
-    const rpe  = rec?.rpe ?? null;
+    const rpe  = rec?.value ?? null;
     const load = isDescanso ? 0 : rpe !== null ? rpe * minutes : null;
     return { ...p, rpe, load };
   });
@@ -124,13 +124,10 @@ export default function CargaSesionView() {
       await Promise.allSettled(
         withRPE.map(p =>
           supabase.from('loads').insert({
-            player_id:    p.id,
+            player_id: p.id,
             date,
-            rpe:          p.rpe,
-            load:         p.load,
-            duration:     minutes,
-            session_type: sessionType,
-            coach_id:     coach?.id ?? null,
+            value:     p.load,
+            coach_id:  coach?.id ?? null,
           })
         )
       );

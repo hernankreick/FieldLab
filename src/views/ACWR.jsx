@@ -4,7 +4,8 @@ import { AreaChart, Area, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContai
 import Card from '../components/Card';
 import MetricDisplay from '../components/MetricDisplay';
 import StatusBadge from '../components/StatusBadge';
-import { calcACWR, acwrStatus } from '../utils/biomechanics';
+import { calcACWR } from '../utils/calculations';
+import { acwrStatus } from '../utils/biomechanics';
 import { supabase } from '../lib/supabase';
 import { usePlayers } from '../hooks/usePlayers';
 
@@ -28,9 +29,9 @@ function dateMinusDays(n) {
 
 export default function ACWR() {
   const { players } = usePlayers();
-  const [loads,   setLoads]   = useState(MOCK_HISTORY);
-  const [chronic, setChronic] = useState(MOCK_CHRONIC);
-  const [input,   setInput]   = useState('');
+  const [loads,     setLoads]     = useState(MOCK_HISTORY);
+  const [fullLoads, setFullLoads] = useState(null); // 28 valores oldest→newest para EWMA
+  const [input,     setInput]     = useState('');
 
   const loadFromSupabase = useCallback(async () => {
     if (!players.length) return;
@@ -39,10 +40,10 @@ export default function ACWR() {
 
     const { data } = await supabase
       .from('loads')
-      .select('date, load, player_id')
+      .select('date, value, player_id')
       .in('player_id', playerIds)
       .gte('date', since)
-      .gt('load', 0)
+      .gt('value', 0)
       .order('date', { ascending: true });
 
     if (!data || data.length === 0) return;
@@ -51,7 +52,7 @@ export default function ACWR() {
     const byDate = {};
     data.forEach(r => {
       if (!byDate[r.date]) byDate[r.date] = [];
-      byDate[r.date].push(Number(r.load));
+      byDate[r.date].push(Number(r.value));
     });
 
     const dailyAvg = Array.from({ length: 28 }, (_, i) => {
@@ -62,13 +63,12 @@ export default function ACWR() {
 
     if (!dailyAvg.some(d => d.load > 0)) return;
 
-    const chronicAvg = dailyAvg.reduce((s, d) => s + d.load, 0) / 28;
     const last7 = dailyAvg.slice(-7).map(d => ({
       day:  DAYS[new Date(d.date + 'T12:00:00').getDay()],
       load: Math.round(d.load),
     }));
 
-    setChronic(chronicAvg || MOCK_CHRONIC);
+    setFullLoads(dailyAvg.map(d => d.load));
     setLoads(last7);
   }, [players]);
 
@@ -78,14 +78,17 @@ export default function ACWR() {
     return () => clearInterval(iv);
   }, [loadFromSupabase]);
 
-  const acute  = loads.reduce((s, d) => s + d.load, 0) / 7;
-  const acwr   = calcACWR(acute, chronic);
-  const status = acwrStatus(acwr);
+  const acwrCalc = calcACWR(fullLoads ?? Array(28).fill(MOCK_CHRONIC));
+  const status   = acwrStatus(acwrCalc.ratio);
 
   function addLoad() {
     const val = parseFloat(input);
     if (isNaN(val)) return;
     setLoads(prev => [...prev.slice(1), { day: 'Hoy', load: val }]);
+    setFullLoads(prev => {
+      const arr = prev ?? Array(28).fill(MOCK_CHRONIC);
+      return [...arr.slice(1), val];
+    });
     setInput('');
   }
 
@@ -99,15 +102,15 @@ export default function ACWR() {
       <div className="grid grid-cols-2 gap-3">
         <Card>
           <MetricDisplay
-            value={acwr.toFixed(2)}
+            value={acwrCalc.ratio.toFixed(2)}
             label="ACWR actual"
             status={status}
           />
           <StatusBadge status={status} className="mt-2" />
         </Card>
         <Card>
-          <MetricDisplay value={Math.round(acute)} unit="UA" label="Carga aguda (7d)" status="neutral" />
-          <MetricDisplay value={Math.round(chronic)} unit="UA" label="Crónica (28d)" status="neutral" className="mt-2" />
+          <MetricDisplay value={Math.round(acwrCalc.acute)} unit="UA" label="Carga aguda (7d)" status="neutral" />
+          <MetricDisplay value={Math.round(acwrCalc.chronic)} unit="UA" label="Crónica (28d)" status="neutral" className="mt-2" />
         </Card>
       </div>
 
@@ -128,8 +131,8 @@ export default function ACWR() {
               labelStyle={{ color: '#f8fafc' }}
               itemStyle={{ color: '#38bdf8' }}
             />
-            <ReferenceLine y={chronic * 1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '1.3x', fill: '#f59e0b', fontSize: 10 }} />
-            <ReferenceLine y={chronic * 1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: '1.5x', fill: '#ef4444', fontSize: 10 }} />
+            <ReferenceLine y={acwrCalc.chronic * 1.3} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '1.3x', fill: '#f59e0b', fontSize: 10 }} />
+            <ReferenceLine y={acwrCalc.chronic * 1.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: '1.5x', fill: '#ef4444', fontSize: 10 }} />
             <Area type="monotone" dataKey="load" stroke="#38bdf8" strokeWidth={2} fill="url(#loadGrad)" />
           </AreaChart>
         </ResponsiveContainer>

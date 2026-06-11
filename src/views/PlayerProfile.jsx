@@ -17,6 +17,7 @@ import { cn } from '../utils/cn';
 import { PLAYERS } from '../data/players';
 import { getMetricStatus } from '../utils/thresholds';
 import { saveEvaluation, getEvaluations, getWellness } from '../lib/db';
+import { calcACWR } from '../utils/calculations';
 import { supabase } from '../lib/supabase';
 import { usePlayers } from '../hooks/usePlayers';
 
@@ -429,10 +430,10 @@ export default function PlayerProfile({ initialId, onNavigate }) {
         getWellness(supabasePlayerId, 7).catch(() => []),
         supabase
           .from('loads')
-          .select('date, load')
+          .select('date, value')
           .eq('player_id', supabasePlayerId)
           .gte('date', sinceStr)
-          .gt('load', 0)
+          .gt('value', 0)
           .order('date', { ascending: true })
           .catch(() => ({ data: [] })),
       ]);
@@ -443,7 +444,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
       // Construye array de 28 días con carga diaria (suma si hay varias sesiones)
       const byDate = {};
       (loadsRaw ?? []).forEach(r => {
-        byDate[r.date] = (byDate[r.date] ?? 0) + Number(r.load);
+        byDate[r.date] = (byDate[r.date] ?? 0) + Number(r.value);
       });
       setPlayerLoads(
         Array.from({ length: 28 }, (_, i) => {
@@ -526,9 +527,8 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   // Derivados de carga
   const todayW        = latestWellness && isToday(latestWellness.timestamp) ? latestWellness : null;
   const hasRealLoads  = playerLoads.some(d => d.load > 0);
-  const acute         = playerLoads.slice(-7).reduce((s, d) => s + d.load, 0) / 7;
-  const chronic       = playerLoads.reduce((s, d) => s + d.load, 0) / 28;
-  const displayAcwr   = hasRealLoads && chronic > 0 ? acute / chronic : player.acwr;
+  const acwrCalc      = hasRealLoads ? calcACWR(playerLoads.map(d => d.load)) : null;
+  const displayAcwr   = acwrCalc ? acwrCalc.ratio : player.acwr;
   const risk          = playerRisk(player, latestWellness);
   const sessionCount  = playerLoads.filter(d => d.load > 0).length;
 

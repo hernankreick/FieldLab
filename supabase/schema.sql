@@ -67,8 +67,7 @@ CREATE TABLE IF NOT EXISTS public.loads (
   date       date          NOT NULL,
   value      numeric(7,1)  NOT NULL,
   notes      text,
-  created_at timestamptz   NOT NULL DEFAULT now(),
-  UNIQUE (player_id, date)
+  created_at timestamptz   NOT NULL DEFAULT now()
 );
 
 

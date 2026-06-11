@@ -761,14 +761,14 @@ export default function PlayerProfile({ initialId, onNavigate }) {
               <div className="bg-background rounded-xl p-3 border border-white/5">
                 <p className="text-xs text-slate-500 mb-1">Carga aguda</p>
                 <p className="text-xl font-bold font-data text-accent">
-                  {hasRealLoads ? Math.round(acute) : '—'}
+                  {hasRealLoads ? Math.round(acwrCalc?.acute ?? 0) : '—'}
                   {hasRealLoads && <span className="text-xs font-normal text-slate-500 ml-1">UA · 7d</span>}
                 </p>
               </div>
               <div className="bg-background rounded-xl p-3 border border-white/5">
                 <p className="text-xs text-slate-500 mb-1">Carga crónica</p>
                 <p className="text-xl font-bold font-data text-slate-300">
-                  {hasRealLoads ? Math.round(chronic) : '—'}
+                  {hasRealLoads ? Math.round(acwrCalc?.chronic ?? 0) : '—'}
                   {hasRealLoads && <span className="text-xs font-normal text-slate-500 ml-1">UA · 28d</span>}
                 </p>
               </div>

@@ -62,14 +62,37 @@ export async function getWellness(playerId, days = 7) {
 
 export async function getLatestTeamWellness(playerIds) {
   if (!playerIds?.length) return {};
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const sinceStr = since.toISOString().split('T')[0];
   const { data } = await supabase
     .from('wellness')
     .select('*')
     .in('player_id', playerIds)
+    .gte('date', sinceStr)
     .order('date', { ascending: false });
   const map = {};
   (data ?? []).forEach(r => {
     if (!map[r.player_id]) map[r.player_id] = mapWellness(r);
+  });
+  return map;
+}
+
+export async function getLoadsBatch(playerIds, days = 28) {
+  if (!playerIds?.length) return {};
+  const since = new Date();
+  since.setDate(since.getDate() - (days - 1));
+  const sinceStr = since.toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('loads')
+    .select('player_id, date, value')
+    .in('player_id', playerIds)
+    .gte('date', sinceStr)
+    .order('date', { ascending: true });
+  const map = {};
+  (data ?? []).forEach(r => {
+    if (!map[r.player_id]) map[r.player_id] = [];
+    map[r.player_id].push({ date: r.date, value: r.value });
   });
   return map;
 }

@@ -16,6 +16,7 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
+        if (_event === 'SIGNED_OUT') window.location.replace('/login');
       }
     );
 

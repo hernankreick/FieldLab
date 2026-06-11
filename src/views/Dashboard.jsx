@@ -16,7 +16,7 @@ import { getAllLatestWellness, clearOldRecords } from '../utils/storage';
 import { getTeamAlerts } from '../utils/alerts';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { getPlayers, getWellness, getLoads, createPlayer } from '../lib/db';
+import { getPlayers, getLatestTeamWellness, getLoadsBatch, createPlayer } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { PLAYERS } from '../data/players';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
@@ -158,19 +158,18 @@ export default function Dashboard({ onNavigate }) {
         return;
       }
 
-      const [wellnessResults, loadsResults] = await Promise.all([
-        Promise.all(players.map(p => getWellness(p.id, 1).catch(() => []))),
-        Promise.all(players.map(p => getLoads(p.id, 28).catch(() => []))),
+      const playerIds = players.map(p => p.id);
+      const [latestWellness, loadsMap] = await Promise.all([
+        getLatestTeamWellness(playerIds).catch(() => ({})),
+        getLoadsBatch(playerIds, 28).catch(() => ({})),
       ]);
 
       const newWellnessMap = {};
-      const enriched = players.map((p, i) => {
-        const wRow = wellnessResults[i]?.[0] ?? null;
-        if (wRow) newWellnessMap[String(p.id)] = normalizeWellness(wRow);
+      const enriched = players.map(p => {
+        const wRow = latestWellness[String(p.id)] ?? null;
+        if (wRow) newWellnessMap[String(p.id)] = wRow;
 
-        const loadValues = (loadsResults[i] ?? [])
-          .slice().reverse()
-          .map(l => Number(l.load));
+        const loadValues = (loadsMap[String(p.id)] ?? []).map(l => Number(l.value));
         const acwrResult = loadValues.length > 0 ? calcACWR(loadValues) : null;
 
         return {
@@ -207,7 +206,7 @@ export default function Dashboard({ onNavigate }) {
       // ACWR histórico del equipo (28 días)
       const { data: loadsData } = await supabase
         .from('loads')
-        .select('date, load, player_id')
+        .select('date, value, player_id')
         .in('player_id', playerIds)
         .gte('date', dateStr(daysAgo(28)))
         .order('date', { ascending: true });
@@ -216,7 +215,7 @@ export default function Dashboard({ onNavigate }) {
         const byDate = {};
         loadsData.forEach(r => {
           if (!byDate[r.date]) byDate[r.date] = [];
-          byDate[r.date].push(Number(r.load));
+          byDate[r.date].push(Number(r.value));
         });
 
         const series = Array.from({ length: 28 }, (_, i) => {
@@ -290,8 +289,9 @@ export default function Dashboard({ onNavigate }) {
   // Poll localStorage wellness when using local fallback
   useEffect(() => {
     if (!usingLocal) return;
-    clearOldRecords();
-    const load = () => setWellnessMap(getAllLatestWellness());
+    const cid = coach?.id;
+    clearOldRecords(cid);
+    const load = () => setWellnessMap(getAllLatestWellness(cid));
     load();
     const iv = setInterval(load, 30_000);
     window.addEventListener('storage', load);

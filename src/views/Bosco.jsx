@@ -97,7 +97,7 @@ export default function Bosco({ onNavigate }) {
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <MetricDisplay value={lsi.toFixed(1)} unit="%" label="Asimetría CMJ-U (LSI)" status={lsiStatus(lsi)} />
+            <MetricDisplay value={lsi.toFixed(1)} unit="%" label="Simetría CMJ-U (LSI)" status={lsiStatus(lsi)} />
             <p className="text-xs text-slate-500 mt-1 font-data">
               Izq {hLeft.toFixed(1)} cm · Der {hRight.toFixed(1)} cm
             </p>

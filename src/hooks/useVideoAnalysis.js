@@ -4,6 +4,7 @@ const G = 9.81;
 
 export function useVideoAnalysis() {
   const videoRef      = useRef(null);
+  const fpsRef        = useRef(30);
   const [videoSrc,    setVideoSrc]    = useState(null);
   const [fps,         setFps]         = useState(30);
   const [duration,    setDuration]    = useState(0);
@@ -32,9 +33,22 @@ export function useVideoAnalysis() {
   }, []);
 
   const onVideoLoad = useCallback((e) => {
-    setDuration(e.target.duration);
+    const video = e.target;
+    setDuration(video.duration);
+    fpsRef.current = 30;
     setFps(30);
     setIsReady(true);
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      let frames = 0, t0 = null;
+      const sample = (now) => {
+        if (t0 === null) t0 = now;
+        frames++;
+        if (frames < 10) { video.requestVideoFrameCallback(sample); return; }
+        const detected = Math.round(frames / ((now - t0) / 1000));
+        if (detected > 0 && detected <= 120) { fpsRef.current = detected; setFps(detected); }
+      };
+      video.requestVideoFrameCallback(sample);
+    }
   }, []);
 
   const onVideoTimeUpdate = useCallback((e) => {
@@ -45,7 +59,7 @@ export function useVideoAnalysis() {
     const video = videoRef.current;
     if (!video) return;
     video.pause();
-    const newTime = Math.max(0, Math.min(video.duration, video.currentTime + direction / 30));
+    const newTime = Math.max(0, Math.min(video.duration, video.currentTime + direction / fpsRef.current));
     video.currentTime = newTime;
     video.addEventListener('seeked', () => setCurrentTime(video.currentTime), { once: true });
   }, []);

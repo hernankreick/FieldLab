@@ -387,8 +387,11 @@ export default function PlayerProfile({ initialId, onNavigate }) {
     if (sbPlayer?.name) {
       const match = PLAYERS.find(p => p.name === sbPlayer.name);
       if (match) return match;
-      // Supabase player with no static counterpart — synthesize from Supabase data
-      return { ...PLAYERS[0], id: sbPlayer.id, name: sbPlayer.name, position: sbPlayer.position ?? PLAYERS[0].position };
+      // Supabase player with no static counterpart — no eval reference data
+      return {
+        id: sbPlayer.id, name: sbPlayer.name, position: sbPlayer.position ?? '',
+        eval: { sprint10: {}, sprint20: {}, sprint30: {}, cmj: {}, sj: {}, dj: {}, topSpeed: null },
+      };
     }
     if (!isUUID) return PLAYERS.find(p => p.id === Number(initialId)) ?? PLAYERS[0];
     return PLAYERS[0];
@@ -543,10 +546,10 @@ export default function PlayerProfile({ initialId, onNavigate }) {
 
   const { eval: ev } = player;
 
-  const sprint10Time = sprintData?.sprint10?.tiempo  ?? ev.sprint10.time;
-  const sprint20Time = sprintData?.sprint20?.tiempo  ?? ev.sprint20?.time ?? null;
-  const sprint30Time = sprintData?.sprint30?.tiempo  ?? ev.sprint30.time;
-  const topSpeedVal  = sprintData?.sprint30?.velocidad ?? ev.topSpeed;
+  const sprint10Time = sprintData?.sprint10?.tiempo  ?? ev.sprint10?.time  ?? null;
+  const sprint20Time = sprintData?.sprint20?.tiempo  ?? ev.sprint20?.time  ?? null;
+  const sprint30Time = sprintData?.sprint30?.tiempo  ?? ev.sprint30?.time  ?? null;
+  const topSpeedVal  = sprintData?.sprint30?.velocidad ?? ev.topSpeed      ?? null;
 
   const realByType = {};
   for (const e of playerEvals) {
@@ -556,7 +559,7 @@ export default function PlayerProfile({ initialId, onNavigate }) {
   const realCMJ = realByType['CMJ'] ?? null;
   const iueHeight = (realSJ && realCMJ)
     ? ((realCMJ.height - realSJ.height) / realSJ.height) * 100
-    : ev.cmj.iue;
+    : ev.cmj?.iue ?? null;
 
   // FMS derived
   const fmsScore  = fmsTotal(fms);

@@ -65,8 +65,10 @@ export default function WellnessFormPublic() {
   const [coachId,    setCoachId]    = useState(null);
   const [fetchState, setFetchState] = useState('loading'); // 'loading' | 'ok' | 'error'
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   useEffect(() => {
-    if (!playerId) return;
+    if (!playerId || !UUID_RE.test(playerId)) { setFetchState('error'); return; }
     setFetchState('loading');
     getPlayerWithCoach(playerId)
       .then(p => {

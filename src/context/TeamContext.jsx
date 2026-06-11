@@ -25,19 +25,6 @@ export function TeamProvider({ children }) {
           setActiveTeamId(prev =>
             rows.find(t => t.id === prev) ? prev : rows[0].id
           );
-        } else {
-          // No teams in DB for this coach — create real ones with UUID primary keys
-          const defaults = [
-            { coach_id: coach.id, name: 'Primera División', sport: 'football', category: 'senior', sex: 'male', color: '#3b82f6' },
-            { coach_id: coach.id, name: 'Sub 18',           sport: 'football', category: 'sub18',  sex: 'male', color: '#8b5cf6' },
-          ];
-          try {
-            const created = await Promise.all(defaults.map(t => createTeam(t)));
-            setTeams(created);
-            setActiveTeamId(created[0].id);
-          } catch {
-            /* keep DEFAULT_TEAMS if creation fails */
-          }
         }
       })
       .catch(() => { /* keep DEFAULT_TEAMS */ });

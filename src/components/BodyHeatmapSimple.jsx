@@ -1,6 +1,14 @@
 import { useState } from 'react';
+import Model from 'react-body-highlighter';
 
 const LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
+
+// Silueta de fondo: react-body-highlighter usa siempre viewBox="0 0 100 200"
+// (aspect ratio 0.5). Nuestras zonas usan viewBox "0 0 120 230" (aspect ratio
+// ~0.522, casi idéntico). Fijamos el contenedor con esa proporción para que
+// ambas capas SVG se estiren y queden alineadas sin medir nada en runtime.
+const BODY_ASPECT_RATIO = '120 / 230';
+const BODY_COLOR = '#16243a';
 
 const COLORS = {
   normal:   { fill: '#1e3a5f',                  stroke: 'rgba(148,163,184,0.3)' },
@@ -57,9 +65,14 @@ function Zone({ id, tag: Tag, attrs, selectedZones, onSelectZone, interactive, s
 function FrontalView({ selectedZones, onSelectZone, interactive, setTooltip }) {
   const zp = (id, tag, attrs) => ({ id, tag, attrs, selectedZones, onSelectZone, interactive, setTooltip });
   return (
-    <svg viewBox="0 0 120 230" width="126" height="242">
-      <ellipse cx="60" cy="16" rx="13" ry="15" fill="#1e3a5f" stroke="rgba(148,163,184,0.25)" strokeWidth="1"/>
-      <rect x="54" y="30" width="12" height="8" rx="3" fill="#162d4a" stroke="rgba(148,163,184,0.2)" strokeWidth="1"/>
+    <div style={{ position: 'relative', width: 126, aspectRatio: BODY_ASPECT_RATIO }}>
+      <Model
+        type="anterior"
+        bodyColor={BODY_COLOR}
+        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+        svgStyle={{ width: '100%', height: '100%', display: 'block' }}
+      />
+      <svg viewBox="0 0 120 230" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
       <Zone {...zp('f_hombro_der',    'rect',    { x:16, y:37, width:18, height:13, rx:6 })}/>
       <Zone {...zp('f_hombro_izq',    'rect',    { x:86, y:37, width:18, height:13, rx:6 })}/>
       <Zone {...zp('f_pectoral_der',  'rect',    { x:36, y:37, width:22, height:24, rx:4 })}/>
@@ -81,16 +94,22 @@ function FrontalView({ selectedZones, onSelectZone, interactive, setTooltip }) {
       <Zone {...zp('f_tibial_izq',    'rect',    { x:63, y:150, width:20, height:34, rx:5 })}/>
       <Zone {...zp('f_tobillo_der',   'ellipse', { cx:47, cy:190, rx:13, ry:6 })}/>
       <Zone {...zp('f_tobillo_izq',   'ellipse', { cx:73, cy:190, rx:13, ry:6 })}/>
-    </svg>
+      </svg>
+    </div>
   );
 }
 
 function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip }) {
   const zp = (id, tag, attrs) => ({ id, tag, attrs, selectedZones, onSelectZone, interactive, setTooltip });
   return (
-    <svg viewBox="0 0 120 230" width="126" height="242">
-      <ellipse cx="60" cy="16" rx="13" ry="15" fill="#1e3a5f" stroke="rgba(148,163,184,0.25)" strokeWidth="1"/>
-      <rect x="54" y="30" width="12" height="8" rx="3" fill="#162d4a" stroke="rgba(148,163,184,0.2)" strokeWidth="1"/>
+    <div style={{ position: 'relative', width: 126, aspectRatio: BODY_ASPECT_RATIO }}>
+      <Model
+        type="posterior"
+        bodyColor={BODY_COLOR}
+        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+        svgStyle={{ width: '100%', height: '100%', display: 'block' }}
+      />
+      <svg viewBox="0 0 120 230" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
       <Zone {...zp('p_trapecio_sup',  'rect',    { x:36, y:37, width:48, height:12, rx:4 })}/>
       <Zone {...zp('p_deltoides_izq', 'rect',    { x:16, y:37, width:18, height:13, rx:6 })}/>
       <Zone {...zp('p_deltoides_der', 'rect',    { x:86, y:37, width:18, height:13, rx:6 })}/>
@@ -114,7 +133,8 @@ function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip })
       <Zone {...zp('p_gemelo_der',    'rect',    { x:61, y:170, width:22, height:34, rx:5 })}/>
       <Zone {...zp('p_talon_izq',     'ellipse', { cx:47, cy:210, rx:13, ry:6 })}/>
       <Zone {...zp('p_talon_der',     'ellipse', { cx:73, cy:210, rx:13, ry:6 })}/>
-    </svg>
+      </svg>
+    </div>
   );
 }
 

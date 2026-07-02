@@ -80,13 +80,18 @@ const COLORS = {
   muy_alto: { fill: '#ef4444' },
 };
 
+// Halo de color por nivel (feDropShadow), en vez de difuminar la forma
+// misma: el parche queda nítido con un borde propio y un glow suave del
+// mismo color "flotando" alrededor, como en la referencia de FieldLab.
 function GlowDefs() {
   return (
     <svg width="0" height="0" style={{ position: 'absolute' }}>
       <defs>
-        <filter id="zoneGlow" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="2.2" />
-        </filter>
+        {Object.entries(COLORS).map(([level, { fill }]) => level !== 'normal' && (
+          <filter key={level} id={`zoneGlow-${level}`} x="-70%" y="-70%" width="240%" height="240%">
+            <feDropShadow dx="0" dy="0" stdDeviation="1.8" floodColor={fill} floodOpacity="0.75" />
+          </filter>
+        ))}
       </defs>
     </svg>
   );
@@ -126,7 +131,11 @@ function Zone({ id, tag: Tag, attrs, selectedZones, onSelectZone, interactive, s
       onMouseLeave={() => { setHovered(false); setTooltip(null); }}
     >
       {level !== 'normal' && (
-        <Tag {...attrs} fill={fill} filter="url(#zoneGlow)" style={{ transition: 'fill 0.2s ease' }} />
+        <Tag {...attrs} fill={fill}
+          stroke="rgba(255,255,255,0.4)" strokeWidth={0.6}
+          filter={`url(#zoneGlow-${level})`}
+          style={{ transition: 'fill 0.2s ease' }}
+        />
       )}
       {/* capa invisible: hit area de click + contorno nítido solo al hover */}
       <Tag {...attrs} fill="transparent"

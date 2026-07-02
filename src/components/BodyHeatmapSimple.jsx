@@ -11,13 +11,28 @@ const LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
 const FRONTAL_ASPECT_RATIO = '709 / 1680';
 const POSTERIOR_ASPECT_RATIO = '793 / 1841';
 
+// Zonas sin dato quedan invisibles (solo la silueta de fondo se ve); el
+// glow (feGaussianBlur, ver GlowDefs) es lo que le da a las zonas con dato
+// el look de "mancha de calor" difuminada en vez de óvalo con borde duro.
 const COLORS = {
-  normal:   { fill: '#1e3a5f',                  stroke: 'rgba(148,163,184,0.3)' },
-  leve:     { fill: 'rgba(56,189,248,0.45)',     stroke: '#38bdf8' },
-  moderado: { fill: 'rgba(245,158,11,0.45)',     stroke: '#f59e0b' },
-  alto:     { fill: 'rgba(249,115,22,0.5)',      stroke: '#f97316' },
-  muy_alto: { fill: 'rgba(239,68,68,0.55)',      stroke: '#ef4444' },
+  normal:   { fill: 'transparent' },
+  leve:     { fill: '#22c55e' },
+  moderado: { fill: '#facc15' },
+  alto:     { fill: '#f97316' },
+  muy_alto: { fill: '#ef4444' },
 };
+
+function GlowDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: 'absolute' }}>
+      <defs>
+        <filter id="zoneGlow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="2.6" />
+        </filter>
+      </defs>
+    </svg>
+  );
+}
 
 const ZONE_NAMES = {
   f_hombro_der: 'Hombro der', f_hombro_izq: 'Hombro izq',
@@ -39,18 +54,26 @@ const ZONE_NAMES = {
 
 function Zone({ id, tag: Tag, attrs, selectedZones, onSelectZone, interactive, setTooltip }) {
   const level = selectedZones[id] || 'normal';
-  const { fill, stroke } = COLORS[level];
+  const { fill } = COLORS[level];
   const [hovered, setHovered] = useState(false);
   const handleClick = () => { if (interactive && onSelectZone) onSelectZone(id); };
   return (
-    <Tag {...attrs} fill={fill}
-      stroke={hovered && interactive ? '#38bdf8' : stroke}
-      strokeWidth={hovered && interactive ? 1.5 : 1}
-      style={{ cursor: interactive ? 'pointer' : 'default', transition: 'fill 0.2s ease, stroke 0.2s ease' }}
+    <g
+      style={{ cursor: interactive ? 'pointer' : 'default' }}
       onClick={handleClick}
       onMouseEnter={() => { setHovered(true); setTooltip(ZONE_NAMES[id]); }}
       onMouseLeave={() => { setHovered(false); setTooltip(null); }}
-    />
+    >
+      {level !== 'normal' && (
+        <Tag {...attrs} fill={fill} filter="url(#zoneGlow)" style={{ transition: 'fill 0.2s ease' }} />
+      )}
+      {/* capa invisible: hit area de click + contorno nítido solo al hover */}
+      <Tag {...attrs} fill="transparent"
+        stroke={hovered && interactive ? '#38bdf8' : 'transparent'}
+        strokeWidth={1.5}
+        style={{ transition: 'stroke 0.2s ease' }}
+      />
+    </g>
   );
 }
 
@@ -107,11 +130,10 @@ function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip })
 }
 
 const LEGEND = [
-  { level: 'normal',   label: 'Sin dolor', color: '#1e3a5f',               border: 'rgba(148,163,184,0.3)' },
-  { level: 'leve',     label: 'Leve',      color: 'rgba(56,189,248,0.5)',  border: '#38bdf8' },
-  { level: 'moderado', label: 'Moderado',  color: 'rgba(245,158,11,0.5)', border: '#f59e0b' },
-  { level: 'alto',     label: 'Alto',      color: 'rgba(249,115,22,0.55)',border: '#f97316' },
-  { level: 'muy_alto', label: 'Severo',    color: 'rgba(239,68,68,0.6)',  border: '#ef4444' },
+  { level: 'leve',     label: 'Leve',     color: '#22c55e' },
+  { level: 'moderado', label: 'Moderado', color: '#facc15' },
+  { level: 'alto',     label: 'Importante', color: '#f97316' },
+  { level: 'muy_alto', label: 'Severo',   color: '#ef4444' },
 ];
 
 export default function BodyHeatmapSimple({ selectedZones = {}, onSelectZone, interactive = true }) {
@@ -132,6 +154,7 @@ export default function BodyHeatmapSimple({ selectedZones = {}, onSelectZone, in
   const viewProps = { selectedZones: zones, onSelectZone: handleSelect, interactive, setTooltip };
   return (
     <div style={{ position: 'relative' }}>
+      <GlowDefs />
       {tooltip && (
         <div style={{ position: 'absolute', top: -32, left: '50%', transform: 'translateX(-50%)',
           background: '#0f172a', border: '1px solid rgba(56,189,248,0.4)', color: '#e2e8f0',
@@ -151,9 +174,9 @@ export default function BodyHeatmapSimple({ selectedZones = {}, onSelectZone, in
         </div>
       </div>
       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
-        {LEGEND.map(({ level, label, color, border }) => (
+        {LEGEND.map(({ level, label, color }) => (
           <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 3, background: color, border: `1px solid ${border}` }}/>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: color }}/>
             <span style={{ fontSize: 11, color: '#94a3b8' }}>{label}</span>
           </div>
         ))}

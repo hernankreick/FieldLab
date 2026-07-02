@@ -22,6 +22,7 @@ const COLORS = {
 const ZONE_NAMES = {
   f_hombro_der: 'Hombro der', f_hombro_izq: 'Hombro izq',
   f_pectoral_der: 'Pectoral der', f_pectoral_izq: 'Pectoral izq',
+  f_bicep_der: 'Bícep der', f_bicep_izq: 'Bícep izq',
   f_abdomen: 'Abdomen',
   f_antebrazo_der: 'Antebrazo der', f_antebrazo_izq: 'Antebrazo izq',
   f_cuadricep_der: 'Cuádricep der', f_cuadricep_izq: 'Cuádricep izq',
@@ -65,9 +66,11 @@ function FrontalView({ selectedZones, onSelectZone, interactive, setTooltip }) {
       <Zone {...zp('f_hombro_izq',    'ellipse', { cx:77, cy:56.9,  rx:7, ry:11 })}/>
       <Zone {...zp('f_pectoral_der',  'ellipse', { cx:40, cy:62,    rx:9, ry:12 })}/>
       <Zone {...zp('f_pectoral_izq',  'ellipse', { cx:60, cy:62,    rx:9, ry:12 })}/>
+      <Zone {...zp('f_bicep_der',     'ellipse', { cx:18, cy:90,    rx:6, ry:15 })}/>
+      <Zone {...zp('f_bicep_izq',     'ellipse', { cx:82, cy:90,    rx:6, ry:15 })}/>
       <Zone {...zp('f_abdomen',       'ellipse', { cx:50, cy:98,    rx:17, ry:15 })}/>
-      <Zone {...zp('f_antebrazo_der', 'ellipse', { cx:13, cy:116,   rx:7, ry:11 })}/>
-      <Zone {...zp('f_antebrazo_izq', 'ellipse', { cx:87, cy:116,   rx:7, ry:11 })}/>
+      <Zone {...zp('f_antebrazo_der', 'ellipse', { cx:12, cy:118,   rx:6, ry:10 })}/>
+      <Zone {...zp('f_antebrazo_izq', 'ellipse', { cx:88, cy:118,   rx:6, ry:10 })}/>
       <Zone {...zp('f_cuadricep_der', 'ellipse', { cx:32, cy:162,   rx:7, ry:20 })}/>
       <Zone {...zp('f_aductor_der',   'ellipse', { cx:45, cy:162,   rx:4, ry:20 })}/>
       <Zone {...zp('f_aductor_izq',   'ellipse', { cx:55, cy:162,   rx:4, ry:20 })}/>
@@ -84,7 +87,7 @@ function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip })
       <img src={bodyPosterior} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
       {/* viewBox alto = 100 * (1841/793), igual al aspect ratio real de la imagen. */}
       <svg viewBox="0 0 100 232" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <Zone {...zp('p_trapecio',      'ellipse', { cx:50, cy:48,  rx:14, ry:11 })}/>
+      <Zone {...zp('p_trapecio',      'polygon', { points: '37,37 63,37 50,72' })}/>
       <Zone {...zp('p_hombro_izq',    'ellipse', { cx:23, cy:55,  rx:7,  ry:11 })}/>
       <Zone {...zp('p_hombro_der',    'ellipse', { cx:77, cy:55,  rx:7,  ry:11 })}/>
       <Zone {...zp('p_tricep_izq',    'ellipse', { cx:17, cy:86,  rx:7,  ry:12 })}/>
@@ -92,8 +95,8 @@ function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip })
       <Zone {...zp('p_antebrazo_izq', 'ellipse', { cx:13, cy:114, rx:7,  ry:11 })}/>
       <Zone {...zp('p_antebrazo_der', 'ellipse', { cx:87, cy:114, rx:7,  ry:11 })}/>
       <Zone {...zp('p_lumbar',        'ellipse', { cx:50, cy:125, rx:17, ry:11 })}/>
-      <Zone {...zp('p_gluteo_izq',    'ellipse', { cx:37, cy:146, rx:9,  ry:12 })}/>
-      <Zone {...zp('p_gluteo_der',    'ellipse', { cx:63, cy:146, rx:9,  ry:12 })}/>
+      <Zone {...zp('p_gluteo_izq',    'ellipse', { cx:40, cy:146, rx:11, ry:12 })}/>
+      <Zone {...zp('p_gluteo_der',    'ellipse', { cx:60, cy:146, rx:11, ry:12 })}/>
       <Zone {...zp('p_isquio_izq',    'ellipse', { cx:37, cy:177, rx:8,  ry:17 })}/>
       <Zone {...zp('p_isquio_der',    'ellipse', { cx:63, cy:177, rx:8,  ry:17 })}/>
       <Zone {...zp('p_gemelo_izq',    'ellipse', { cx:38, cy:207, rx:6,  ry:15 })}/>

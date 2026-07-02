@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import Model from 'react-body-highlighter';
+import bodyFrontal from '../assets/body-frontal.png';
+import bodyPosterior from '../assets/body-posterior.png';
 
 const LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
 
-// Silueta de fondo: react-body-highlighter usa siempre viewBox="0 0 100 200"
-// (aspect ratio 0.5). Nuestras zonas usan viewBox "0 0 120 230" (aspect ratio
-// ~0.522, casi idéntico). Fijamos el contenedor con esa proporción para que
-// ambas capas SVG se estiren y queden alineadas sin medir nada en runtime.
-const BODY_ASPECT_RATIO = '120 / 230';
-const BODY_COLOR = '#16243a';
+// Siluetas de fondo: PNG recortados al bounding box exacto de la figura,
+// así el contenedor puede usar el aspect-ratio real de cada imagen y las
+// zonas (viewBox "0 0 100 100", en % del bounding box) quedan alineadas
+// sin medir nada en runtime.
+const FRONTAL_ASPECT_RATIO = '709 / 1680';
+const POSTERIOR_ASPECT_RATIO = '793 / 1841';
 
 const COLORS = {
   normal:   { fill: '#1e3a5f',                  stroke: 'rgba(148,163,184,0.3)' },
@@ -65,35 +66,30 @@ function Zone({ id, tag: Tag, attrs, selectedZones, onSelectZone, interactive, s
 function FrontalView({ selectedZones, onSelectZone, interactive, setTooltip }) {
   const zp = (id, tag, attrs) => ({ id, tag, attrs, selectedZones, onSelectZone, interactive, setTooltip });
   return (
-    <div style={{ position: 'relative', width: 126, aspectRatio: BODY_ASPECT_RATIO }}>
-      <Model
-        type="anterior"
-        bodyColor={BODY_COLOR}
-        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-        svgStyle={{ width: '100%', height: '100%', display: 'block' }}
-      />
-      <svg viewBox="0 0 120 230" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <Zone {...zp('f_hombro_der',    'rect',    { x:16, y:37, width:18, height:13, rx:6 })}/>
-      <Zone {...zp('f_hombro_izq',    'rect',    { x:86, y:37, width:18, height:13, rx:6 })}/>
-      <Zone {...zp('f_pectoral_der',  'rect',    { x:36, y:37, width:22, height:24, rx:4 })}/>
-      <Zone {...zp('f_pectoral_izq',  'rect',    { x:62, y:37, width:22, height:24, rx:4 })}/>
-      <Zone {...zp('f_bicep_der',     'rect',    { x:16, y:51, width:18, height:22, rx:5 })}/>
-      <Zone {...zp('f_bicep_izq',     'rect',    { x:86, y:51, width:18, height:22, rx:5 })}/>
-      <Zone {...zp('f_abdomen',       'rect',    { x:36, y:62, width:48, height:22, rx:4 })}/>
-      <Zone {...zp('f_antebrazo_der', 'rect',    { x:17, y:74, width:16, height:19, rx:4 })}/>
-      <Zone {...zp('f_antebrazo_izq', 'rect',    { x:87, y:74, width:16, height:19, rx:4 })}/>
-      <Zone {...zp('f_ingle_der',     'rect',    { x:36, y:85, width:23, height:14, rx:4 })}/>
-      <Zone {...zp('f_ingle_izq',     'rect',    { x:61, y:85, width:23, height:14, rx:4 })}/>
-      <Zone {...zp('f_cuadricep_der', 'rect',    { x:36, y:100, width:14, height:38, rx:5 })}/>
-      <Zone {...zp('f_aductor_der',   'rect',    { x:48, y:100, width:10, height:38, rx:4 })}/>
-      <Zone {...zp('f_aductor_izq',   'rect',    { x:62, y:100, width:10, height:38, rx:4 })}/>
-      <Zone {...zp('f_cuadricep_izq', 'rect',    { x:70, y:100, width:14, height:38, rx:5 })}/>
-      <Zone {...zp('f_rodilla_der',   'rect',    { x:36, y:139, width:22, height:10, rx:4 })}/>
-      <Zone {...zp('f_rodilla_izq',   'rect',    { x:62, y:139, width:22, height:10, rx:4 })}/>
-      <Zone {...zp('f_tibial_der',    'rect',    { x:37, y:150, width:20, height:34, rx:5 })}/>
-      <Zone {...zp('f_tibial_izq',    'rect',    { x:63, y:150, width:20, height:34, rx:5 })}/>
-      <Zone {...zp('f_tobillo_der',   'ellipse', { cx:47, cy:190, rx:13, ry:6 })}/>
-      <Zone {...zp('f_tobillo_izq',   'ellipse', { cx:73, cy:190, rx:13, ry:6 })}/>
+    <div style={{ position: 'relative', width: 126, aspectRatio: FRONTAL_ASPECT_RATIO }}>
+      <img src={bodyFrontal} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
+      <svg viewBox="0 0 100 100" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      <Zone {...zp('f_hombro_der',    'rect',    { x:16, y:19, width:14, height:11, rx:3 })}/>
+      <Zone {...zp('f_hombro_izq',    'rect',    { x:70, y:19, width:14, height:11, rx:3 })}/>
+      <Zone {...zp('f_pectoral_der',  'rect',    { x:30, y:20, width:20, height:14, rx:3 })}/>
+      <Zone {...zp('f_pectoral_izq',  'rect',    { x:50, y:20, width:20, height:14, rx:3 })}/>
+      <Zone {...zp('f_bicep_der',     'rect',    { x:10, y:30, width:16, height:14, rx:3 })}/>
+      <Zone {...zp('f_bicep_izq',     'rect',    { x:74, y:30, width:16, height:14, rx:3 })}/>
+      <Zone {...zp('f_abdomen',       'rect',    { x:29, y:34, width:42, height:16, rx:3 })}/>
+      <Zone {...zp('f_antebrazo_der', 'rect',    { x:6,  y:44, width:15, height:10, rx:3 })}/>
+      <Zone {...zp('f_antebrazo_izq', 'rect',    { x:79, y:44, width:15, height:10, rx:3 })}/>
+      <Zone {...zp('f_ingle_der',     'rect',    { x:29, y:50, width:20, height:8,  rx:3 })}/>
+      <Zone {...zp('f_ingle_izq',     'rect',    { x:51, y:50, width:20, height:8,  rx:3 })}/>
+      <Zone {...zp('f_cuadricep_der', 'rect',    { x:28, y:58, width:12, height:14, rx:3 })}/>
+      <Zone {...zp('f_aductor_der',   'rect',    { x:40, y:58, width:9,  height:14, rx:3 })}/>
+      <Zone {...zp('f_aductor_izq',   'rect',    { x:51, y:58, width:9,  height:14, rx:3 })}/>
+      <Zone {...zp('f_cuadricep_izq', 'rect',    { x:60, y:58, width:12, height:14, rx:3 })}/>
+      <Zone {...zp('f_rodilla_der',   'rect',    { x:29, y:72, width:16, height:8,  rx:3 })}/>
+      <Zone {...zp('f_rodilla_izq',   'rect',    { x:55, y:72, width:16, height:8,  rx:3 })}/>
+      <Zone {...zp('f_tibial_der',    'rect',    { x:30, y:80, width:14, height:10, rx:3 })}/>
+      <Zone {...zp('f_tibial_izq',    'rect',    { x:56, y:80, width:14, height:10, rx:3 })}/>
+      <Zone {...zp('f_tobillo_der',   'ellipse', { cx:37, cy:92, rx:6, ry:3 })}/>
+      <Zone {...zp('f_tobillo_izq',   'ellipse', { cx:63, cy:92, rx:6, ry:3 })}/>
       </svg>
     </div>
   );
@@ -102,37 +98,32 @@ function FrontalView({ selectedZones, onSelectZone, interactive, setTooltip }) {
 function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip }) {
   const zp = (id, tag, attrs) => ({ id, tag, attrs, selectedZones, onSelectZone, interactive, setTooltip });
   return (
-    <div style={{ position: 'relative', width: 126, aspectRatio: BODY_ASPECT_RATIO }}>
-      <Model
-        type="posterior"
-        bodyColor={BODY_COLOR}
-        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-        svgStyle={{ width: '100%', height: '100%', display: 'block' }}
-      />
-      <svg viewBox="0 0 120 230" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <Zone {...zp('p_trapecio_sup',  'rect',    { x:36, y:37, width:48, height:12, rx:4 })}/>
-      <Zone {...zp('p_deltoides_izq', 'rect',    { x:16, y:37, width:18, height:13, rx:6 })}/>
-      <Zone {...zp('p_deltoides_der', 'rect',    { x:86, y:37, width:18, height:13, rx:6 })}/>
-      <Zone {...zp('p_trapecio_inf',  'rect',    { x:36, y:50, width:48, height:13, rx:4 })}/>
-      <Zone {...zp('p_tricep_izq',    'rect',    { x:16, y:51, width:18, height:22, rx:5 })}/>
-      <Zone {...zp('p_tricep_der',    'rect',    { x:86, y:51, width:18, height:22, rx:5 })}/>
-      <Zone {...zp('p_dorsal_izq',    'rect',    { x:36, y:64, width:24, height:20, rx:4 })}/>
-      <Zone {...zp('p_dorsal_der',    'rect',    { x:60, y:64, width:24, height:20, rx:4 })}/>
-      <Zone {...zp('p_antebrazo_izq', 'rect',    { x:17, y:74, width:16, height:19, rx:4 })}/>
-      <Zone {...zp('p_antebrazo_der', 'rect',    { x:87, y:74, width:16, height:19, rx:4 })}/>
-      <Zone {...zp('p_lumbar',        'rect',    { x:36, y:85, width:48, height:15, rx:4 })}/>
-      <Zone {...zp('p_gluteo_medio_izq', 'rect', { x:37, y:101, width:22, height:9,  rx:4 })}/>
-      <Zone {...zp('p_gluteo_medio_der', 'rect', { x:61, y:101, width:22, height:9,  rx:4 })}/>
-      <Zone {...zp('p_gluteo_mayor_izq', 'rect', { x:36, y:111, width:23, height:11, rx:5 })}/>
-      <Zone {...zp('p_gluteo_mayor_der', 'rect', { x:61, y:111, width:23, height:11, rx:5 })}/>
-      <Zone {...zp('p_isquio_izq',    'rect',    { x:37, y:122, width:22, height:36, rx:5 })}/>
-      <Zone {...zp('p_isquio_der',    'rect',    { x:61, y:122, width:22, height:36, rx:5 })}/>
-      <Zone {...zp('p_rodilla_izq',   'rect',    { x:37, y:159, width:22, height:10, rx:4 })}/>
-      <Zone {...zp('p_rodilla_der',   'rect',    { x:61, y:159, width:22, height:10, rx:4 })}/>
-      <Zone {...zp('p_gemelo_izq',    'rect',    { x:37, y:170, width:22, height:34, rx:5 })}/>
-      <Zone {...zp('p_gemelo_der',    'rect',    { x:61, y:170, width:22, height:34, rx:5 })}/>
-      <Zone {...zp('p_talon_izq',     'ellipse', { cx:47, cy:210, rx:13, ry:6 })}/>
-      <Zone {...zp('p_talon_der',     'ellipse', { cx:73, cy:210, rx:13, ry:6 })}/>
+    <div style={{ position: 'relative', width: 126, aspectRatio: POSTERIOR_ASPECT_RATIO }}>
+      <img src={bodyPosterior} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
+      <svg viewBox="0 0 100 100" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      <Zone {...zp('p_trapecio_sup',  'rect',    { x:33, y:17, width:34, height:8,  rx:3 })}/>
+      <Zone {...zp('p_deltoides_izq', 'rect',    { x:16, y:19, width:14, height:11, rx:3 })}/>
+      <Zone {...zp('p_deltoides_der', 'rect',    { x:70, y:19, width:14, height:11, rx:3 })}/>
+      <Zone {...zp('p_trapecio_inf',  'rect',    { x:33, y:25, width:34, height:7,  rx:3 })}/>
+      <Zone {...zp('p_tricep_izq',    'rect',    { x:10, y:30, width:16, height:14, rx:3 })}/>
+      <Zone {...zp('p_tricep_der',    'rect',    { x:74, y:30, width:16, height:14, rx:3 })}/>
+      <Zone {...zp('p_dorsal_izq',    'rect',    { x:28, y:32, width:21, height:18, rx:3 })}/>
+      <Zone {...zp('p_dorsal_der',    'rect',    { x:51, y:32, width:21, height:18, rx:3 })}/>
+      <Zone {...zp('p_antebrazo_izq', 'rect',    { x:6,  y:44, width:15, height:10, rx:3 })}/>
+      <Zone {...zp('p_antebrazo_der', 'rect',    { x:79, y:44, width:15, height:10, rx:3 })}/>
+      <Zone {...zp('p_lumbar',        'rect',    { x:29, y:50, width:42, height:8,  rx:3 })}/>
+      <Zone {...zp('p_gluteo_medio_izq', 'rect', { x:28, y:58, width:20, height:5,  rx:3 })}/>
+      <Zone {...zp('p_gluteo_medio_der', 'rect', { x:52, y:58, width:20, height:5,  rx:3 })}/>
+      <Zone {...zp('p_gluteo_mayor_izq', 'rect', { x:28, y:63, width:20, height:7,  rx:3 })}/>
+      <Zone {...zp('p_gluteo_mayor_der', 'rect', { x:52, y:63, width:20, height:7,  rx:3 })}/>
+      <Zone {...zp('p_isquio_izq',    'rect',    { x:29, y:70, width:16, height:12, rx:3 })}/>
+      <Zone {...zp('p_isquio_der',    'rect',    { x:55, y:70, width:16, height:12, rx:3 })}/>
+      <Zone {...zp('p_rodilla_izq',   'rect',    { x:30, y:82, width:14, height:6,  rx:3 })}/>
+      <Zone {...zp('p_rodilla_der',   'rect',    { x:56, y:82, width:14, height:6,  rx:3 })}/>
+      <Zone {...zp('p_gemelo_izq',    'rect',    { x:31, y:88, width:13, height:8,  rx:3 })}/>
+      <Zone {...zp('p_gemelo_der',    'rect',    { x:56, y:88, width:13, height:8,  rx:3 })}/>
+      <Zone {...zp('p_talon_izq',     'ellipse', { cx:37, cy:97, rx:6, ry:2.5 })}/>
+      <Zone {...zp('p_talon_der',     'ellipse', { cx:63, cy:97, rx:6, ry:2.5 })}/>
       </svg>
     </div>
   );

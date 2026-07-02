@@ -16,7 +16,6 @@
     "lucide-react": "^0.284.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
-    "react-body-highlighter": "^2.0.5",
     "react-dom": "^18.2.0",
     "recharts": "^2.8.0",
     "tailwind-merge": "^1.14.0"

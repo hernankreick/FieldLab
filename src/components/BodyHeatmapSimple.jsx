@@ -115,7 +115,7 @@ const LEGEND = [
 export default function BodyHeatmapSimple({ selectedZones = {}, onSelectZone, interactive = true }) {
   const [tooltip, setTooltip] = useState(null);
   const [internalZones, setInternalZones] = useState({});
-  const zones = onSelectZone ? selectedZones : internalZones;
+  const zones = interactive ? (onSelectZone ? selectedZones : internalZones) : selectedZones;
   const handleSelect = (id) => {
     if (onSelectZone) {
       onSelectZone(id);

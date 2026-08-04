@@ -62,17 +62,17 @@ function FrontalView({ selectedZones, onSelectZone, interactive, setTooltip }) {
         svgStyle={{ width: '100%', height: '100%', display: 'block' }}
       />
       <svg viewBox="0 0 120 230" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <Zone {...zp('cuello',         'rect', { x:50, y:26,  width:20, height:12, rx:5 })}/>
-      <Zone {...zp('hombro_der',     'rect', { x:16, y:37,  width:18, height:14, rx:6 })}/>
-      <Zone {...zp('hombro_izq',     'rect', { x:86, y:37,  width:18, height:14, rx:6 })}/>
-      <Zone {...zp('pectoral',       'rect', { x:34, y:37,  width:52, height:26, rx:6 })}/>
-      <Zone {...zp('abdomen',        'rect', { x:34, y:63,  width:52, height:37, rx:5 })}/>
-      <Zone {...zp('cuadricep_der',  'rect', { x:36, y:100, width:14, height:40, rx:5 })}/>
-      <Zone {...zp('aductor_der',    'rect', { x:48, y:100, width:10, height:40, rx:4 })}/>
-      <Zone {...zp('aductor_izq',    'rect', { x:62, y:100, width:10, height:40, rx:4 })}/>
-      <Zone {...zp('cuadricep_izq',  'rect', { x:70, y:100, width:14, height:40, rx:5 })}/>
-      <Zone {...zp('tibial_der',     'rect', { x:37, y:140, width:20, height:80, rx:6 })}/>
-      <Zone {...zp('tibial_izq',     'rect', { x:63, y:140, width:20, height:80, rx:6 })}/>
+      <Zone {...zp('cuello',         'ellipse', { cx:60, cy:32,  rx:6,   ry:5    })}/>
+      <Zone {...zp('hombro_der',     'ellipse', { cx:25, cy:44,  rx:5.5, ry:6    })}/>
+      <Zone {...zp('hombro_izq',     'ellipse', { cx:95, cy:44,  rx:5.5, ry:6    })}/>
+      <Zone {...zp('pectoral',       'ellipse', { cx:60, cy:48,  rx:15,  ry:10   })}/>
+      <Zone {...zp('abdomen',        'ellipse', { cx:60, cy:85,  rx:14,  ry:13   })}/>
+      <Zone {...zp('cuadricep_der',  'ellipse', { cx:43, cy:120, rx:4.5, ry:17   })}/>
+      <Zone {...zp('aductor_der',    'ellipse', { cx:53, cy:120, rx:3,   ry:17   })}/>
+      <Zone {...zp('aductor_izq',    'ellipse', { cx:67, cy:120, rx:3,   ry:17   })}/>
+      <Zone {...zp('cuadricep_izq',  'ellipse', { cx:77, cy:120, rx:4.5, ry:17   })}/>
+      <Zone {...zp('tibial_der',     'ellipse', { cx:47, cy:180, rx:6,   ry:34   })}/>
+      <Zone {...zp('tibial_izq',     'ellipse', { cx:73, cy:180, rx:6,   ry:34   })}/>
       </svg>
     </div>
   );
@@ -89,16 +89,16 @@ function PosteriorView({ selectedZones, onSelectZone, interactive, setTooltip })
         svgStyle={{ width: '100%', height: '100%', display: 'block' }}
       />
       <svg viewBox="0 0 120 230" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      <Zone {...zp('trapecio',         'rect', { x:34, y:37,  width:52, height:26, rx:6 })}/>
-      <Zone {...zp('lumbar',           'rect', { x:34, y:63,  width:52, height:37, rx:5 })}/>
-      <Zone {...zp('gluteo_medio_izq', 'rect', { x:37, y:100, width:22, height:11, rx:4 })}/>
-      <Zone {...zp('gluteo_medio_der', 'rect', { x:61, y:100, width:22, height:11, rx:4 })}/>
-      <Zone {...zp('gluteo_mayor_izq', 'rect', { x:36, y:111, width:23, height:13, rx:5 })}/>
-      <Zone {...zp('gluteo_mayor_der', 'rect', { x:61, y:111, width:23, height:13, rx:5 })}/>
-      <Zone {...zp('isquio_izq',       'rect', { x:37, y:124, width:22, height:46, rx:5 })}/>
-      <Zone {...zp('isquio_der',       'rect', { x:61, y:124, width:22, height:46, rx:5 })}/>
-      <Zone {...zp('gemelo_izq',       'rect', { x:37, y:170, width:22, height:50, rx:5 })}/>
-      <Zone {...zp('gemelo_der',       'rect', { x:61, y:170, width:22, height:50, rx:5 })}/>
+      <Zone {...zp('trapecio',         'ellipse', { cx:60, cy:48,  rx:15,   ry:10 })}/>
+      <Zone {...zp('lumbar',           'ellipse', { cx:60, cy:90,  rx:14,   ry:10 })}/>
+      <Zone {...zp('gluteo_medio_izq', 'ellipse', { cx:48, cy:103, rx:6,    ry:5  })}/>
+      <Zone {...zp('gluteo_medio_der', 'ellipse', { cx:72, cy:103, rx:6,    ry:5  })}/>
+      <Zone {...zp('gluteo_mayor_izq', 'ellipse', { cx:48, cy:114, rx:8,    ry:7  })}/>
+      <Zone {...zp('gluteo_mayor_der', 'ellipse', { cx:72, cy:114, rx:8,    ry:7  })}/>
+      <Zone {...zp('isquio_izq',       'ellipse', { cx:48, cy:147, rx:6.5,  ry:19.5 })}/>
+      <Zone {...zp('isquio_der',       'ellipse', { cx:72, cy:147, rx:6.5,  ry:19.5 })}/>
+      <Zone {...zp('gemelo_izq',       'ellipse', { cx:48, cy:195, rx:6.5,  ry:21 })}/>
+      <Zone {...zp('gemelo_der',       'ellipse', { cx:72, cy:195, rx:6.5,  ry:21 })}/>
       </svg>
     </div>
   );

@@ -25,18 +25,24 @@ const LEVEL_IDX = { normal: 0, leve: 1, moderado: 2, alto: 3, muy_alto: 4 };
 const IDX_LEVEL = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
 const ZONE_LABELS = {
   cuello: 'Cuello',
-  hombro_der: 'Hombro der', hombro_izq: 'Hombro izq',
+  hombro_izq: 'Hombro izq', hombro_der: 'Hombro der',
   pectoral: 'Pectoral',
   abdomen: 'Abdomen',
-  aductor_der: 'Aductor der', aductor_izq: 'Aductor izq',
-  cuadricep_der: 'Cuádricep der', cuadricep_izq: 'Cuádricep izq',
-  tibial_der: 'Tibial der', tibial_izq: 'Tibial izq',
+  oblicuo_izq: 'Oblicuo izq', oblicuo_der: 'Oblicuo der',
+  biceps_izq: 'Bícep izq', biceps_der: 'Bícep der',
+  aductor_izq: 'Aductor izq', aductor_der: 'Aductor der',
+  cuadricep_izq: 'Cuádricep izq', cuadricep_der: 'Cuádricep der',
+  rodilla_izq: 'Rodilla izq', rodilla_der: 'Rodilla der',
+  tibial_izq: 'Tibial izq', tibial_der: 'Tibial der',
   trapecio: 'Trapecio',
+  hombro_post_izq: 'Hombro post. izq', hombro_post_der: 'Hombro post. der',
+  dorsal_izq: 'Dorsal izq', dorsal_der: 'Dorsal der',
+  triceps_izq: 'Trícep izq', triceps_der: 'Trícep der',
   lumbar: 'Lumbar',
-  gluteo_mayor_der: 'Glúteo mayor der', gluteo_mayor_izq: 'Glúteo mayor izq',
-  gluteo_medio_der: 'Glúteo medio der', gluteo_medio_izq: 'Glúteo medio izq',
-  isquio_der: 'Isquiotibial der', isquio_izq: 'Isquiotibial izq',
-  gemelo_der: 'Gemelo der', gemelo_izq: 'Gemelo izq',
+  gluteo_mayor_izq: 'Glúteo mayor izq', gluteo_mayor_der: 'Glúteo mayor der',
+  gluteo_medio_izq: 'Glúteo medio izq', gluteo_medio_der: 'Glúteo medio der',
+  isquio_izq: 'Isquiotibial izq', isquio_der: 'Isquiotibial der',
+  gemelo_izq: 'Gemelo izq', gemelo_der: 'Gemelo der',
 };
 
 function buildTeamHeatmap(wellnessMap) {

@@ -34,7 +34,7 @@ const ZONE_LABELS = {
   cuadricep_izq: 'Cuádricep izq', cuadricep_der: 'Cuádricep der',
   rodilla_izq: 'Rodilla izq', rodilla_der: 'Rodilla der',
   tibial_izq: 'Tibial izq', tibial_der: 'Tibial der',
-  trapecio: 'Trapecio',
+  trapecio_izq: 'Trapecio Izq.', trapecio_der: 'Trapecio Der.',
   hombro_post_izq: 'Hombro post. izq', hombro_post_der: 'Hombro post. der',
   dorsal_izq: 'Dorsal izq', dorsal_der: 'Dorsal der',
   triceps_izq: 'Trícep izq', triceps_der: 'Trícep der',

@@ -71,10 +71,13 @@ const FRONT = {
 };
 
 const BACK = {
-  trapecio: [
-    '44.6808511 21.7021277 47.6595745 21.7021277 47.2340426 38.2978723 47.6595745 64.6808511 38.2978723 53.1914894 35.3191489 40.8510638 31.0638298 36.5957447 39.1489362 33.1914894 43.8297872 27.2340426',
-    '52.3404255 21.7021277 55.7446809 21.7021277 56.5957447 27.2340426 60.8510638 32.7659574 68.9361702 36.5957447 64.6808511 40.4255319 61.7021277 53.1914894 52.3404255 64.6808511 53.1914894 38.2978723',
-  ],
+  // trapecio_izq / trapecio_der: a diferencia de glúteo, esto SÍ es
+  // extracción real — la librería ya guarda el trapecio como dos
+  // polígonos separados (uno por lado) dentro del mismo muscle
+  // "trapezius"; solo se les da id propio por lado en vez de agruparlos
+  // bajo una única zona sin lado.
+  trapecio_izq: ['44.6808511 21.7021277 47.6595745 21.7021277 47.2340426 38.2978723 47.6595745 64.6808511 38.2978723 53.1914894 35.3191489 40.8510638 31.0638298 36.5957447 39.1489362 33.1914894 43.8297872 27.2340426'],
+  trapecio_der: ['52.3404255 21.7021277 55.7446809 21.7021277 56.5957447 27.2340426 60.8510638 32.7659574 68.9361702 36.5957447 64.6808511 40.4255319 61.7021277 53.1914894 52.3404255 64.6808511 53.1914894 38.2978723'],
   hombro_post_izq: ['29.3617021 37.0212766 22.9787234 39.1489362 17.4468085 44.2553191 18.2978723 53.6170213 24.2553191 49.3617021 27.2340426 46.3829787'],
   hombro_post_der: ['71.0638298 37.0212766 78.2978723 39.5744681 82.5531915 44.6808511 81.7021277 53.6170213 74.893617 48.9361702 72.3404255 45.106383'],
   dorsal_izq: ['31.0638298 38.7234043 28.0851064 48.9361702 28.5106383 55.3191489 34.0425532 75.3191489 47.2340426 71.0638298 47.2340426 66.3829787 36.5957447 54.0425532 33.6170213 41.2765957'],
@@ -130,7 +133,7 @@ const ZONE_NAMES = {
   cuadricep_izq: 'Cuádricep izq', cuadricep_der: 'Cuádricep der',
   rodilla_izq: 'Rodilla izq', rodilla_der: 'Rodilla der',
   tibial_izq: 'Tibial izq', tibial_der: 'Tibial der',
-  trapecio: 'Trapecio',
+  trapecio_izq: 'Trapecio izq', trapecio_der: 'Trapecio der',
   hombro_post_izq: 'Hombro post. izq', hombro_post_der: 'Hombro post. der',
   dorsal_izq: 'Dorsal izq', dorsal_der: 'Dorsal der',
   triceps_izq: 'Trícep izq', triceps_der: 'Trícep der',
@@ -143,6 +146,7 @@ const ZONE_NAMES = {
 
 // Nombre de grupo (sin lado) mostrado en el selector Izquierda/Derecha.
 const GROUP_NAMES = {
+  trapecio: 'Trapecio',
   hombro: 'Hombro',
   oblicuo: 'Oblicuo',
   biceps: 'Bícep',

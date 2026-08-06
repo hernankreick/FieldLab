@@ -43,7 +43,6 @@ const SORENESS = [
   { v: 7, e: '🔥', l: 'Extremo'   },
 ];
 
-const HEATMAP_LEVELS = ['normal', 'leve', 'moderado', 'alto', 'muy_alto'];
 
 function calcScore(sleep, stress, fatigue, soreness) {
   return stress + (8 - sleep) + fatigue + soreness;
@@ -144,12 +143,8 @@ export default function HooperQR({ teamId }) {
       .finally(() => setLoadingPlayers(false));
   }, [teamId]);
 
-  function handleZone(id) {
-    setZones(prev => {
-      const cur  = prev[id] || 'normal';
-      const next = HEATMAP_LEVELS[(HEATMAP_LEVELS.indexOf(cur) + 1) % HEATMAP_LEVELS.length];
-      return { ...prev, [id]: next };
-    });
+  function handleZone(id, level) {
+    setZones(prev => ({ ...prev, [id]: level }));
   }
 
   function selectPlayer(p) {

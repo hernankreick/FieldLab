@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { getPlayerWithCoach } from '../lib/db';
+import { getPlayerWithCoach, getTeamRosterPublic } from '../lib/db';
 
 const RPE_SCALE = [
   { v: 1, label: 'Recuperación',    color: '#22c55e' },
@@ -32,12 +32,8 @@ export default function RPEForm({ teamId }) {
   useEffect(() => {
     if (!isValidTeam) return;
     setLoadingPlayers(true);
-    supabase
-      .from('players')
-      .select('id, name, position')
-      .eq('team_id', teamId)
-      .order('name')
-      .then(({ data }) => setPlayers(data ?? []))
+    getTeamRosterPublic(teamId)
+      .then(data => setPlayers(data))
       .finally(() => setLoadingPlayers(false));
   }, [teamId]);
 

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import BodyHeatmapSimple from '../components/BodyHeatmapSimple';
-import { saveWellness, getPlayerWithCoach } from '../lib/db';
-import { supabase } from '../lib/supabase';
+import { saveWellness, getPlayerWithCoach, getTeamRosterPublic } from '../lib/db';
 
 const SLEEP = [
   { v: 1, e: '😴', l: 'Pésimo'    },
@@ -134,12 +133,8 @@ export default function HooperQR({ teamId }) {
   useEffect(() => {
     if (!isValidTeam) return;
     setLoadingPlayers(true);
-    supabase
-      .from('players')
-      .select('id, name, position')
-      .eq('team_id', teamId)
-      .order('name')
-      .then(({ data }) => setPlayers(data ?? []))
+    getTeamRosterPublic(teamId)
+      .then(data => setPlayers(data))
       .finally(() => setLoadingPlayers(false));
   }, [teamId]);
 

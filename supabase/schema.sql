@@ -110,13 +110,10 @@ CREATE POLICY "teams_update" ON public.teams
 CREATE POLICY "teams_delete" ON public.teams
   FOR DELETE USING (auth.uid() = coach_id);
 
--- Permite SELECT anónimo en players/teams para que los formularios QR puedan
--- resolver el coach_id del jugador antes de insertar wellness/loads.
-CREATE POLICY "players_select_anon" ON public.players
-  FOR SELECT TO anon USING (true);
-
-CREATE POLICY "teams_select_anon" ON public.teams
-  FOR SELECT TO anon USING (true);
+-- NOTA: el acceso anónimo de los formularios QR a players/teams se resuelve
+-- vía las funciones qr_team_roster() / qr_resolve_coach() (sección 4), NO con
+-- policies de SELECT anónimo — un USING(true) sobre players/teams expondría
+-- el roster completo de todos los coaches, no solo el equipo del QR escaneado.
 
 -- ── players (access through team ownership) ──────────────────────────────────
 
@@ -212,7 +209,48 @@ CREATE POLICY "loads_delete" ON public.loads
 
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- 4. SEED DATA
+-- 4. PUBLIC RPC — acceso anónimo escopeado para los formularios QR
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Reemplaza a las policies players_select_anon / teams_select_anon (USING true),
+-- que exponían el roster completo de todos los coaches. Estas funciones solo
+-- devuelven exactamente lo que el flujo QR necesita, para el team_id o
+-- player_id puntual que el cliente ya conoce.
+
+CREATE OR REPLACE FUNCTION public.qr_team_roster(p_team_id uuid)
+RETURNS TABLE (id uuid, name text, position text)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT p.id, p.name, p.position
+  FROM public.players p
+  WHERE p.team_id = p_team_id
+  ORDER BY p.name;
+$$;
+
+REVOKE ALL ON FUNCTION public.qr_team_roster(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.qr_team_roster(uuid) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.qr_resolve_coach(p_player_id uuid)
+RETURNS TABLE (player_id uuid, team_id uuid, coach_id uuid)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT p.id, p.team_id, t.coach_id
+  FROM public.players p
+  JOIN public.teams t ON t.id = p.team_id
+  WHERE p.id = p_player_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.qr_resolve_coach(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.qr_resolve_coach(uuid) TO anon, authenticated;
+
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 5. SEED DATA
 -- ──────────────────────────────────────────────────────────────────────────────
 -- BEFORE RUNNING: replace the v_coach UUID below with your actual user UUID.
 -- Find it in: Supabase → Authentication → Users → click your email → copy UUID

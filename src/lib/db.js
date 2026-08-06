@@ -31,15 +31,23 @@ export async function createPlayer(player) {
 }
 
 // Lookup de jugador + coach_id para formularios públicos QR (sin sesión auth).
-// Requiere RLS policy que permita SELECT anónimo en players y teams por id.
+// Vía RPC SECURITY DEFINER (qr_resolve_coach) en vez de SELECT anónimo directo:
+// solo devuelve el coach_id del player_id puntual, no expone el resto de la tabla.
 export async function getPlayerWithCoach(playerId) {
   const { data, error } = await supabase
-    .from('players')
-    .select('id, name, team_id, teams(coach_id)')
-    .eq('id', playerId)
-    .single();
+    .rpc('qr_resolve_coach', { p_player_id: playerId })
+    .maybeSingle();
   if (error) throw error;
-  return data; // { id, name, team_id, teams: { coach_id } }
+  if (!data) throw new Error('Player not found');
+  return { id: data.player_id, team_id: data.team_id, teams: { coach_id: data.coach_id } };
+}
+
+// Roster de un equipo para el selector de jugador en formularios QR anónimos.
+// Vía RPC (qr_team_roster) en vez de SELECT anónimo directo sobre players.
+export async function getTeamRosterPublic(teamId) {
+  const { data, error } = await supabase.rpc('qr_team_roster', { p_team_id: teamId });
+  if (error) throw error;
+  return data ?? [];
 }
 
 // WELLNESS
